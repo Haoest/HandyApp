@@ -15,6 +15,28 @@ enum BuiltInTypes {}
 
 extension AssetStore {
 
+    /// Registers all built-in combo list templates.
+    /// Idempotent — skips any list whose name already exists in the store.
+    /// Call once at app startup (or in tests) before creating assets that use built-in combo lists.
+    @discardableResult
+    func seedBuiltInComboLists() -> [ComboListDefinition] {
+        let templates: [ComboListDefinition] = [
+            BuiltInTypes.applianceComboList(),
+        ]
+        var seeded: [ComboListDefinition] = []
+        for template in templates {
+            guard !comboListDefinitions.values.contains(where: { $0.name == template.name }) else { continue }
+            let registered = createComboList(
+                name: template.name,
+                systemOptions: template.systemOptions,
+                userOptions: template.userOptions,
+                isUserExtensible: template.isUserExtensible
+            )
+            seeded.append(registered)
+        }
+        return seeded
+    }
+
     /// Registers all built-in composite type templates.
     /// Idempotent — skips any template whose name already exists in the store.
     /// Call once at app startup (or in tests) before creating assets that use built-in types.
