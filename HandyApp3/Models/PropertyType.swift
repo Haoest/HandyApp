@@ -14,6 +14,8 @@ enum BasicType: String, CaseIterable, Equatable, Hashable, Codable {
     case number
     case currency
     case date
+    /// A reference to an iOS Contacts entry, stored as a CNContact.identifier string.
+    case contact
 }
 
 // MARK: - Property type (basic or composite, recursive)

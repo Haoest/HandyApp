@@ -205,7 +205,7 @@ final class HandyApp3Tests: XCTestCase {
     func testCreateGlobalCompositeType() {
         let insuranceType = store.createCompositeType(
             name: "Insurance Info",
-            fields: [
+            systemFields: [
                 PropertyDefinition(name: "Vendor", type: .basic(.text)),
                 PropertyDefinition(name: "Annual Premium", type: .basic(.currency))
             ],
@@ -218,7 +218,7 @@ final class HandyApp3Tests: XCTestCase {
     func testCompositeTypeAvailableGlobally() throws {
         let house = store.createCategory(name: "House")
         let car = store.createCategory(name: "Car")
-        store.createCompositeType(name: "Insurance Info", fields: [], scope: .global)
+        store.createCompositeType(name: "Insurance Info", scope: .global)
         let houseTypes = try store.compositeTypes(availableForCategoryID: house.id)
         let carTypes = try store.compositeTypes(availableForCategoryID: car.id)
         XCTAssertEqual(houseTypes.count, 1)
@@ -228,7 +228,7 @@ final class HandyApp3Tests: XCTestCase {
     func testCompositeTypeCategoryScoped() throws {
         let house = store.createCategory(name: "House")
         let car = store.createCategory(name: "Car")
-        store.createCompositeType(name: "Roof Info", fields: [], scope: .category(house))
+        store.createCompositeType(name: "Roof Info", scope: .category(house))
         let houseTypes = try store.compositeTypes(availableForCategoryID: house.id)
         let carTypes = try store.compositeTypes(availableForCategoryID: car.id)
         XCTAssertEqual(houseTypes.count, 1)
@@ -239,7 +239,7 @@ final class HandyApp3Tests: XCTestCase {
         let house = store.createCategory(name: "House")
         let insuranceType = store.createCompositeType(
             name: "Insurance Info",
-            fields: [
+            systemFields: [
                 PropertyDefinition(name: "Vendor", type: .basic(.text)),
                 PropertyDefinition(name: "Annual Premium", type: .basic(.currency))
             ],
@@ -265,7 +265,7 @@ final class HandyApp3Tests: XCTestCase {
         let house = store.createCategory(name: "House")
         let insuranceType = store.createCompositeType(
             name: "Insurance Info",
-            fields: [PropertyDefinition(name: "Vendor", type: .basic(.text))],
+            systemFields: [PropertyDefinition(name: "Vendor", type: .basic(.text))],
             scope: .global
         )
         let def = PropertyDefinition(name: "Insurance", type: .composite(insuranceType))
@@ -286,7 +286,7 @@ final class HandyApp3Tests: XCTestCase {
         let house = store.createCategory(name: "House")
         let insuranceType = store.createCompositeType(
             name: "Insurance Info",
-            fields: [PropertyDefinition(name: "Vendor", type: .basic(.text))],
+            systemFields: [PropertyDefinition(name: "Vendor", type: .basic(.text))],
             scope: .global
         )
         let def = PropertyDefinition(name: "Insurance", type: .composite(insuranceType))
@@ -310,7 +310,7 @@ final class HandyApp3Tests: XCTestCase {
 
         let addressType = store.createCompositeType(
             name: "Address",
-            fields: [
+            systemFields: [
                 PropertyDefinition(name: "Street", type: .basic(.text)),
                 PropertyDefinition(name: "City", type: .basic(.text)),
                 PropertyDefinition(name: "Zip", type: .basic(.text))
@@ -320,7 +320,7 @@ final class HandyApp3Tests: XCTestCase {
 
         let insuranceType = store.createCompositeType(
             name: "Insurance Details",
-            fields: [
+            systemFields: [
                 PropertyDefinition(name: "Vendor", type: .basic(.text)),
                 PropertyDefinition(name: "Mailing Address", type: .composite(addressType))
             ],
@@ -353,12 +353,12 @@ final class HandyApp3Tests: XCTestCase {
         let house = store.createCategory(name: "House")
         let addressType = store.createCompositeType(
             name: "Address",
-            fields: [PropertyDefinition(name: "Zip", type: .basic(.text))],
+            systemFields: [PropertyDefinition(name: "Zip", type: .basic(.text))],
             scope: .global
         )
         let insuranceType = store.createCompositeType(
             name: "Insurance",
-            fields: [PropertyDefinition(name: "Mailing Address", type: .composite(addressType))],
+            systemFields: [PropertyDefinition(name: "Mailing Address", type: .composite(addressType))],
             scope: .global
         )
         let def = PropertyDefinition(name: "Insurance", type: .composite(insuranceType))
@@ -390,7 +390,7 @@ final class HandyApp3Tests: XCTestCase {
         )
         let insuranceType = store.createCompositeType(
             name: "Insurance Info",
-            fields: [
+            systemFields: [
                 PropertyDefinition(name: "Vendor", type: .basic(.text)),
                 PropertyDefinition(name: "Annual Premium", type: .basic(.currency))
             ],
@@ -465,7 +465,7 @@ final class HandyApp3Tests: XCTestCase {
         )
         let warrantyType = store.createCompositeType(
             name: "Warranty Info",
-            fields: [
+            systemFields: [
                 PropertyDefinition(name: "Provider", type: .basic(.text)),
                 PropertyDefinition(name: "Expiry Date", type: .basic(.date)),
                 PropertyDefinition(name: "Coverage Amount", type: .basic(.currency))
@@ -477,7 +477,7 @@ final class HandyApp3Tests: XCTestCase {
 
         let dimType = store.createCompositeType(
             name: "Dimensions",
-            fields: [
+            systemFields: [
                 PropertyDefinition(name: "Width (in)", type: .basic(.number)),
                 PropertyDefinition(name: "Height (in)", type: .basic(.number)),
                 PropertyDefinition(name: "Depth (in)", type: .basic(.number))
@@ -516,7 +516,7 @@ final class HandyApp3Tests: XCTestCase {
     func testOptionalFieldMayBeOmitted() throws {
         let ct = store.createCompositeType(
             name: "Contact",
-            fields: [
+            userFields: [
                 PropertyDefinition(name: "Name",  type: .basic(.text), isRequired: true),
                 PropertyDefinition(name: "Notes", type: .basic(.text), isRequired: false),
             ]
@@ -531,7 +531,7 @@ final class HandyApp3Tests: XCTestCase {
     func testRequiredFieldMissingThrows() throws {
         let ct = store.createCompositeType(
             name: "Contact",
-            fields: [
+            userFields: [
                 PropertyDefinition(name: "Name",  type: .basic(.text), isRequired: true),
                 PropertyDefinition(name: "Notes", type: .basic(.text), isRequired: false),
             ]
@@ -550,81 +550,141 @@ final class HandyApp3Tests: XCTestCase {
 
     func testSeedBuiltInTypes() {
         store.seedBuiltInTypes()
-        XCTAssertTrue(store.allCompositeTypes.contains { $0.name == "W × H" })
+        XCTAssertTrue(store.allCompositeTypes.contains { $0.name == "W × L" })
     }
 
     func testSeedBuiltInTypesIsIdempotent() {
         store.seedBuiltInTypes()
         store.seedBuiltInTypes()
-        XCTAssertEqual(store.allCompositeTypes.filter { $0.name == "W × H" }.count, 1)
+        XCTAssertEqual(store.allCompositeTypes.filter { $0.name == "W × L" }.count, 1)
     }
 
-    func testWidthByHeightRequiredFieldsOnly() throws {
+    func testWidthByLengthRequiredFieldsOnly() throws {
         store.seedBuiltInTypes()
-        let wxh = store.allCompositeTypes.first { $0.name == "W × H" }!
-        // Unit omitted — optional, so this must pass
+        let wxl = store.allCompositeTypes.first { $0.name == "W × L" }!
         XCTAssertNoThrow(
-            try store.validate(stored: .composite(["Width": .number(1920), "Height": .number(1080)]),
-                               against: .composite(wxh), definitionName: "Screen")
+            try store.validate(stored: .composite(["Width": .number(12), "Length": .number(20)]),
+                               against: .composite(wxl), definitionName: "Lot Size")
         )
     }
 
-    func testWidthByHeightWithOptionalUnit() throws {
+    func testWidthByLengthWithOptionalUnit() throws {
         store.seedBuiltInTypes()
-        let wxh = store.allCompositeTypes.first { $0.name == "W × H" }!
-        let payload: StoredValue = .composite([
-            "Width":  .number(27),
-            "Height": .number(39),
-            "Unit":   .text(UnitIndex.inch.symbol),   // "in"
-        ])
+        let wxl = store.allCompositeTypes.first { $0.name == "W × L" }!
         XCTAssertNoThrow(
-            try store.validate(stored: payload, against: .composite(wxh), definitionName: "Dimension")
+            try store.validate(
+                stored: .composite(["Width": .number(12), "Length": .number(20), "Unit": .text(UnitIndex.feet.symbol)]),
+                against: .composite(wxl), definitionName: "Lot Size"
+            )
         )
     }
 
-    func testWidthByHeightMissingWidthThrows() throws {
+    func testWidthByLengthMissingLengthThrows() throws {
         store.seedBuiltInTypes()
-        let wxh = store.allCompositeTypes.first { $0.name == "W × H" }!
+        let wxl = store.allCompositeTypes.first { $0.name == "W × L" }!
         XCTAssertThrowsError(
-            try store.validate(stored: .composite(["Height": .number(1080)]),
-                               against: .composite(wxh), definitionName: "Screen")
+            try store.validate(stored: .composite(["Width": .number(12)]),
+                               against: .composite(wxl), definitionName: "Lot Size")
         ) { error in
             if case AssetStoreError.compositeFieldMismatch(let details) = error {
-                XCTAssertTrue(details.contains("Width"))
+                XCTAssertTrue(details.contains("Length"))
             } else { XCTFail("Wrong error: \(error)") }
         }
     }
 
-    func testWidthByHeightWrongTypeThrows() throws {
+    func testWidthByLengthOnAsset() throws {
         store.seedBuiltInTypes()
-        let wxh = store.allCompositeTypes.first { $0.name == "W × H" }!
+        let wxl = store.allCompositeTypes.first { $0.name == "W × L" }!
+        let house = store.createCategory(name: "House")
+        let lotDef = PropertyDefinition(name: "Lot Size", type: .composite(wxl))
+        try store.addPropertyDefinition(lotDef, toCategoryID: house.id)
+        let asset = try store.createAsset(name: "123 Main St", categoryID: house.id)
+
+        try store.setPropertyValue(
+            .composite(["Width": .number(80), "Length": .number(120), "Unit": .text(UnitIndex.feet.symbol)]),
+            forDefinitionID: lotDef.id,
+            onAssetID: asset.id
+        )
+        guard case .composite(let v) = asset.value(for: lotDef.id)?.value else {
+            XCTFail("Expected composite value"); return
+        }
+        XCTAssertEqual(v["Width"],  .number(80))
+        XCTAssertEqual(v["Length"], .number(120))
+        XCTAssertEqual(v["Unit"],   .text("ft"))
+    }
+
+    // MARK: - Contact field tests
+
+    func testContactBasicTypeExists() {
+        XCTAssertTrue(BasicType.allCases.contains(.contact))
+    }
+
+    func testSetContactPropertyValue() throws {
+        let car = store.createCategory(name: "Car")
+        let def = PropertyDefinition(name: "Service Center", type: .basic(.contact))
+        try store.addPropertyDefinition(def, toCategoryID: car.id)
+        let camry = try store.createAsset(name: "2022 Camry", categoryID: car.id)
+
+        let fakeIdentifier = "ABC-123-CONTACT-ID"
+        try store.setPropertyValue(.contact(fakeIdentifier), forDefinitionID: def.id, onAssetID: camry.id)
+
+        guard case .contact(let stored) = camry.value(for: def.id)?.value else {
+            XCTFail("Expected .contact value"); return
+        }
+        XCTAssertEqual(stored, fakeIdentifier)
+    }
+
+    func testContactTypeMismatchThrows() throws {
+        let car = store.createCategory(name: "Car")
+        let def = PropertyDefinition(name: "Service Center", type: .basic(.contact))
+        try store.addPropertyDefinition(def, toCategoryID: car.id)
+        let camry = try store.createAsset(name: "2022 Camry", categoryID: car.id)
+
+        // Supplying .text when type is .contact must throw
         XCTAssertThrowsError(
-            try store.validate(stored: .composite(["Width": .text("wide"), "Height": .number(100)]),
-                               against: .composite(wxh), definitionName: "Screen")
+            try store.setPropertyValue(.text("not a contact"), forDefinitionID: def.id, onAssetID: camry.id)
         ) { error in
-            if case AssetStoreError.typeMismatch = error { } else { XCTFail("Wrong error: \(error)") }
+            if case AssetStoreError.typeMismatch(let expected, _) = error {
+                XCTAssertEqual(expected, "contact")
+            } else { XCTFail("Wrong error: \(error)") }
         }
     }
 
-    func testWidthByHeightOnAssetWithFeetUnit() throws {
-        store.seedBuiltInTypes()
-        let wxh = store.allCompositeTypes.first { $0.name == "W × H" }!
-        let house = store.createCategory(name: "House")
-        let dimDef = PropertyDefinition(name: "Room Size", type: .composite(wxh))
-        try store.addPropertyDefinition(dimDef, toCategoryID: house.id)
-        let asset = try store.createAsset(name: "Living Room", categoryID: house.id)
+    func testTextTypeMismatchWhenExpectingContactThrows() throws {
+        let car = store.createCategory(name: "Car")
+        let def = PropertyDefinition(name: "Oil Type", type: .basic(.text))
+        try store.addPropertyDefinition(def, toCategoryID: car.id)
+        let camry = try store.createAsset(name: "2022 Camry", categoryID: car.id)
 
-        try store.setPropertyValue(
-            .composite(["Width": .number(18), "Height": .number(14), "Unit": .text(UnitIndex.feet.symbol)]),
-            forDefinitionID: dimDef.id,
-            onAssetID: asset.id
-        )
-        guard case .composite(let v) = asset.value(for: dimDef.id)?.value else {
-            XCTFail("Expected composite value"); return
+        // Supplying .contact when type is .text must throw
+        XCTAssertThrowsError(
+            try store.setPropertyValue(.contact("some-id"), forDefinitionID: def.id, onAssetID: camry.id)
+        ) { error in
+            if case AssetStoreError.typeMismatch(let expected, _) = error {
+                XCTAssertEqual(expected, "text")
+            } else { XCTFail("Wrong error: \(error)") }
         }
-        XCTAssertEqual(v["Width"],  .number(18))
-        XCTAssertEqual(v["Height"], .number(14))
-        XCTAssertEqual(v["Unit"],   .text("ft"))
+    }
+
+    func testContactIdentifierHelperOnStore() throws {
+        let car = store.createCategory(name: "Car")
+        let def = PropertyDefinition(name: "Service Center", type: .basic(.contact))
+        try store.addPropertyDefinition(def, toCategoryID: car.id)
+        let camry = try store.createAsset(name: "2022 Camry", categoryID: car.id)
+        let fakeID = "DEALER-CONTACT-UUID"
+        try store.setPropertyValue(.contact(fakeID), forDefinitionID: def.id, onAssetID: camry.id)
+
+        let retrieved = store.contactIdentifier(forDefinitionID: def.id, onAssetID: camry.id)
+        XCTAssertEqual(retrieved, fakeID)
+    }
+
+    func testContactIdentifierHelperReturnsNilWhenNotSet() throws {
+        let car = store.createCategory(name: "Car")
+        let def = PropertyDefinition(name: "Service Center", type: .basic(.contact))
+        try store.addPropertyDefinition(def, toCategoryID: car.id)
+        let camry = try store.createAsset(name: "2022 Camry", categoryID: car.id)
+
+        XCTAssertNil(store.contactIdentifier(forDefinitionID: def.id, onAssetID: camry.id))
     }
 
     // MARK: - UnitIndex tests
@@ -670,5 +730,169 @@ final class HandyApp3Tests: XCTestCase {
     func testUnitSymbolsAreUnique() {
         let symbols = UnitIndex.all.map(\.symbol)
         XCTAssertEqual(symbols.count, Set(symbols).count, "Duplicate unit symbols found")
+    }
+
+    // MARK: - Asset Hierarchy Tests
+
+    func testAddChildAsset() throws {
+        let house = store.createCategory(name: "House")
+        let appliance = store.createCategory(name: "Appliance")
+        let myHouse = try store.createAsset(name: "My House", categoryID: house.id)
+        let fridge = try store.createAsset(name: "Refrigerator", categoryID: appliance.id)
+
+        try store.addChild(assetID: fridge.id, toParentID: myHouse.id)
+
+        XCTAssertEqual(myHouse.children.count, 1)
+        XCTAssertEqual(myHouse.children.first, fridge)
+        XCTAssertEqual(fridge.parent, myHouse)
+        XCTAssertFalse(fridge.isRoot)
+        XCTAssertTrue(myHouse.isRoot)
+    }
+
+    func testThreeLevelHierarchy() throws {
+        let house = store.createCategory(name: "House")
+        let appliance = store.createCategory(name: "Appliance")
+        let part = store.createCategory(name: "Part")
+        let myHouse = try store.createAsset(name: "My House", categoryID: house.id)
+        let fridge = try store.createAsset(name: "Refrigerator", categoryID: appliance.id)
+        let filter = try store.createAsset(name: "Water Filter", categoryID: part.id)
+
+        try store.addChild(assetID: fridge.id, toParentID: myHouse.id)
+        try store.addChild(assetID: filter.id, toParentID: fridge.id)
+
+        XCTAssertEqual(filter.parent, fridge)
+        XCTAssertEqual(filter.ancestors, [myHouse, fridge])
+        XCTAssertEqual(myHouse.descendants.count, 2)
+        XCTAssertTrue(myHouse.descendants.contains(filter))
+    }
+
+    func testRemoveFromParent() throws {
+        let house = store.createCategory(name: "House")
+        let appliance = store.createCategory(name: "Appliance")
+        let myHouse = try store.createAsset(name: "My House", categoryID: house.id)
+        let fridge = try store.createAsset(name: "Refrigerator", categoryID: appliance.id)
+
+        try store.addChild(assetID: fridge.id, toParentID: myHouse.id)
+        try store.removeFromParent(assetID: fridge.id)
+
+        XCTAssertNil(fridge.parent)
+        XCTAssertTrue(fridge.isRoot)
+        XCTAssertTrue(myHouse.children.isEmpty)
+    }
+
+    func testMoveAssetToNewParent() throws {
+        let house = store.createCategory(name: "House")
+        let appliance = store.createCategory(name: "Appliance")
+        let garage = try store.createAsset(name: "Garage", categoryID: house.id)
+        let kitchen = try store.createAsset(name: "Kitchen", categoryID: house.id)
+        let fridge = try store.createAsset(name: "Refrigerator", categoryID: appliance.id)
+
+        try store.addChild(assetID: fridge.id, toParentID: garage.id)
+        XCTAssertEqual(fridge.parent, garage)
+
+        try store.moveAsset(assetID: fridge.id, toParentID: kitchen.id)
+        XCTAssertEqual(fridge.parent, kitchen)
+        XCTAssertTrue(garage.children.isEmpty)
+        XCTAssertEqual(kitchen.children.count, 1)
+    }
+
+    func testCycleDetectionDirectThrows() throws {
+        let house = store.createCategory(name: "House")
+        let appliance = store.createCategory(name: "Appliance")
+        let myHouse = try store.createAsset(name: "My House", categoryID: house.id)
+        let fridge = try store.createAsset(name: "Refrigerator", categoryID: appliance.id)
+
+        try store.addChild(assetID: fridge.id, toParentID: myHouse.id)
+
+        XCTAssertThrowsError(try store.addChild(assetID: myHouse.id, toParentID: fridge.id)) { error in
+            if case AssetStoreError.hierarchyCycle = error { } else { XCTFail("Expected hierarchyCycle, got \(error)") }
+        }
+    }
+
+    func testCycleDetectionDeepThrows() throws {
+        let cat = store.createCategory(name: "House")
+        let a = try store.createAsset(name: "A", categoryID: cat.id)
+        let b = try store.createAsset(name: "B", categoryID: cat.id)
+        let c = try store.createAsset(name: "C", categoryID: cat.id)
+
+        try store.addChild(assetID: b.id, toParentID: a.id)
+        try store.addChild(assetID: c.id, toParentID: b.id)
+
+        // A → B → C; making A a child of C would create A → B → C → A
+        XCTAssertThrowsError(try store.addChild(assetID: a.id, toParentID: c.id)) { error in
+            if case AssetStoreError.hierarchyCycle = error { } else { XCTFail("Expected hierarchyCycle, got \(error)") }
+        }
+    }
+
+    func testSelfParentThrows() throws {
+        let cat = store.createCategory(name: "House")
+        let a = try store.createAsset(name: "A", categoryID: cat.id)
+        XCTAssertThrowsError(try store.addChild(assetID: a.id, toParentID: a.id)) { error in
+            if case AssetStoreError.hierarchyCycle = error { } else { XCTFail("Expected hierarchyCycle, got \(error)") }
+        }
+    }
+
+    func testDeleteParentReparentsChildren() throws {
+        let house = store.createCategory(name: "House")
+        let appliance = store.createCategory(name: "Appliance")
+        let part = store.createCategory(name: "Part")
+        let myHouse     = try store.createAsset(name: "My House",    categoryID: house.id)
+        let fridge      = try store.createAsset(name: "Refrigerator", categoryID: appliance.id)
+        let waterFilter = try store.createAsset(name: "Water Filter", categoryID: part.id)
+
+        try store.addChild(assetID: fridge.id,      toParentID: myHouse.id)
+        try store.addChild(assetID: waterFilter.id, toParentID: fridge.id)
+
+        // Deleting fridge should promote waterFilter to myHouse's direct child
+        try store.deleteAsset(id: fridge.id)
+
+        XCTAssertNil(store.assets[fridge.id])
+        XCTAssertEqual(waterFilter.parent, myHouse)
+        XCTAssertTrue(myHouse.children.contains(waterFilter))
+    }
+
+    func testDeleteParentMakesChildrenRootWhenNoGrandparent() throws {
+        let house = store.createCategory(name: "House")
+        let appliance = store.createCategory(name: "Appliance")
+        let myHouse = try store.createAsset(name: "My House", categoryID: house.id)
+        let fridge = try store.createAsset(name: "Refrigerator", categoryID: appliance.id)
+
+        try store.addChild(assetID: fridge.id, toParentID: myHouse.id)
+        try store.deleteAsset(id: myHouse.id)
+
+        XCTAssertNil(store.assets[myHouse.id])
+        XCTAssertTrue(fridge.isRoot)
+    }
+
+    func testRootAssets() throws {
+        let house = store.createCategory(name: "House")
+        let appliance = store.createCategory(name: "Appliance")
+        let myHouse = try store.createAsset(name: "My House", categoryID: house.id)
+        let fridge = try store.createAsset(name: "Refrigerator", categoryID: appliance.id)
+        try store.addChild(assetID: fridge.id, toParentID: myHouse.id)
+
+        let roots = store.rootAssets
+        XCTAssertTrue(roots.contains(myHouse))
+        XCTAssertFalse(roots.contains(fridge))
+    }
+
+    func testRealWorldHouseHierarchy() throws {
+        let house     = store.createCategory(name: "House")
+        let appliance = store.createCategory(name: "Appliance")
+        let part      = store.createCategory(name: "Part")
+
+        let myHouse     = try store.createAsset(name: "123 Main St",  categoryID: house.id)
+        let fridge      = try store.createAsset(name: "Refrigerator", categoryID: appliance.id)
+        let washer      = try store.createAsset(name: "Washer",       categoryID: appliance.id)
+        let waterFilter = try store.createAsset(name: "Water Filter", categoryID: part.id)
+
+        try store.addChild(assetID: fridge.id,      toParentID: myHouse.id)
+        try store.addChild(assetID: washer.id,      toParentID: myHouse.id)
+        try store.addChild(assetID: waterFilter.id, toParentID: fridge.id)
+
+        XCTAssertEqual(myHouse.children.count, 2)
+        XCTAssertEqual(myHouse.descendants.count, 3)   // fridge, washer, waterFilter
+        XCTAssertEqual(waterFilter.ancestors, [myHouse, fridge])
+        XCTAssertEqual(waterFilter.ancestors.first?.name, "123 Main St")
     }
 }

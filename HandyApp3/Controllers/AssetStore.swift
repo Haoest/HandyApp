@@ -20,6 +20,10 @@ enum AssetStoreError: Error, Equatable {
     case compositeFieldMismatch(details: String)
     /// The composite type is category-scoped and the asset's category is not the allowed one.
     case compositeTypeScopeViolation(typeID: UUID, allowedCategoryID: UUID, assetCategoryID: UUID)
+    /// Attaching a child would create a cycle in the asset hierarchy.
+    case hierarchyCycle(childID: UUID, ancestorID: UUID)
+    /// Attempted to remove or edit a system-defined field on a composite type.
+    case cannotModifySystemField(UUID)
 }
 
 // MARK: - AssetStore
@@ -117,7 +121,15 @@ final class AssetStore {
     }
 
     func deleteAsset(id: UUID) throws {
-        guard assets[id] != nil else { throw AssetStoreError.assetNotFound(id) }
+        guard let asset = assets[id] else { throw AssetStoreError.assetNotFound(id) }
+        // Capture grandparent before detaching (detach nils asset.parent)
+        let grandparent = asset.parent
+        asset.parent?._removeChild(asset)
+        // Promote children to grandparent, or make them roots if no grandparent exists
+        for child in Array(asset.children) {
+            asset._removeChild(child)
+            grandparent?._addChild(child)
+        }
         assets.removeValue(forKey: id)
     }
 
@@ -159,38 +171,37 @@ final class AssetStore {
         asset.propertyValues.removeAll { $0.definitionID == definitionID }
     }
 
+
+
     // MARK: - CompositeTypeDefinition CRUD
 
+    /// Creates a composite type with purely user-defined fields (no system fields).
+    /// To create a type with system fields, pass them explicitly via `systemFields:`.
     @discardableResult
     func createCompositeType(
         name: String,
-        fields: [PropertyDefinition],
+        systemFields: [PropertyDefinition] = [],
+        userFields: [PropertyDefinition] = [],
         scope: CompositeTypeScope = .global
     ) -> CompositeTypeDefinition {
-        let ct = CompositeTypeDefinition(name: name, fields: fields, scope: scope)
+        let ct = CompositeTypeDefinition(name: name, systemFields: systemFields, userFields: userFields, scope: scope)
         compositeTypes[ct.id] = ct
         return ct
     }
 
+    /// Updates the name and/or scope of a composite type.
+    /// Fields are managed separately via `addUserField`, `removeUserField`, `updateUserField`.
     func updateCompositeType(
         id: UUID,
         name: String? = nil,
-        fields: [PropertyDefinition]? = nil,
         scope: CompositeTypeScope? = nil
     ) throws {
         guard let ct = compositeTypes[id] else { throw AssetStoreError.compositeTypeNotFound(id) }
-        if let name { ct.name = name }
-        if let fields { ct.fields = fields }
+        if let name  { ct.name  = name  }
         if let scope { ct.scope = scope }
     }
 
-    func deleteCompositeType(id: UUID) throws {
-        guard compositeTypes[id] != nil else { throw AssetStoreError.compositeTypeNotFound(id) }
-        compositeTypes.removeValue(forKey: id)
-    }
-
-    /// Returns composite types available to a given category:
-    /// all globally-scoped types plus any category-scoped types that match the given category id.
+    /// Returns all composite types available for a given category (global + category-scoped to that category).
     func compositeTypes(availableForCategoryID categoryID: UUID) throws -> [CompositeTypeDefinition] {
         guard categories[categoryID] != nil else { throw AssetStoreError.categoryNotFound(categoryID) }
         return compositeTypes.values.filter { ct in
@@ -199,6 +210,54 @@ final class AssetStore {
             case .category(let cat): return cat.id == categoryID
             }
         }
+    }
+
+    func deleteCompositeType(id: UUID) throws {
+        guard compositeTypes[id] != nil else { throw AssetStoreError.compositeTypeNotFound(id) }
+        compositeTypes.removeValue(forKey: id)
+    }
+
+    // MARK: - User field management on composite types
+
+    /// Appends a user-defined field to an existing composite type.
+    @discardableResult
+    func addUserField(_ field: PropertyDefinition, toCompositeTypeID typeID: UUID) throws -> PropertyDefinition {
+        guard let ct = compositeTypes[typeID] else { throw AssetStoreError.compositeTypeNotFound(typeID) }
+        ct.userFields.append(field)
+        return field
+    }
+
+    /// Removes a user-defined field. Throws `.cannotModifySystemField` if the field is system-defined.
+    func removeUserField(id fieldID: UUID, fromCompositeTypeID typeID: UUID) throws {
+        guard let ct = compositeTypes[typeID] else { throw AssetStoreError.compositeTypeNotFound(typeID) }
+        if ct.systemFields.contains(where: { $0.id == fieldID }) {
+            throw AssetStoreError.cannotModifySystemField(fieldID)
+        }
+        guard ct.userFields.contains(where: { $0.id == fieldID }) else {
+            throw AssetStoreError.definitionNotFound(fieldID)
+        }
+        ct.userFields.removeAll { $0.id == fieldID }
+    }
+
+    /// Updates a user-defined field's name, type, or isRequired flag.
+    /// Throws `.cannotModifySystemField` if the field is system-defined.
+    func updateUserField(
+        id fieldID: UUID,
+        inCompositeTypeID typeID: UUID,
+        name: String? = nil,
+        type: PropertyType? = nil,
+        isRequired: Bool? = nil
+    ) throws {
+        guard let ct = compositeTypes[typeID] else { throw AssetStoreError.compositeTypeNotFound(typeID) }
+        if ct.systemFields.contains(where: { $0.id == fieldID }) {
+            throw AssetStoreError.cannotModifySystemField(fieldID)
+        }
+        guard let idx = ct.userFields.firstIndex(where: { $0.id == fieldID }) else {
+            throw AssetStoreError.definitionNotFound(fieldID)
+        }
+        if let name       { ct.userFields[idx].name       = name       }
+        if let type       { ct.userFields[idx].type       = type       }
+        if let isRequired { ct.userFields[idx].isRequired = isRequired }
     }
 
     // MARK: - Validation helpers
@@ -240,5 +299,47 @@ final class AssetStore {
                 try validate(stored: subValue, against: fieldDef.type, definitionName: fieldDef.name)
             }
         }
+    }
+
+    // MARK: - Asset hierarchy
+
+    /// Makes `childID` a direct child of `parentID`.
+    /// Throws `.hierarchyCycle` if `parentID` is already a descendant of `childID`,
+    /// or if `childID == parentID`.
+    func addChild(assetID childID: UUID, toParentID parentID: UUID) throws {
+        guard let child  = assets[childID]  else { throw AssetStoreError.assetNotFound(childID) }
+        guard let newParent = assets[parentID] else { throw AssetStoreError.assetNotFound(parentID) }
+        guard childID != parentID else {
+            throw AssetStoreError.hierarchyCycle(childID: childID, ancestorID: parentID)
+        }
+        if child.descendants.contains(where: { $0.id == parentID }) {
+            throw AssetStoreError.hierarchyCycle(childID: childID, ancestorID: parentID)
+        }
+        child.parent?._removeChild(child)
+        newParent._addChild(child)
+    }
+
+    /// Detaches `assetID` from its current parent, making it a root asset.
+    /// No-op if the asset is already a root.
+    func removeFromParent(assetID: UUID) throws {
+        guard let asset = assets[assetID] else { throw AssetStoreError.assetNotFound(assetID) }
+        asset.parent?._removeChild(asset)
+    }
+
+    /// Moves `assetID` to a new parent, replacing any existing parent relationship.
+    func moveAsset(assetID: UUID, toParentID newParentID: UUID) throws {
+        try removeFromParent(assetID: assetID)
+        try addChild(assetID: assetID, toParentID: newParentID)
+    }
+
+    /// All root assets (no parent) across the entire store.
+    var rootAssets: [Asset] {
+        assets.values.filter(\.isRoot)
+    }
+
+    /// All root assets belonging to a specific category.
+    func rootAssets(inCategoryID categoryID: UUID) throws -> [Asset] {
+        guard categories[categoryID] != nil else { throw AssetStoreError.categoryNotFound(categoryID) }
+        return assets.values.filter { $0.isRoot && $0.category.id == categoryID }
     }
 }

@@ -19,24 +19,41 @@ enum CompositeTypeScope: Equatable {
 
 // MARK: - CompositeTypeDefinition
 
-/// A user-defined composite property type assembled from an ordered list of named fields.
-/// Each field is itself a `PropertyDefinition`, so nesting composites is supported.
+/// A composite property type assembled from named fields.
+///
+/// Fields are split into two groups:
+/// - `systemFields` — predefined by the template; cannot be removed or edited by the user.
+/// - `userFields`   — freely added, edited, or removed by the user at any time.
+///
+/// The computed `fields` (= systemFields + userFields) is used everywhere
+/// validation and storage occurs — all existing code works unchanged.
 final class CompositeTypeDefinition: Identifiable, Equatable {
     let id: UUID
     var name: String
-    /// Ordered fields that make up this composite type.
-    var fields: [PropertyDefinition]
+
+    /// Predefined fields set at creation. Never removable by the user.
+    private(set) var systemFields: [PropertyDefinition]
+
+    /// Fields the user has freely added on top of the template.
+    var userFields: [PropertyDefinition]
+
+    /// All fields in order: system fields first, then user fields.
+    /// Use this everywhere — validation, display, value storage.
+    var fields: [PropertyDefinition] { systemFields + userFields }
+
     var scope: CompositeTypeScope
 
     init(
         id: UUID = UUID(),
         name: String,
-        fields: [PropertyDefinition] = [],
+        systemFields: [PropertyDefinition] = [],
+        userFields: [PropertyDefinition] = [],
         scope: CompositeTypeScope = .global
     ) {
         self.id = id
         self.name = name
-        self.fields = fields
+        self.systemFields = systemFields
+        self.userFields = userFields
         self.scope = scope
     }
 

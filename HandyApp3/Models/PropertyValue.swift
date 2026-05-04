@@ -15,16 +15,20 @@ indirect enum StoredValue: Equatable {
     case number(Double)
     case currency(Decimal)
     case date(Date)
+    /// Stores a CNContact.identifier — a stable string that survives app relaunches.
+    /// Resolve to a live CNContact via ContactResolver.
+    case contact(String)
     /// Keyed by field name, mirrors a CompositeTypeDefinition's fields.
     case composite([String: StoredValue])
 
-    /// Returns `true` when both values carry the same variant tag (ignoring payload).
+    /// Maps self back to the corresponding BasicType, or nil for composite.
     var basicType: BasicType? {
         switch self {
-        case .text: return .text
-        case .number: return .number
+        case .text:    return .text
+        case .number:  return .number
         case .currency: return .currency
-        case .date: return .date
+        case .date:    return .date
+        case .contact: return .contact
         case .composite: return nil
         }
     }
