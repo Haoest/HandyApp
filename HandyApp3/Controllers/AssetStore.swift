@@ -184,9 +184,10 @@ final class AssetStore {
         name: String,
         systemFields: [PropertyDefinition] = [],
         userFields: [PropertyDefinition] = [],
+        isUserExtensible: Bool = true,
         scope: CompositeTypeScope = .global
     ) -> CompositeTypeDefinition {
-        let ct = CompositeTypeDefinition(name: name, systemFields: systemFields, userFields: userFields, scope: scope)
+        let ct = CompositeTypeDefinition(name: name, systemFields: systemFields, userFields: userFields, isUserExtensible: isUserExtensible, scope: scope)
         compositeTypes[ct.id] = ct
         return ct
     }

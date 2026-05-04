@@ -22,6 +22,7 @@ extension AssetStore {
     func seedBuiltInTypes(scope: CompositeTypeScope = .global) -> [CompositeTypeDefinition] {
         let templates: [CompositeTypeDefinition] = [
             BuiltInTypes.widthByLength(scope: scope),
+            BuiltInTypes.widthByLengthByHeight(scope: scope),
         ]
         var seeded: [CompositeTypeDefinition] = []
         for template in templates {
@@ -30,6 +31,7 @@ extension AssetStore {
                 name: template.name,
                 systemFields: template.systemFields,
                 userFields: template.userFields,
+                isUserExtensible: template.isUserExtensible,
                 scope: template.scope
             )
             seeded.append(registered)
