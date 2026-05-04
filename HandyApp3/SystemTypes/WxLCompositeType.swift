@@ -27,6 +27,7 @@ extension BuiltInTypes {
                 PropertyDefinition(name: "Length", type: .basic(.number), isRequired: true),
                 PropertyDefinition(name: "Unit",   type: .basic(.text),   isRequired: false),
             ],
+            isUserExtensible: false,
             scope: scope
         )
     }

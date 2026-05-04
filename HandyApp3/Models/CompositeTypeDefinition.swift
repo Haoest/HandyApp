@@ -41,6 +41,10 @@ final class CompositeTypeDefinition: Identifiable, Equatable {
     /// Use this everywhere — validation, display, value storage.
     var fields: [PropertyDefinition] { systemFields + userFields }
 
+    /// When `false`, users cannot add, edit, or remove fields on this composite type.
+    /// Built-in types like W × L should set this to `false`.
+    let isUserExtensible: Bool
+
     var scope: CompositeTypeScope
 
     init(
@@ -48,12 +52,14 @@ final class CompositeTypeDefinition: Identifiable, Equatable {
         name: String,
         systemFields: [PropertyDefinition] = [],
         userFields: [PropertyDefinition] = [],
+        isUserExtensible: Bool = true,
         scope: CompositeTypeScope = .global
     ) {
         self.id = id
         self.name = name
         self.systemFields = systemFields
         self.userFields = userFields
+        self.isUserExtensible = isUserExtensible
         self.scope = scope
     }
 
