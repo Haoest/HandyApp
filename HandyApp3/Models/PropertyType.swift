@@ -23,11 +23,14 @@ enum BasicType: String, CaseIterable, Equatable, Hashable, Codable {
 indirect enum PropertyType: Equatable {
     case basic(BasicType)
     case composite(CompositeTypeDefinition)
+    /// A pick-list of string choices; the stored value is one of the list's options.
+    case comboList(ComboListDefinition)
 
     var displayName: String {
         switch self {
-        case .basic(let b): return b.rawValue.capitalized
-        case .composite(let c): return c.name
+        case .basic(let b):      return b.rawValue.capitalized
+        case .composite(let c):  return c.name
+        case .comboList(let cl): return cl.name
         }
     }
 

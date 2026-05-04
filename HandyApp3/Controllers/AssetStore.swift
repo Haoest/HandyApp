@@ -26,6 +26,12 @@ enum AssetStoreError: Error, Equatable {
     case cannotModifySystemField(UUID)
     /// Attempted to add, edit, or remove a user field on a non-extensible composite type.
     case notUserExtensible(UUID)
+    /// A ComboListDefinition with the given ID was not found.
+    case comboListNotFound(UUID)
+    /// Attempted to modify a system combo list option.
+    case cannotModifySystemOption(listID: UUID, option: String)
+    /// Attempted to add or remove a user option on a non-extensible combo list.
+    case comboListNotExtensible(UUID)
 }
 
 // MARK: - AssetStore
@@ -39,12 +45,14 @@ final class AssetStore {
     private(set) var categories: [UUID: AssetCategory] = [:]
     private(set) var assets: [UUID: Asset] = [:]
     private(set) var compositeTypes: [UUID: CompositeTypeDefinition] = [:]
+    private(set) var comboListDefinitions: [UUID: ComboListDefinition] = [:]
 
     // MARK: - Derived collections
 
     var allCategories: [AssetCategory] { Array(categories.values) }
     var allAssets: [Asset] { Array(assets.values) }
     var allCompositeTypes: [CompositeTypeDefinition] { Array(compositeTypes.values) }
+    var allComboListDefinitions: [ComboListDefinition] { Array(comboListDefinitions.values) }
 
     // MARK: - Category CRUD
 
@@ -158,6 +166,15 @@ final class AssetStore {
         // Validate the value against the definition's type
         try validate(stored: stored, against: definition.type, definitionName: definition.name)
 
+        // For comboList properties, auto-add new text values to the list's userOptions
+        // only when the list allows user extension.
+        if case .comboList(let list) = definition.type,
+           case .text(let value) = stored,
+           list.isUserExtensible,
+           !list.allOptions.contains(value) {
+            list.userOptions.append(value)
+        }
+
         if let idx = asset.propertyValues.firstIndex(where: { $0.definitionID == definitionID }) {
             asset.propertyValues[idx].value = stored
             return asset.propertyValues[idx]
@@ -174,6 +191,53 @@ final class AssetStore {
     }
 
 
+
+    // MARK: - ComboListDefinition CRUD
+
+    /// Creates a new combo list with predefined system options and optional user options.
+    @discardableResult
+    func createComboList(
+        name: String,
+        systemOptions: [String] = [],
+        userOptions: [String] = [],
+        isUserExtensible: Bool = true
+    ) -> ComboListDefinition {
+        let cl = ComboListDefinition(name: name, systemOptions: systemOptions, userOptions: userOptions, isUserExtensible: isUserExtensible)
+        comboListDefinitions[cl.id] = cl
+        return cl
+    }
+
+    func updateComboList(id: UUID, name: String) throws {
+        guard let cl = comboListDefinitions[id] else { throw AssetStoreError.comboListNotFound(id) }
+        cl.name = name
+    }
+
+    func deleteComboList(id: UUID) throws {
+        guard comboListDefinitions[id] != nil else { throw AssetStoreError.comboListNotFound(id) }
+        comboListDefinitions.removeValue(forKey: id)
+    }
+
+    /// Appends a new option to the user-defined portion of a combo list.
+    /// Throws `.comboListNotExtensible` if the list does not allow user additions.
+    /// Silently skips if the option already exists (case-sensitive).
+    func addUserOption(_ option: String, toComboListID id: UUID) throws {
+        guard let cl = comboListDefinitions[id] else { throw AssetStoreError.comboListNotFound(id) }
+        guard cl.isUserExtensible else { throw AssetStoreError.comboListNotExtensible(id) }
+        guard !cl.allOptions.contains(option) else { return }
+        cl.userOptions.append(option)
+    }
+
+    /// Removes a user-defined option.
+    /// Throws `.comboListNotExtensible` if the list does not allow user modifications.
+    /// Throws `.cannotModifySystemOption` if the option is system-defined.
+    func removeUserOption(_ option: String, fromComboListID id: UUID) throws {
+        guard let cl = comboListDefinitions[id] else { throw AssetStoreError.comboListNotFound(id) }
+        guard cl.isUserExtensible else { throw AssetStoreError.comboListNotExtensible(id) }
+        guard !cl.systemOptions.contains(option) else {
+            throw AssetStoreError.cannotModifySystemOption(listID: id, option: option)
+        }
+        cl.userOptions.removeAll { $0 == option }
+    }
 
     // MARK: - CompositeTypeDefinition CRUD
 
@@ -277,6 +341,19 @@ final class AssetStore {
                 let got: String
                 if let b = stored.basicType { got = b.rawValue } else { got = "composite" }
                 throw AssetStoreError.typeMismatch(expected: expected, got: got)
+            }
+
+        case .comboList(let list):
+            guard case .text(let value) = stored else {
+                let got = stored.basicType?.rawValue ?? "composite"
+                throw AssetStoreError.typeMismatch(expected: "comboList(\(list.name))", got: got)
+            }
+            // When the list is not user-extensible, the value must already be in allOptions.
+            if !list.isUserExtensible && !list.allOptions.contains(value) {
+                throw AssetStoreError.typeMismatch(
+                    expected: "one of [\(list.allOptions.joined(separator: ", "))]",
+                    got: value
+                )
             }
 
         case .composite(let definition):
