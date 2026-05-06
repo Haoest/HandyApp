@@ -22,6 +22,7 @@ extension AssetStore {
     func seedBuiltInComboLists() -> [ComboListDefinition] {
         let templates: [ComboListDefinition] = [
             BuiltInTypes.applianceComboList(),
+            BuiltInTypes.powerSourceComboList(),
         ]
         var seeded: [ComboListDefinition] = []
         for template in templates {
@@ -42,9 +43,14 @@ extension AssetStore {
     /// Call once at app startup (or in tests) before creating assets that use built-in types.
     @discardableResult
     func seedBuiltInTypes(scope: CompositeTypeScope = .global) -> [CompositeTypeDefinition] {
+        let applianceCL = comboListDefinitions.values.first { $0.name == "ApplianceComboList" }
+                          ?? BuiltInTypes.applianceComboList()
+        let powerSourceCL = comboListDefinitions.values.first { $0.name == "PowerSourceComboList" }
+                            ?? BuiltInTypes.powerSourceComboList()
         let templates: [CompositeTypeDefinition] = [
             BuiltInTypes.widthByLength(scope: scope),
             BuiltInTypes.widthByLengthByHeight(scope: scope),
+            BuiltInTypes.appliance(applianceComboList: applianceCL, powerSourceComboList: powerSourceCL, scope: scope),
         ]
         var seeded: [CompositeTypeDefinition] = []
         for template in templates {
