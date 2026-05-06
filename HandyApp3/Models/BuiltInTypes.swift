@@ -47,13 +47,15 @@ extension AssetStore {
                           ?? BuiltInTypes.applianceComboList()
         let powerSourceCL = comboListDefinitions.values.first { $0.name == "PowerSourceComboList" }
                             ?? BuiltInTypes.powerSourceComboList()
-        let templates: [CompositeTypeDefinition] = [
+
+        // Phase 1: types that have no composite dependencies
+        let phase1: [CompositeTypeDefinition] = [
             BuiltInTypes.widthByLength(scope: scope),
             BuiltInTypes.widthByLengthByHeight(scope: scope),
             BuiltInTypes.appliance(applianceComboList: applianceCL, powerSourceComboList: powerSourceCL, scope: scope),
         ]
         var seeded: [CompositeTypeDefinition] = []
-        for template in templates {
+        for template in phase1 {
             guard !compositeTypes.values.contains(where: { $0.name == template.name }) else { continue }
             let registered = createCompositeType(
                 name: template.name,
@@ -64,6 +66,25 @@ extension AssetStore {
             )
             seeded.append(registered)
         }
+
+        // Phase 2: types that depend on phase-1 types
+        let applianceType = compositeTypes.values.first { $0.name == "Appliance" }
+                            ?? BuiltInTypes.appliance(applianceComboList: applianceCL, powerSourceComboList: powerSourceCL, scope: scope)
+        let phase2: [CompositeTypeDefinition] = [
+            BuiltInTypes.housingUnit(applianceType: applianceType, scope: scope),
+        ]
+        for template in phase2 {
+            guard !compositeTypes.values.contains(where: { $0.name == template.name }) else { continue }
+            let registered = createCompositeType(
+                name: template.name,
+                systemFields: template.systemFields,
+                userFields: template.userFields,
+                isUserExtensible: template.isUserExtensible,
+                scope: template.scope
+            )
+            seeded.append(registered)
+        }
+
         return seeded
     }
 }
