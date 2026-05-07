@@ -19,6 +19,7 @@ extension BuiltInTypes {
                 "Range",
                 "Cloth Washer",
                 "Cloth Dryer",
+                "HVAC"
             ],
             isUserExtensible: true
         )

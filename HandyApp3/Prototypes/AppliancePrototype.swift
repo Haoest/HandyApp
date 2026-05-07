@@ -22,11 +22,12 @@ extension BuiltInTypes {
             systemFields: [
                 PropertyDefinition(name: "Type",         type: .comboList(applianceComboList), isRequired: true),
                 PropertyDefinition(name: "Make",         type: .basic(.text),                  isRequired: true),
-                PropertyDefinition(name: "PurchaseDate", type: .basic(.date),                  isRequired: false),
+                PropertyDefinition(name: "Purchase date", type: .basic(.date),                  isRequired: false),
                 PropertyDefinition(name: "Price",        type: .basic(.currency),              isRequired: false),
-                PropertyDefinition(name: "PowerSource",  type: .comboList(powerSourceComboList),     isRequired: false),
+                PropertyDefinition(name: "Power source",  type: .comboList(powerSourceComboList),     isRequired: false),
+                PropertyDefinition(name: "Warranty",     type: .basic(.text),                  isRequired: false),
                 PropertyDefinition(name: "Retailer",     type: .basic(.text),                  isRequired: false),
-                PropertyDefinition(name: "Notes",        type: .basic(.text),                        isRequired: false),
+                PropertyDefinition(name: "Notes",        type: .basic(.text),                  isRequired: false),
                 
             ],
             isUserExtensible: true,

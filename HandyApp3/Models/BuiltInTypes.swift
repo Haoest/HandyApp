@@ -1,3 +1,10 @@
+//
+//  BuiltInTypes.swift
+//  HandyApp3
+//
+//  Created by Hao Deng on 5/2/26.
+//
+
 import Foundation
 
 /// Namespace for built-in composite type factories.
@@ -46,6 +53,7 @@ extension AssetStore {
             BuiltInTypes.widthByLength(scope: scope),
             BuiltInTypes.widthByLengthByHeight(scope: scope),
             BuiltInTypes.appliance(applianceComboList: applianceCL, powerSourceComboList: powerSourceCL, scope: scope),
+            BuiltInTypes.automobile(scope: scope),
         ]
         var seeded: [CompositeTypeDefinition] = []
         for template in phase1 {

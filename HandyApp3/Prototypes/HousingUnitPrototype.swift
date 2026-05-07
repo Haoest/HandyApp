@@ -14,7 +14,7 @@ extension BuiltInTypes {
                 PropertyDefinition(name: "City",         type: .basic(.text),           isRequired: false),
                 PropertyDefinition(name: "State",        type: .basic(.text),           isRequired: false),
                 PropertyDefinition(name: "Zip",          type: .basic(.text),           isRequired: false),
-                PropertyDefinition(name: "PurchaseDate", type: .basic(.date),           isRequired: false),
+                PropertyDefinition(name: "Purchase date", type: .basic(.date),           isRequired: false),
                 PropertyDefinition(name: "Range",        type: .composite(applianceType), isRequired: false),
                 PropertyDefinition(name: "Refrigerator", type: .composite(applianceType), isRequired: false),
             ],
