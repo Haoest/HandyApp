@@ -1,10 +1,3 @@
-//
-//  PropertyDefinition.swift
-//  HandyApp3
-//
-//  Created by Hao Deng on 5/2/26.
-//
-
 import Foundation
 
 /// Describes a named, typed property slot that can be attached to an AssetCategory.

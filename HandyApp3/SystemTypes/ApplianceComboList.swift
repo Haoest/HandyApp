@@ -1,10 +1,3 @@
-//
-//  ApplianceComboList.swift
-//  HandyApp3
-//
-//  Created by Hao Deng on 5/3/26.
-//
-
 import Foundation
 
 // MARK: - Appliance Combo List

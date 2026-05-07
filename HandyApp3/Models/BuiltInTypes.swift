@@ -1,10 +1,3 @@
-//
-//  BuiltInTypes.swift
-//  HandyApp3
-//
-//  Created by Hao Deng on 5/2/26.
-//
-
 import Foundation
 
 /// Namespace for built-in composite type factories.

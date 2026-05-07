@@ -1,10 +1,3 @@
-//
-//  Item.swift
-//  HandyApp3
-//
-//  Created by Hao Deng on 5/2/26.
-//
-
 import Foundation
 import SwiftData
 

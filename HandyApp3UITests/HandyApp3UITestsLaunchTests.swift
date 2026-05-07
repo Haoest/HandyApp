@@ -1,10 +1,3 @@
-//
-//  HandyApp3UITestsLaunchTests.swift
-//  HandyApp3UITests
-//
-//  Created by Hao Deng on 5/2/26.
-//
-
 import XCTest
 
 final class HandyApp3UITestsLaunchTests: XCTestCase {

@@ -1,10 +1,3 @@
-//
-//  AssetCategory.swift
-//  HandyApp3
-//
-//  Created by Hao Deng on 5/2/26.
-//
-
 import Foundation
 
 /// A user-definable asset category (e.g. House, Car, Appliance, or any custom type).

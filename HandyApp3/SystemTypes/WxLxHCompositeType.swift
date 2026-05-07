@@ -1,10 +1,3 @@
-//
-//  WxLxHCompositeType.swift
-//  HandyApp3
-//
-//  Created by Hao Deng on 5/3/26.
-//
-
 import Foundation
 
 // MARK: - W × L × H System Type

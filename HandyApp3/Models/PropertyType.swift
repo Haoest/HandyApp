@@ -1,10 +1,3 @@
-//
-//  PropertyType.swift
-//  HandyApp3
-//
-//  Created by Hao Deng on 5/2/26.
-//
-
 import Foundation
 
 // MARK: - Basic primitive types

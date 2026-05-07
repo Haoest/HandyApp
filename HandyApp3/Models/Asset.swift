@@ -1,10 +1,3 @@
-//
-//  Asset.swift
-//  HandyApp3
-//
-//  Created by Hao Deng on 5/2/26.
-//
-
 import Foundation
 
 /// A physical asset owned by the user (e.g. "My House", "2022 Toyota Camry").

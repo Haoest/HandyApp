@@ -1,10 +1,3 @@
-//
-//  HandyApp3Tests.swift
-//  HandyApp3Tests
-//
-//  Created by Hao Deng on 5/2/26.
-//
-
 import XCTest
 @testable import HandyApp3
 
