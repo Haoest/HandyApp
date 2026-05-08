@@ -1,3 +1,4 @@
+
 import Foundation
 
 // MARK: - Errors
@@ -25,6 +26,8 @@ enum AssetStoreError: Error, Equatable {
     case cannotModifySystemOption(listID: UUID, option: String)
     /// Attempted to add or remove a user option on a non-extensible combo list.
     case comboListNotExtensible(UUID)
+    /// An AssetProperty with the given id was not found on the specified asset.
+    case customPropertyNotFound(UUID)
 }
 
 // MARK: - AssetStore
@@ -183,7 +186,72 @@ final class AssetStore {
         asset.propertyValues.removeAll { $0.definitionID == definitionID }
     }
 
+    // MARK: - Custom property management on assets
 
+    /// Adds a new per-asset custom property (definition + optional initial value).
+    /// Validates the initial value type if one is supplied.
+    @discardableResult
+    func addCustomProperty(
+        definition: PropertyDefinition,
+        value: StoredValue? = nil,
+        toAssetID assetID: UUID
+    ) throws -> AssetProperty {
+        guard let asset = assets[assetID] else { throw AssetStoreError.assetNotFound(assetID) }
+        var propertyValue: PropertyValue? = nil
+        if let stored = value {
+            try validate(stored: stored, against: definition.type, definitionName: definition.name)
+            propertyValue = PropertyValue(definitionID: definition.id, value: stored)
+        }
+        let prop = AssetProperty(definition: definition, value: propertyValue)
+        asset.customProperties.append(prop)
+        return prop
+    }
+
+    /// Sets (insert or replace) the value on an existing custom property.
+    @discardableResult
+    func setCustomPropertyValue(
+        _ stored: StoredValue,
+        forCustomPropertyID propID: UUID,
+        onAssetID assetID: UUID
+    ) throws -> AssetProperty {
+        guard let asset = assets[assetID] else { throw AssetStoreError.assetNotFound(assetID) }
+        guard let prop = asset.customProperties.first(where: { $0.id == propID }) else {
+            throw AssetStoreError.customPropertyNotFound(propID)
+        }
+        try validate(stored: stored, against: prop.definition.type, definitionName: prop.definition.name)
+        prop.value = PropertyValue(definitionID: prop.definition.id, value: stored)
+        return prop
+    }
+
+    /// Updates the definition (name, type, isRequired) of an existing custom property.
+    /// Clears the stored value if the type changes, since the old value may no longer be valid.
+    func updateCustomProperty(
+        id propID: UUID,
+        onAssetID assetID: UUID,
+        name: String? = nil,
+        type: PropertyType? = nil,
+        isRequired: Bool? = nil
+    ) throws {
+        guard let asset = assets[assetID] else { throw AssetStoreError.assetNotFound(assetID) }
+        guard let prop = asset.customProperties.first(where: { $0.id == propID }) else {
+            throw AssetStoreError.customPropertyNotFound(propID)
+        }
+        if let name { prop.definition.name = name }
+        if let isRequired { prop.definition.isRequired = isRequired }
+        if let type {
+            prop.definition.type = type
+            prop.value = nil  // clear stale value when type changes
+        }
+    }
+
+    /// Removes a custom property (and its value) from an asset.
+    func removeCustomProperty(id propID: UUID, fromAssetID assetID: UUID) throws {
+        guard let asset = assets[assetID] else { throw AssetStoreError.assetNotFound(assetID) }
+        guard asset.customProperties.contains(where: { $0.id == propID }) else {
+            throw AssetStoreError.customPropertyNotFound(propID)
+        }
+        asset.customProperties.removeAll { $0.id == propID }
+    }
 
     // MARK: - ComboListDefinition CRUD
 

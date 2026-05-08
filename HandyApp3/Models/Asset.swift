@@ -17,6 +17,10 @@ final class Asset: Identifiable, Equatable {
     /// Mutated exclusively through `AssetStore` hierarchy methods.
     private(set) var children: [Asset] = []
 
+    /// Per-instance properties defined by the user specifically for this asset.
+    /// Each entry carries its own schema (PropertyDefinition) and optional value.
+    var customProperties: [AssetProperty] = []
+
     init(
         id: UUID = UUID(),
         name: String,
@@ -31,9 +35,16 @@ final class Asset: Identifiable, Equatable {
 
     // MARK: - Property value convenience
 
-    /// Returns the stored value for a given definition id, if one exists.
+    /// Returns the stored value for a given definition id.
+    /// Searches category-level propertyValues first, then customProperties.
     func value(for definitionID: UUID) -> PropertyValue? {
-        propertyValues.first { $0.definitionID == definitionID }
+        if let pv = propertyValues.first(where: { $0.definitionID == definitionID }) { return pv }
+        return customProperties.first(where: { $0.definition.id == definitionID })?.value
+    }
+
+    /// Returns the AssetProperty for a given definition id, if it exists in customProperties.
+    func customProperty(for definitionID: UUID) -> AssetProperty? {
+        customProperties.first { $0.definition.id == definitionID }
     }
 
     // MARK: - Hierarchy traversal
