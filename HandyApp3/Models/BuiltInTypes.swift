@@ -1,14 +1,8 @@
-//
-//  BuiltInTypes.swift
-//  HandyApp3
-//
-//  Created by Hao Deng on 5/2/26.
-//
-
 import Foundation
 
-/// Namespace for built-in composite type factories.
-/// Individual types live in `SystemTypes/` as extensions on this enum.
+/// Namespace for built-in type factories.
+/// Composite *value* types (W × L, W × L × H) live in `SystemTypes/` as extensions on this enum.
+/// Built-in IS-A type nodes (Appliance/Range/etc.) are seeded by `AssetStore.seedBuiltInTypeTree()`.
 enum BuiltInTypes {}
 
 // MARK: - AssetStore seeding
@@ -17,11 +11,9 @@ extension AssetStore {
 
     /// Registers all built-in combo list templates.
     /// Idempotent — skips any list whose name already exists in the store.
-    /// Call once at app startup (or in tests) before creating assets that use built-in combo lists.
     @discardableResult
     func seedBuiltInComboLists() -> [ComboListDefinition] {
         let templates: [ComboListDefinition] = [
-            BuiltInTypes.applianceComboList(),
             BuiltInTypes.powerSourceComboList(),
         ]
         var seeded: [ComboListDefinition] = []
@@ -38,25 +30,17 @@ extension AssetStore {
         return seeded
     }
 
-    /// Registers all built-in composite type templates.
-    /// Idempotent — skips any template whose name already exists in the store.
-    /// Call once at app startup (or in tests) before creating assets that use built-in types.
+    /// Registers built-in composite *value* types (W × L, W × L × H).
+    /// IS-A type nodes are seeded separately via `seedBuiltInTypeTree()`.
+    /// Idempotent — skips any template whose name already exists.
     @discardableResult
     func seedBuiltInTypes(scope: CompositeTypeScope = .global) -> [CompositeTypeDefinition] {
-        let applianceCL = comboListDefinitions.values.first { $0.name == "ApplianceComboList" }
-                          ?? BuiltInTypes.applianceComboList()
-        let powerSourceCL = comboListDefinitions.values.first { $0.name == "PowerSourceComboList" }
-                            ?? BuiltInTypes.powerSourceComboList()
-
-        // Phase 1: types that have no composite dependencies
-        let phase1: [CompositeTypeDefinition] = [
+        let templates: [CompositeTypeDefinition] = [
             BuiltInTypes.widthByLength(scope: scope),
             BuiltInTypes.widthByLengthByHeight(scope: scope),
-            BuiltInTypes.appliance(applianceComboList: applianceCL, powerSourceComboList: powerSourceCL, scope: scope),
-            BuiltInTypes.automobile(scope: scope),
         ]
         var seeded: [CompositeTypeDefinition] = []
-        for template in phase1 {
+        for template in templates {
             guard !compositeTypes.values.contains(where: { $0.name == template.name }) else { continue }
             let registered = createCompositeType(
                 name: template.name,
@@ -67,25 +51,6 @@ extension AssetStore {
             )
             seeded.append(registered)
         }
-
-        // Phase 2: types that depend on phase-1 types
-        let applianceType = compositeTypes.values.first { $0.name == "Appliance" }
-                            ?? BuiltInTypes.appliance(applianceComboList: applianceCL, powerSourceComboList: powerSourceCL, scope: scope)
-        let phase2: [CompositeTypeDefinition] = [
-            BuiltInTypes.housingUnit(applianceType: applianceType, scope: scope),
-        ]
-        for template in phase2 {
-            guard !compositeTypes.values.contains(where: { $0.name == template.name }) else { continue }
-            let registered = createCompositeType(
-                name: template.name,
-                systemFields: template.systemFields,
-                userFields: template.userFields,
-                isUserExtensible: template.isUserExtensible,
-                scope: template.scope
-            )
-            seeded.append(registered)
-        }
-
         return seeded
     }
 }

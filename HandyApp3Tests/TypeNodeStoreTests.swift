@@ -127,4 +127,80 @@ final class TypeNodeStoreTests: XCTestCase {
         let asset = try store.createAsset(name: "GE Range", typeID: range.id)
         XCTAssertEqual(asset.schemaPropertyDefinitions.map(\.name), ["Make", "PowerSource"])
     }
+
+    // MARK: - seedBuiltInTypeTree
+
+    func testSeedBuiltInTypeTreeShape() throws {
+        try store.seedBuiltInTypeTree()
+
+        let rootNames = Set(store.typeRoots.map(\.name))
+        XCTAssertEqual(rootNames, ["Appliance", "Automobile", "HousingUnit"])
+
+        let appliance = store.typeRoots.first { $0.name == "Appliance" }!
+        XCTAssertTrue(appliance.isAbstract)
+        XCTAssertEqual(
+            Set(appliance.children.map(\.name)),
+            ["Refrigerator", "Range", "Cloth Washer", "Cloth Dryer", "HVAC"]
+        )
+    }
+
+    func testSeedBuiltInTypeTreeIsIdempotent() throws {
+        try store.seedBuiltInTypeTree()
+        try store.seedBuiltInTypeTree()
+        XCTAssertEqual(store.typeRoots.filter { $0.name == "Appliance" }.count, 1)
+        let appliance = store.typeRoots.first { $0.name == "Appliance" }!
+        XCTAssertEqual(appliance.children.filter { $0.name == "Range" }.count, 1)
+    }
+
+    func testRangeInheritsApplianceFieldsAndAddsPowerSource() throws {
+        try store.seedBuiltInTypeTree()
+        let range = store.allTypeNodes.first { $0.name == "Range" }!
+
+        let names = range.allFields.map(\.name)
+        // Inherited from Appliance:
+        XCTAssertTrue(names.contains("Make"))
+        XCTAssertTrue(names.contains("Price"))
+        // Local to Range:
+        XCTAssertTrue(names.contains("Power source"))
+
+        // Power source is a Power Source combo list reference, not a free text field.
+        let powerSourceField = range.allFields.first { $0.name == "Power source" }!
+        if case .comboList(let cl) = powerSourceField.type {
+            XCTAssertEqual(cl.name, "PowerSourceComboList")
+        } else {
+            XCTFail("Expected Power source to be a combo list")
+        }
+    }
+
+    func testRefrigeratorDoesNotHavePowerSource() throws {
+        try store.seedBuiltInTypeTree()
+        let fridge = store.allTypeNodes.first { $0.name == "Refrigerator" }!
+        XCTAssertFalse(fridge.allFields.contains { $0.name == "Power source" })
+    }
+
+    func testCannotInstantiateAbstractAppliance() throws {
+        try store.seedBuiltInTypeTree()
+        let appliance = store.typeRoots.first { $0.name == "Appliance" }!
+        XCTAssertThrowsError(try store.createAsset(name: "x", typeID: appliance.id)) { error in
+            if case AssetStoreError.typeIsAbstract = error { } else { XCTFail("Wrong error: \(error)") }
+        }
+    }
+
+    func testRangeAssetValidatesPowerSourceAgainstComboList() throws {
+        try store.seedBuiltInTypeTree()
+        let range = store.allTypeNodes.first { $0.name == "Range" }!
+        let asset = try store.createAsset(name: "GE Range", typeID: range.id)
+        let powerDef = range.allFields.first { $0.name == "Power source" }!
+
+        // A known combo-list value works.
+        XCTAssertNoThrow(
+            try store.setPropertyValue(.text("Natural Gas"), forDefinitionID: powerDef.id, onAssetID: asset.id)
+        )
+        // Wrong stored variant fails.
+        XCTAssertThrowsError(
+            try store.setPropertyValue(.number(120), forDefinitionID: powerDef.id, onAssetID: asset.id)
+        ) { error in
+            if case AssetStoreError.typeMismatch = error { } else { XCTFail("Wrong error: \(error)") }
+        }
+    }
 }
