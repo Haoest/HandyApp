@@ -3,11 +3,11 @@ import Foundation
 // MARK: - Scope
 
 /// Determines which assets can use a composite type.
+/// Currently only `.global` exists; the enum is retained as a placeholder and is
+/// removed entirely in Phase 5 of the AssetCategory → TypeNode migration.
 enum CompositeTypeScope: Equatable {
-    /// Available to assets across all categories.
+    /// Available to assets of any type.
     case global
-    /// Restricted to assets belonging to the specified category.
-    case category(AssetCategory)
 }
 
 // MARK: - CompositeTypeDefinition

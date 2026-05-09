@@ -1,9 +1,8 @@
 import XCTest
 @testable import HandyApp3
 
-/// Tests for the TypeNode-based AssetStore APIs added in Phase 2 of the
-/// AssetCategory → TypeNode migration. The legacy category-based APIs are
-/// covered in HandyApp3Tests.swift and continue to work in parallel.
+/// Tests for the TypeNode-based AssetStore APIs (createTypeNode,
+/// createAsset(name:typeID:), and the built-in type tree).
 final class TypeNodeStoreTests: XCTestCase {
 
     var store: AssetStore!
@@ -57,7 +56,6 @@ final class TypeNodeStoreTests: XCTestCase {
         )
         let asset = try store.createAsset(name: "My Fridge", typeID: appliance.id)
         XCTAssertEqual(asset.type, appliance)
-        XCTAssertNil(asset.category)
         XCTAssertEqual(store.allAssets.count, 1)
     }
 
@@ -105,27 +103,6 @@ final class TypeNodeStoreTests: XCTestCase {
         ) { error in
             if case AssetStoreError.definitionNotFound = error { } else { XCTFail("Wrong error: \(error)") }
         }
-    }
-
-    // MARK: - schemaPropertyDefinitions
-
-    func testSchemaPropertyDefinitionsForCategoryAsset() throws {
-        let cat = store.createCategory(name: "House")
-        try store.addPropertyDefinition(
-            PropertyDefinition(name: "Roof Age", type: .basic(.number)),
-            toCategoryID: cat.id
-        )
-        let asset = try store.createAsset(name: "My House", categoryID: cat.id)
-        XCTAssertEqual(asset.schemaPropertyDefinitions.map(\.name), ["Roof Age"])
-    }
-
-    func testSchemaPropertyDefinitionsForTypeAsset() throws {
-        let make = PropertyDefinition(name: "Make", type: .basic(.text))
-        let powerSource = PropertyDefinition(name: "PowerSource", type: .basic(.text))
-        let appliance = try store.createTypeNode(name: "Appliance", localFields: [make], isAbstract: true)
-        let range = try store.createTypeNode(name: "Range", parentID: appliance.id, localFields: [powerSource])
-        let asset = try store.createAsset(name: "GE Range", typeID: range.id)
-        XCTAssertEqual(asset.schemaPropertyDefinitions.map(\.name), ["Make", "PowerSource"])
     }
 
     // MARK: - seedBuiltInTypeTree

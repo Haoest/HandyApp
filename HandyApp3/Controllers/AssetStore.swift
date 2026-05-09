@@ -1,10 +1,8 @@
-
 import Foundation
 
 // MARK: - Errors
 
 enum AssetStoreError: Error, Equatable {
-    case categoryNotFound(UUID)
     case assetNotFound(UUID)
     case compositeTypeNotFound(UUID)
     case definitionNotFound(UUID)
@@ -12,8 +10,6 @@ enum AssetStoreError: Error, Equatable {
     case typeMismatch(expected: String, got: String)
     /// A composite payload is missing required fields or contains unknown field names.
     case compositeFieldMismatch(details: String)
-    /// The composite type is category-scoped and the asset's category is not the allowed one.
-    case compositeTypeScopeViolation(typeID: UUID, allowedCategoryID: UUID, assetCategoryID: UUID)
     /// Attaching a child would create a cycle in the asset hierarchy.
     case hierarchyCycle(childID: UUID, ancestorID: UUID)
     /// Attempted to remove or edit a system-defined field on a composite type.
@@ -42,7 +38,6 @@ final class AssetStore {
 
     // MARK: - Storage
 
-    private(set) var categories: [UUID: AssetCategory] = [:]
     private(set) var assets: [UUID: Asset] = [:]
     private(set) var compositeTypes: [UUID: CompositeTypeDefinition] = [:]
     private(set) var comboListDefinitions: [UUID: ComboListDefinition] = [:]
@@ -50,83 +45,110 @@ final class AssetStore {
 
     // MARK: - Derived collections
 
-    var allCategories: [AssetCategory] { Array(categories.values) }
     var allAssets: [Asset] { Array(assets.values) }
     var allCompositeTypes: [CompositeTypeDefinition] { Array(compositeTypes.values) }
     var allComboListDefinitions: [ComboListDefinition] { Array(comboListDefinitions.values) }
     var allTypeNodes: [TypeNode] { Array(typeNodes.values) }
     var typeRoots: [TypeNode] { typeNodes.values.filter(\.isRoot) }
 
-    // MARK: - Category CRUD
+    // MARK: - TypeNode CRUD
 
+    /// Creates a TypeNode and attaches it under `parentID` (or as a root if nil).
+    /// Throws `.typeNodeNotFound` when `parentID` is supplied but unknown.
     @discardableResult
-    func createCategory(name: String, propertyDefinitions: [PropertyDefinition] = []) -> AssetCategory {
-        let cat = AssetCategory(name: name, propertyDefinitions: propertyDefinitions)
-        categories[cat.id] = cat
-        return cat
+    func createTypeNode(
+        name: String,
+        parentID: UUID? = nil,
+        localFields: [PropertyDefinition] = [],
+        isAbstract: Bool = false,
+        isUserExtensible: Bool = true
+    ) throws -> TypeNode {
+        let parent: TypeNode?
+        if let parentID {
+            guard let p = typeNodes[parentID] else { throw AssetStoreError.typeNodeNotFound(parentID) }
+            parent = p
+        } else {
+            parent = nil
+        }
+        let node = TypeNode(
+            name: name,
+            localFields: localFields,
+            isAbstract: isAbstract,
+            isUserExtensible: isUserExtensible
+        )
+        typeNodes[node.id] = node
+        parent?._addChild(node)
+        return node
     }
 
-    func updateCategory(id: UUID, name: String) throws {
-        guard let cat = categories[id] else { throw AssetStoreError.categoryNotFound(id) }
-        cat.name = name
+    func updateTypeNode(id: UUID, name: String? = nil, isAbstract: Bool? = nil) throws {
+        guard let node = typeNodes[id] else { throw AssetStoreError.typeNodeNotFound(id) }
+        if let name { node.name = name }
+        if let isAbstract { node.isAbstract = isAbstract }
     }
 
-    /// Removes the category and all assets that belong to it.
-    func deleteCategory(id: UUID) throws {
-        guard categories[id] != nil else { throw AssetStoreError.categoryNotFound(id) }
-        // Remove assets belonging to this category
-        let orphanedAssets = assets.values.filter { $0.category?.id == id }
+    /// Cascade-deletes the TypeNode, all its descendants, and every Asset typed against
+    /// any of the deleted nodes. Mirrors the old `deleteCategory` semantics.
+    func deleteTypeNode(id: UUID) throws {
+        guard let node = typeNodes[id] else { throw AssetStoreError.typeNodeNotFound(id) }
+        let toDelete = [node] + node.descendants
+        let deletedIDs = Set(toDelete.map(\.id))
+        // Remove orphaned assets first.
+        let orphanedAssets = assets.values.filter { deletedIDs.contains($0.type.id) }
         orphanedAssets.forEach { assets.removeValue(forKey: $0.id) }
-        categories.removeValue(forKey: id)
+        // Detach `node` from its parent (if any) so descendants drop with it.
+        node.parent?._removeChild(node)
+        // Drop all node entries from the registry.
+        deletedIDs.forEach { typeNodes.removeValue(forKey: $0) }
     }
 
-    // MARK: - PropertyDefinition management on categories
+    // MARK: - Local field management on TypeNodes
 
+    /// Appends a local field to a TypeNode. Inherited fields are not affected (pure-append model).
     @discardableResult
-    func addPropertyDefinition(
-        _ definition: PropertyDefinition,
-        toCategoryID categoryID: UUID
+    func addLocalField(
+        _ field: PropertyDefinition,
+        toTypeNodeID nodeID: UUID
     ) throws -> PropertyDefinition {
-        guard let cat = categories[categoryID] else { throw AssetStoreError.categoryNotFound(categoryID) }
-        cat.propertyDefinitions.append(definition)
-        return definition
+        guard let node = typeNodes[nodeID] else { throw AssetStoreError.typeNodeNotFound(nodeID) }
+        guard node.isUserExtensible else { throw AssetStoreError.notUserExtensible(nodeID) }
+        node.localFields.append(field)
+        return field
     }
 
-    func updatePropertyDefinition(
-        id: UUID,
-        inCategoryID categoryID: UUID,
+    func updateLocalField(
+        id fieldID: UUID,
+        inTypeNodeID nodeID: UUID,
         name: String? = nil,
-        type: PropertyType? = nil
+        type: PropertyType? = nil,
+        isRequired: Bool? = nil
     ) throws {
-        guard let cat = categories[categoryID] else { throw AssetStoreError.categoryNotFound(categoryID) }
-        guard let idx = cat.propertyDefinitions.firstIndex(where: { $0.id == id }) else {
-            throw AssetStoreError.definitionNotFound(id)
+        guard let node = typeNodes[nodeID] else { throw AssetStoreError.typeNodeNotFound(nodeID) }
+        guard node.isUserExtensible else { throw AssetStoreError.notUserExtensible(nodeID) }
+        guard let idx = node.localFields.firstIndex(where: { $0.id == fieldID }) else {
+            throw AssetStoreError.definitionNotFound(fieldID)
         }
-        if let name { cat.propertyDefinitions[idx].name = name }
-        if let type { cat.propertyDefinitions[idx].type = type }
+        if let name       { node.localFields[idx].name       = name       }
+        if let type       { node.localFields[idx].type       = type       }
+        if let isRequired { node.localFields[idx].isRequired = isRequired }
     }
 
-    func removePropertyDefinition(id: UUID, fromCategoryID categoryID: UUID) throws {
-        guard let cat = categories[categoryID] else { throw AssetStoreError.categoryNotFound(categoryID) }
-        guard cat.propertyDefinitions.contains(where: { $0.id == id }) else {
-            throw AssetStoreError.definitionNotFound(id)
+    /// Removes a local field from a TypeNode and clears any orphaned values from
+    /// assets typed against the node or its descendants.
+    func removeLocalField(id fieldID: UUID, fromTypeNodeID nodeID: UUID) throws {
+        guard let node = typeNodes[nodeID] else { throw AssetStoreError.typeNodeNotFound(nodeID) }
+        guard node.isUserExtensible else { throw AssetStoreError.notUserExtensible(nodeID) }
+        guard node.localFields.contains(where: { $0.id == fieldID }) else {
+            throw AssetStoreError.definitionNotFound(fieldID)
         }
-        cat.propertyDefinitions.removeAll { $0.id == id }
-        // Remove orphaned values from assets in this category
+        node.localFields.removeAll { $0.id == fieldID }
+        let affectedTypeIDs = Set(([node] + node.descendants).map(\.id))
         assets.values
-            .filter { $0.category?.id == categoryID }
-            .forEach { $0.propertyValues.removeAll { $0.definitionID == id } }
+            .filter { affectedTypeIDs.contains($0.type.id) }
+            .forEach { $0.propertyValues.removeAll { $0.definitionID == fieldID } }
     }
 
     // MARK: - Asset CRUD
-
-    @discardableResult
-    func createAsset(name: String, categoryID: UUID) throws -> Asset {
-        guard let cat = categories[categoryID] else { throw AssetStoreError.categoryNotFound(categoryID) }
-        let asset = Asset(name: name, category: cat)
-        assets[asset.id] = asset
-        return asset
-    }
 
     /// Creates an Asset whose schema comes from a TypeNode. Throws `.typeIsAbstract`
     /// if the node is marked abstract — only concrete leaf-or-internal types may be instantiated.
@@ -157,9 +179,12 @@ final class AssetStore {
         assets.removeValue(forKey: id)
     }
 
-    func assets(inCategoryID categoryID: UUID) throws -> [Asset] {
-        guard categories[categoryID] != nil else { throw AssetStoreError.categoryNotFound(categoryID) }
-        return assets.values.filter { $0.category?.id == categoryID }
+    /// All assets whose type is `typeID` OR any descendant of it.
+    /// "Give me all Appliances" returns Refrigerators, Ranges, etc.
+    func assets(ofTypeID typeID: UUID) throws -> [Asset] {
+        guard let node = typeNodes[typeID] else { throw AssetStoreError.typeNodeNotFound(typeID) }
+        let matchIDs = Set(([node] + node.descendants).map(\.id))
+        return assets.values.filter { matchIDs.contains($0.type.id) }
     }
 
     // MARK: - PropertyValue management on assets
@@ -173,8 +198,8 @@ final class AssetStore {
         onAssetID assetID: UUID
     ) throws -> PropertyValue {
         guard let asset = assets[assetID] else { throw AssetStoreError.assetNotFound(assetID) }
-        // Locate the definition in the asset's schema (category fields or type's inherited+local fields)
-        guard let definition = asset.schemaPropertyDefinitions.first(where: { $0.id == definitionID }) else {
+        // Locate the definition in the asset's type schema (inherited + local fields).
+        guard let definition = asset.type.allFields.first(where: { $0.id == definitionID }) else {
             throw AssetStoreError.definitionNotFound(definitionID)
         }
         // Validate the value against the definition's type
@@ -320,7 +345,7 @@ final class AssetStore {
 
     // MARK: - CompositeTypeDefinition CRUD
 
-    /// Creates a composite type with purely user-defined fields (no system fields).
+    /// Creates a composite *value* type with purely user-defined fields (no system fields) by default.
     /// To create a type with system fields, pass them explicitly via `systemFields:`.
     @discardableResult
     func createCompositeType(
@@ -345,17 +370,6 @@ final class AssetStore {
         guard let ct = compositeTypes[id] else { throw AssetStoreError.compositeTypeNotFound(id) }
         if let name  { ct.name  = name  }
         if let scope { ct.scope = scope }
-    }
-
-    /// Returns all composite types available for a given category (global + category-scoped to that category).
-    func compositeTypes(availableForCategoryID categoryID: UUID) throws -> [CompositeTypeDefinition] {
-        guard categories[categoryID] != nil else { throw AssetStoreError.categoryNotFound(categoryID) }
-        return compositeTypes.values.filter { ct in
-            switch ct.scope {
-            case .global: return true
-            case .category(let cat): return cat.id == categoryID
-            }
-        }
     }
 
     func deleteCompositeType(id: UUID) throws {
@@ -407,36 +421,6 @@ final class AssetStore {
         if let name       { ct.userFields[idx].name       = name       }
         if let type       { ct.userFields[idx].type       = type       }
         if let isRequired { ct.userFields[idx].isRequired = isRequired }
-    }
-
-    // MARK: - TypeNode CRUD
-
-    /// Creates a TypeNode and attaches it under `parentID` (or as a root if nil).
-    /// Throws `.typeNodeNotFound` when `parentID` is supplied but unknown.
-    @discardableResult
-    func createTypeNode(
-        name: String,
-        parentID: UUID? = nil,
-        localFields: [PropertyDefinition] = [],
-        isAbstract: Bool = false,
-        isUserExtensible: Bool = true
-    ) throws -> TypeNode {
-        let parent: TypeNode?
-        if let parentID {
-            guard let p = typeNodes[parentID] else { throw AssetStoreError.typeNodeNotFound(parentID) }
-            parent = p
-        } else {
-            parent = nil
-        }
-        let node = TypeNode(
-            name: name,
-            localFields: localFields,
-            isAbstract: isAbstract,
-            isUserExtensible: isUserExtensible
-        )
-        typeNodes[node.id] = node
-        parent?._addChild(node)
-        return node
     }
 
     // MARK: - Validation helpers
@@ -529,9 +513,10 @@ final class AssetStore {
         assets.values.filter(\.isRoot)
     }
 
-    /// All root assets belonging to a specific category.
-    func rootAssets(inCategoryID categoryID: UUID) throws -> [Asset] {
-        guard categories[categoryID] != nil else { throw AssetStoreError.categoryNotFound(categoryID) }
-        return assets.values.filter { $0.isRoot && $0.category?.id == categoryID }
+    /// All root assets whose type is `typeID` or any descendant of it.
+    func rootAssets(ofTypeID typeID: UUID) throws -> [Asset] {
+        guard let node = typeNodes[typeID] else { throw AssetStoreError.typeNodeNotFound(typeID) }
+        let matchIDs = Set(([node] + node.descendants).map(\.id))
+        return assets.values.filter { $0.isRoot && matchIDs.contains($0.type.id) }
     }
 }
