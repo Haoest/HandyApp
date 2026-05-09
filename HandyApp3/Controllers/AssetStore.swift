@@ -28,6 +28,10 @@ enum AssetStoreError: Error, Equatable {
     case comboListNotExtensible(UUID)
     /// An AssetProperty with the given id was not found on the specified asset.
     case customPropertyNotFound(UUID)
+    /// A TypeNode with the given ID was not found.
+    case typeNodeNotFound(UUID)
+    /// Attempted to instantiate an Asset from an abstract TypeNode.
+    case typeIsAbstract(UUID)
 }
 
 // MARK: - AssetStore
@@ -42,6 +46,7 @@ final class AssetStore {
     private(set) var assets: [UUID: Asset] = [:]
     private(set) var compositeTypes: [UUID: CompositeTypeDefinition] = [:]
     private(set) var comboListDefinitions: [UUID: ComboListDefinition] = [:]
+    private(set) var typeNodes: [UUID: TypeNode] = [:]
 
     // MARK: - Derived collections
 
@@ -49,6 +54,8 @@ final class AssetStore {
     var allAssets: [Asset] { Array(assets.values) }
     var allCompositeTypes: [CompositeTypeDefinition] { Array(compositeTypes.values) }
     var allComboListDefinitions: [ComboListDefinition] { Array(comboListDefinitions.values) }
+    var allTypeNodes: [TypeNode] { Array(typeNodes.values) }
+    var typeRoots: [TypeNode] { typeNodes.values.filter(\.isRoot) }
 
     // MARK: - Category CRUD
 
@@ -68,7 +75,7 @@ final class AssetStore {
     func deleteCategory(id: UUID) throws {
         guard categories[id] != nil else { throw AssetStoreError.categoryNotFound(id) }
         // Remove assets belonging to this category
-        let orphanedAssets = assets.values.filter { $0.category.id == id }
+        let orphanedAssets = assets.values.filter { $0.category?.id == id }
         orphanedAssets.forEach { assets.removeValue(forKey: $0.id) }
         categories.removeValue(forKey: id)
     }
@@ -107,7 +114,7 @@ final class AssetStore {
         cat.propertyDefinitions.removeAll { $0.id == id }
         // Remove orphaned values from assets in this category
         assets.values
-            .filter { $0.category.id == categoryID }
+            .filter { $0.category?.id == categoryID }
             .forEach { $0.propertyValues.removeAll { $0.definitionID == id } }
     }
 
@@ -117,6 +124,17 @@ final class AssetStore {
     func createAsset(name: String, categoryID: UUID) throws -> Asset {
         guard let cat = categories[categoryID] else { throw AssetStoreError.categoryNotFound(categoryID) }
         let asset = Asset(name: name, category: cat)
+        assets[asset.id] = asset
+        return asset
+    }
+
+    /// Creates an Asset whose schema comes from a TypeNode. Throws `.typeIsAbstract`
+    /// if the node is marked abstract — only concrete leaf-or-internal types may be instantiated.
+    @discardableResult
+    func createAsset(name: String, typeID: UUID) throws -> Asset {
+        guard let node = typeNodes[typeID] else { throw AssetStoreError.typeNodeNotFound(typeID) }
+        guard !node.isAbstract else { throw AssetStoreError.typeIsAbstract(typeID) }
+        let asset = Asset(name: name, type: node)
         assets[asset.id] = asset
         return asset
     }
@@ -141,7 +159,7 @@ final class AssetStore {
 
     func assets(inCategoryID categoryID: UUID) throws -> [Asset] {
         guard categories[categoryID] != nil else { throw AssetStoreError.categoryNotFound(categoryID) }
-        return assets.values.filter { $0.category.id == categoryID }
+        return assets.values.filter { $0.category?.id == categoryID }
     }
 
     // MARK: - PropertyValue management on assets
@@ -155,8 +173,8 @@ final class AssetStore {
         onAssetID assetID: UUID
     ) throws -> PropertyValue {
         guard let asset = assets[assetID] else { throw AssetStoreError.assetNotFound(assetID) }
-        // Locate the definition in the asset's category
-        guard let definition = asset.category.propertyDefinitions.first(where: { $0.id == definitionID }) else {
+        // Locate the definition in the asset's schema (category fields or type's inherited+local fields)
+        guard let definition = asset.schemaPropertyDefinitions.first(where: { $0.id == definitionID }) else {
             throw AssetStoreError.definitionNotFound(definitionID)
         }
         // Validate the value against the definition's type
@@ -391,6 +409,36 @@ final class AssetStore {
         if let isRequired { ct.userFields[idx].isRequired = isRequired }
     }
 
+    // MARK: - TypeNode CRUD
+
+    /// Creates a TypeNode and attaches it under `parentID` (or as a root if nil).
+    /// Throws `.typeNodeNotFound` when `parentID` is supplied but unknown.
+    @discardableResult
+    func createTypeNode(
+        name: String,
+        parentID: UUID? = nil,
+        localFields: [PropertyDefinition] = [],
+        isAbstract: Bool = false,
+        isUserExtensible: Bool = true
+    ) throws -> TypeNode {
+        let parent: TypeNode?
+        if let parentID {
+            guard let p = typeNodes[parentID] else { throw AssetStoreError.typeNodeNotFound(parentID) }
+            parent = p
+        } else {
+            parent = nil
+        }
+        let node = TypeNode(
+            name: name,
+            localFields: localFields,
+            isAbstract: isAbstract,
+            isUserExtensible: isUserExtensible
+        )
+        typeNodes[node.id] = node
+        parent?._addChild(node)
+        return node
+    }
+
     // MARK: - Validation helpers
 
     /// Recursively validates a StoredValue against a PropertyType.
@@ -484,6 +532,6 @@ final class AssetStore {
     /// All root assets belonging to a specific category.
     func rootAssets(inCategoryID categoryID: UUID) throws -> [Asset] {
         guard categories[categoryID] != nil else { throw AssetStoreError.categoryNotFound(categoryID) }
-        return assets.values.filter { $0.isRoot && $0.category.id == categoryID }
+        return assets.values.filter { $0.isRoot && $0.category?.id == categoryID }
     }
 }

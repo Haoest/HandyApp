@@ -1,10 +1,15 @@
 import Foundation
 
 /// A physical asset owned by the user (e.g. "My House", "2022 Toyota Camry").
+///
+/// During the AssetCategory → TypeNode migration an Asset may be created via either
+/// `category` (legacy path) or `type` (new path). Exactly one is expected to be set.
+/// Phase 4 removes `category` and makes `type` non-optional.
 final class Asset: Identifiable, Equatable {
     let id: UUID
     var name: String
-    var category: AssetCategory
+    var category: AssetCategory?
+    var type: TypeNode?
     /// Values recorded against this asset, one entry per PropertyDefinition (sparse — not all definitions
     /// need a corresponding value).
     var propertyValues: [PropertyValue]
@@ -24,13 +29,23 @@ final class Asset: Identifiable, Equatable {
     init(
         id: UUID = UUID(),
         name: String,
-        category: AssetCategory,
+        category: AssetCategory? = nil,
+        type: TypeNode? = nil,
         propertyValues: [PropertyValue] = []
     ) {
         self.id = id
         self.name = name
         self.category = category
+        self.type = type
         self.propertyValues = propertyValues
+    }
+
+    /// Schema-level property definitions visible on this asset, sourced from whichever of
+    /// `category` or `type` is set. Custom (per-instance) properties are NOT included here.
+    var schemaPropertyDefinitions: [PropertyDefinition] {
+        if let category { return category.propertyDefinitions }
+        if let type { return type.allFields }
+        return []
     }
 
     // MARK: - Property value convenience

@@ -1,1 +1,0 @@
-composite type need some sort of hierarchy -- for example, a Power Source type should be attached to a Range or Dryer to indicate if it's gas or electricity
