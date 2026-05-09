@@ -34,10 +34,10 @@ extension AssetStore {
     /// IS-A type nodes are seeded separately via `seedBuiltInTypeTree()`.
     /// Idempotent — skips any template whose name already exists.
     @discardableResult
-    func seedBuiltInTypes(scope: CompositeTypeScope = .global) -> [CompositeTypeDefinition] {
+    func seedBuiltInTypes() -> [CompositeTypeDefinition] {
         let templates: [CompositeTypeDefinition] = [
-            BuiltInTypes.widthByLength(scope: scope),
-            BuiltInTypes.widthByLengthByHeight(scope: scope),
+            BuiltInTypes.widthByLength(),
+            BuiltInTypes.widthByLengthByHeight(),
         ]
         var seeded: [CompositeTypeDefinition] = []
         for template in templates {
@@ -46,8 +46,7 @@ extension AssetStore {
                 name: template.name,
                 systemFields: template.systemFields,
                 userFields: template.userFields,
-                isUserExtensible: template.isUserExtensible,
-                scope: template.scope
+                isUserExtensible: template.isUserExtensible
             )
             seeded.append(registered)
         }

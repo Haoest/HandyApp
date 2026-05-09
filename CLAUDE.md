@@ -20,7 +20,7 @@ An `Asset` is described by a `TypeNode` — a node in an IS-A tree (e.g. `Range`
 - **No file header comments.** Don't add the Xcode `// Created by ... on <date>` block to new Swift files. Start at the first `import`.
 - **No author/date stamps in code or commit messages.**
 - All store mutations go through `AssetStore`. `Asset._addChild`/`_removeChild` and `TypeNode._addChild`/`_removeChild` are package-private by convention — call them from the store, not from views.
-- Built-in seed APIs on `AssetStore`: `seedBuiltInComboLists()`, `seedBuiltInTypes(scope:)` (composite value types), and `seedBuiltInTypeTree()` (IS-A type tree — also seeds combo lists). All are idempotent and safe to call at startup.
+- Built-in seed APIs on `AssetStore`: `seedBuiltInComboLists()`, `seedBuiltInTypes()` (composite value types: W × L, W × L × H), and `seedBuiltInTypeTree()` (IS-A type tree — also seeds combo lists). All are idempotent and safe to call at startup.
 - New built-in composite *value* types and combo lists live in `SystemTypes/` as `extension BuiltInTypes`. The built-in IS-A tree is built in `SystemTypes/BuiltInTypeTree.swift`.
 - **Testing in conceptual phases:** write tests for behavior at boundaries (validation rules, store invariants, hierarchy/inheritance resolution) — skip tests for plain accessors or class shape. During a structural rewrite, don't nurse the existing test suite through intermediate steps; rewrite it once at the end of the phase that completes the rewrite.
 

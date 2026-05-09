@@ -88,7 +88,7 @@ final class AssetStore {
     }
 
     /// Cascade-deletes the TypeNode, all its descendants, and every Asset typed against
-    /// any of the deleted nodes. Mirrors the old `deleteCategory` semantics.
+    /// any of the deleted nodes.
     func deleteTypeNode(id: UUID) throws {
         guard let node = typeNodes[id] else { throw AssetStoreError.typeNodeNotFound(id) }
         let toDelete = [node] + node.descendants
@@ -352,24 +352,18 @@ final class AssetStore {
         name: String,
         systemFields: [PropertyDefinition] = [],
         userFields: [PropertyDefinition] = [],
-        isUserExtensible: Bool = true,
-        scope: CompositeTypeScope = .global
+        isUserExtensible: Bool = true
     ) -> CompositeTypeDefinition {
-        let ct = CompositeTypeDefinition(name: name, systemFields: systemFields, userFields: userFields, isUserExtensible: isUserExtensible, scope: scope)
+        let ct = CompositeTypeDefinition(name: name, systemFields: systemFields, userFields: userFields, isUserExtensible: isUserExtensible)
         compositeTypes[ct.id] = ct
         return ct
     }
 
-    /// Updates the name and/or scope of a composite type.
+    /// Updates the name of a composite type.
     /// Fields are managed separately via `addUserField`, `removeUserField`, `updateUserField`.
-    func updateCompositeType(
-        id: UUID,
-        name: String? = nil,
-        scope: CompositeTypeScope? = nil
-    ) throws {
+    func updateCompositeType(id: UUID, name: String) throws {
         guard let ct = compositeTypes[id] else { throw AssetStoreError.compositeTypeNotFound(id) }
-        if let name  { ct.name  = name  }
-        if let scope { ct.scope = scope }
+        ct.name = name
     }
 
     func deleteCompositeType(id: UUID) throws {

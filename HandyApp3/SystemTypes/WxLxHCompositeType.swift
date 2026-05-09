@@ -13,7 +13,7 @@ extension BuiltInTypes {
     ///   • Length — Number   (required)
     ///   • Height — Number   (required)
     ///   • Unit   — Text     (optional, e.g. UnitIndex.feet.symbol → "ft")
-    static func widthByLengthByHeight(scope: CompositeTypeScope = .global) -> CompositeTypeDefinition {
+    static func widthByLengthByHeight() -> CompositeTypeDefinition {
         CompositeTypeDefinition(
             name: "W × L × H",
             systemFields: [
@@ -22,8 +22,7 @@ extension BuiltInTypes {
                 PropertyDefinition(name: "Height", type: .basic(.number), isRequired: true),
                 PropertyDefinition(name: "Unit",   type: .basic(.text),   isRequired: false),
             ],
-            isUserExtensible: false,
-            scope: scope
+            isUserExtensible: false
         )
     }
 }
