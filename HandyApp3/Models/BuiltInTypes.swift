@@ -2,15 +2,13 @@ import Foundation
 
 /// Namespace for built-in type factories.
 /// Composite *value* types (W × L, W × L × H) live in `SystemTypes/` as extensions on this enum.
-/// Built-in IS-A type nodes (Appliance/Range/etc.) are seeded by `AssetStore.seedBuiltInTypeTree()`.
 enum BuiltInTypes {}
 
 // MARK: - AssetStore seeding
 
 extension AssetStore {
 
-    /// Registers all built-in combo list templates.
-    /// Idempotent — skips any list whose name already exists in the store.
+    /// Registers all built-in combo list templates. Idempotent.
     @discardableResult
     func seedBuiltInComboLists() -> [ComboListDefinition] {
         let templates: [ComboListDefinition] = [
@@ -30,9 +28,7 @@ extension AssetStore {
         return seeded
     }
 
-    /// Registers built-in composite *value* types (W × L, W × L × H).
-    /// IS-A type nodes are seeded separately via `seedBuiltInTypeTree()`.
-    /// Idempotent — skips any template whose name already exists.
+    /// Registers built-in composite *value* types (W × L, W × L × H). Idempotent.
     @discardableResult
     func seedBuiltInTypes() -> [CompositeTypeDefinition] {
         let templates: [CompositeTypeDefinition] = [

@@ -4,6 +4,7 @@ import Foundation
 
 enum AssetStoreError: Error, Equatable {
     case assetNotFound(UUID)
+    case categoryNotFound(UUID)
     case compositeTypeNotFound(UUID)
     case definitionNotFound(UUID)
     /// The supplied StoredValue variant does not match the PropertyDefinition's type.
@@ -23,11 +24,7 @@ enum AssetStoreError: Error, Equatable {
     /// Attempted to add or remove a user option on a non-extensible combo list.
     case comboListNotExtensible(UUID)
     /// An AssetProperty with the given id was not found on the specified asset.
-    case customPropertyNotFound(UUID)
-    /// A TypeNode with the given ID was not found.
-    case typeNodeNotFound(UUID)
-    /// Attempted to instantiate an Asset from an abstract TypeNode.
-    case typeIsAbstract(UUID)
+    case propertyNotFound(UUID)
 }
 
 // MARK: - AssetStore
@@ -39,124 +36,63 @@ final class AssetStore {
     // MARK: - Storage
 
     private(set) var assets: [UUID: Asset] = [:]
+    private(set) var categories: [UUID: AssetCategory] = [:]
     private(set) var compositeTypes: [UUID: CompositeTypeDefinition] = [:]
     private(set) var comboListDefinitions: [UUID: ComboListDefinition] = [:]
-    private(set) var typeNodes: [UUID: TypeNode] = [:]
 
     // MARK: - Derived collections
 
     var allAssets: [Asset] { Array(assets.values) }
+    var allCategories: [AssetCategory] { Array(categories.values) }
     var allCompositeTypes: [CompositeTypeDefinition] { Array(compositeTypes.values) }
     var allComboListDefinitions: [ComboListDefinition] { Array(comboListDefinitions.values) }
-    var allTypeNodes: [TypeNode] { Array(typeNodes.values) }
-    var typeRoots: [TypeNode] { typeNodes.values.filter(\.isRoot) }
 
-    // MARK: - TypeNode CRUD
+    // MARK: - AssetCategory CRUD
 
-    /// Creates a TypeNode and attaches it under `parentID` (or as a root if nil).
-    /// Throws `.typeNodeNotFound` when `parentID` is supplied but unknown.
     @discardableResult
-    func createTypeNode(
-        name: String,
-        parentID: UUID? = nil,
-        localFields: [PropertyDefinition] = [],
-        isAbstract: Bool = false,
-        isUserExtensible: Bool = true
-    ) throws -> TypeNode {
-        let parent: TypeNode?
-        if let parentID {
-            guard let p = typeNodes[parentID] else { throw AssetStoreError.typeNodeNotFound(parentID) }
-            parent = p
-        } else {
-            parent = nil
-        }
-        let node = TypeNode(
-            name: name,
-            localFields: localFields,
-            isAbstract: isAbstract,
-            isUserExtensible: isUserExtensible
-        )
-        typeNodes[node.id] = node
-        parent?._addChild(node)
-        return node
+    func createCategory(name: String, propertyTemplates: [AssetProperty] = []) -> AssetCategory {
+        let cat = AssetCategory(name: name, propertyTemplates: propertyTemplates)
+        categories[cat.id] = cat
+        return cat
     }
 
-    func updateTypeNode(id: UUID, name: String? = nil, isAbstract: Bool? = nil) throws {
-        guard let node = typeNodes[id] else { throw AssetStoreError.typeNodeNotFound(id) }
-        if let name { node.name = name }
-        if let isAbstract { node.isAbstract = isAbstract }
+    func updateCategory(id: UUID, name: String) throws {
+        guard let cat = categories[id] else { throw AssetStoreError.categoryNotFound(id) }
+        cat.name = name
     }
 
-    /// Cascade-deletes the TypeNode, all its descendants, and every Asset typed against
-    /// any of the deleted nodes.
-    func deleteTypeNode(id: UUID) throws {
-        guard let node = typeNodes[id] else { throw AssetStoreError.typeNodeNotFound(id) }
-        let toDelete = [node] + node.descendants
-        let deletedIDs = Set(toDelete.map(\.id))
-        // Remove orphaned assets first.
-        let orphanedAssets = assets.values.filter { deletedIDs.contains($0.type.id) }
-        orphanedAssets.forEach { assets.removeValue(forKey: $0.id) }
-        // Detach `node` from its parent (if any) so descendants drop with it.
-        node.parent?._removeChild(node)
-        // Drop all node entries from the registry.
-        deletedIDs.forEach { typeNodes.removeValue(forKey: $0) }
+    func deleteCategory(id: UUID) throws {
+        guard categories[id] != nil else { throw AssetStoreError.categoryNotFound(id) }
+        categories.removeValue(forKey: id)
     }
 
-    // MARK: - Local field management on TypeNodes
-
-    /// Appends a local field to a TypeNode. Inherited fields are not affected (pure-append model).
+    /// Appends a new property template to an existing category.
     @discardableResult
-    func addLocalField(
-        _ field: PropertyDefinition,
-        toTypeNodeID nodeID: UUID
-    ) throws -> PropertyDefinition {
-        guard let node = typeNodes[nodeID] else { throw AssetStoreError.typeNodeNotFound(nodeID) }
-        guard node.isUserExtensible else { throw AssetStoreError.notUserExtensible(nodeID) }
-        node.localFields.append(field)
-        return field
+    func addTemplateProperty(_ property: AssetProperty, toCategoryID categoryID: UUID) throws -> AssetProperty {
+        guard let cat = categories[categoryID] else { throw AssetStoreError.categoryNotFound(categoryID) }
+        cat.propertyTemplates.append(property)
+        return property
     }
 
-    func updateLocalField(
-        id fieldID: UUID,
-        inTypeNodeID nodeID: UUID,
-        name: String? = nil,
-        type: PropertyType? = nil,
-        isRequired: Bool? = nil
-    ) throws {
-        guard let node = typeNodes[nodeID] else { throw AssetStoreError.typeNodeNotFound(nodeID) }
-        guard node.isUserExtensible else { throw AssetStoreError.notUserExtensible(nodeID) }
-        guard let idx = node.localFields.firstIndex(where: { $0.id == fieldID }) else {
-            throw AssetStoreError.definitionNotFound(fieldID)
+    /// Removes a template property from a category. Does not affect existing assets.
+    func removeTemplateProperty(id propID: UUID, fromCategoryID categoryID: UUID) throws {
+        guard let cat = categories[categoryID] else { throw AssetStoreError.categoryNotFound(categoryID) }
+        guard cat.propertyTemplates.contains(where: { $0.id == propID }) else {
+            throw AssetStoreError.propertyNotFound(propID)
         }
-        if let name       { node.localFields[idx].name       = name       }
-        if let type       { node.localFields[idx].type       = type       }
-        if let isRequired { node.localFields[idx].isRequired = isRequired }
-    }
-
-    /// Removes a local field from a TypeNode and clears any orphaned values from
-    /// assets typed against the node or its descendants.
-    func removeLocalField(id fieldID: UUID, fromTypeNodeID nodeID: UUID) throws {
-        guard let node = typeNodes[nodeID] else { throw AssetStoreError.typeNodeNotFound(nodeID) }
-        guard node.isUserExtensible else { throw AssetStoreError.notUserExtensible(nodeID) }
-        guard node.localFields.contains(where: { $0.id == fieldID }) else {
-            throw AssetStoreError.definitionNotFound(fieldID)
-        }
-        node.localFields.removeAll { $0.id == fieldID }
-        let affectedTypeIDs = Set(([node] + node.descendants).map(\.id))
-        assets.values
-            .filter { affectedTypeIDs.contains($0.type.id) }
-            .forEach { $0.propertyValues.removeAll { $0.definitionID == fieldID } }
+        cat.propertyTemplates.removeAll { $0.id == propID }
     }
 
     // MARK: - Asset CRUD
 
-    /// Creates an Asset whose schema comes from a TypeNode. Throws `.typeIsAbstract`
-    /// if the node is marked abstract — only concrete leaf-or-internal types may be instantiated.
+    /// Creates an Asset, deep-copying the category's property templates into baseProperties.
     @discardableResult
-    func createAsset(name: String, typeID: UUID) throws -> Asset {
-        guard let node = typeNodes[typeID] else { throw AssetStoreError.typeNodeNotFound(typeID) }
-        guard !node.isAbstract else { throw AssetStoreError.typeIsAbstract(typeID) }
-        let asset = Asset(name: name, type: node)
+    func createAsset(name: String, categoryID: UUID) throws -> Asset {
+        guard let cat = categories[categoryID] else { throw AssetStoreError.categoryNotFound(categoryID) }
+        let baseProperties = cat.propertyTemplates.map {
+            AssetProperty(definition: $0.definition, value: $0.value)
+        }
+        let asset = Asset(name: name, category: cat, baseProperties: baseProperties)
         assets[asset.id] = asset
         return asset
     }
@@ -168,10 +104,8 @@ final class AssetStore {
 
     func deleteAsset(id: UUID) throws {
         guard let asset = assets[id] else { throw AssetStoreError.assetNotFound(id) }
-        // Capture grandparent before detaching (detach nils asset.parent)
         let grandparent = asset.parent
         asset.parent?._removeChild(asset)
-        // Promote children to grandparent, or make them roots if no grandparent exists
         for child in Array(asset.children) {
             asset._removeChild(child)
             grandparent?._addChild(child)
@@ -179,60 +113,53 @@ final class AssetStore {
         assets.removeValue(forKey: id)
     }
 
-    /// All assets whose type is `typeID` OR any descendant of it.
-    /// "Give me all Appliances" returns Refrigerators, Ranges, etc.
-    func assets(ofTypeID typeID: UUID) throws -> [Asset] {
-        guard let node = typeNodes[typeID] else { throw AssetStoreError.typeNodeNotFound(typeID) }
-        let matchIDs = Set(([node] + node.descendants).map(\.id))
-        return assets.values.filter { matchIDs.contains($0.type.id) }
+    /// All assets belonging to the given category.
+    func assets(ofCategoryID categoryID: UUID) throws -> [Asset] {
+        guard categories[categoryID] != nil else { throw AssetStoreError.categoryNotFound(categoryID) }
+        return assets.values.filter { $0.category.id == categoryID }
     }
 
-    // MARK: - PropertyValue management on assets
+    // MARK: - Property value management
 
-    /// Sets (insert or replace) a property value on an asset.
-    /// Validates that the StoredValue variant matches the PropertyDefinition's type.
+    /// Sets a value on a base or custom property identified by its definition id.
+    /// Validates type compatibility before writing.
     @discardableResult
     func setPropertyValue(
         _ stored: StoredValue,
         forDefinitionID definitionID: UUID,
         onAssetID assetID: UUID
-    ) throws -> PropertyValue {
+    ) throws -> AssetProperty {
         guard let asset = assets[assetID] else { throw AssetStoreError.assetNotFound(assetID) }
-        // Locate the definition in the asset's type schema (inherited + local fields).
-        guard let definition = asset.type.allFields.first(where: { $0.id == definitionID }) else {
-            throw AssetStoreError.definitionNotFound(definitionID)
+        if let prop = asset.baseProperties.first(where: { $0.definition.id == definitionID }) {
+            try validate(stored: stored, against: prop.definition.type, definitionName: prop.definition.name)
+            handleComboListAutoAdd(stored: stored, type: prop.definition.type)
+            prop.value = stored
+            return prop
         }
-        // Validate the value against the definition's type
-        try validate(stored: stored, against: definition.type, definitionName: definition.name)
-
-        // For comboList properties, auto-add new text values to the list's userOptions
-        // only when the list allows user extension.
-        if case .comboList(let list) = definition.type,
-           case .text(let value) = stored,
-           list.isUserExtensible,
-           !list.allOptions.contains(value) {
-            list.userOptions.append(value)
+        if let prop = asset.customProperties.first(where: { $0.definition.id == definitionID }) {
+            try validate(stored: stored, against: prop.definition.type, definitionName: prop.definition.name)
+            handleComboListAutoAdd(stored: stored, type: prop.definition.type)
+            prop.value = stored
+            return prop
         }
-
-        if let idx = asset.propertyValues.firstIndex(where: { $0.definitionID == definitionID }) {
-            asset.propertyValues[idx].value = stored
-            return asset.propertyValues[idx]
-        } else {
-            let pv = PropertyValue(definitionID: definitionID, value: stored)
-            asset.propertyValues.append(pv)
-            return pv
-        }
+        throw AssetStoreError.definitionNotFound(definitionID)
     }
 
+    /// Clears the value on a base or custom property. Does not remove the property itself.
     func removePropertyValue(forDefinitionID definitionID: UUID, fromAssetID assetID: UUID) throws {
         guard let asset = assets[assetID] else { throw AssetStoreError.assetNotFound(assetID) }
-        asset.propertyValues.removeAll { $0.definitionID == definitionID }
+        if let prop = asset.baseProperties.first(where: { $0.definition.id == definitionID }) {
+            prop.value = nil; return
+        }
+        if let prop = asset.customProperties.first(where: { $0.definition.id == definitionID }) {
+            prop.value = nil; return
+        }
+        throw AssetStoreError.definitionNotFound(definitionID)
     }
 
     // MARK: - Custom property management on assets
 
-    /// Adds a new per-asset custom property (definition + optional initial value).
-    /// Validates the initial value type if one is supplied.
+    /// Adds a new per-asset custom property with an optional initial value.
     @discardableResult
     func addCustomProperty(
         definition: PropertyDefinition,
@@ -240,17 +167,15 @@ final class AssetStore {
         toAssetID assetID: UUID
     ) throws -> AssetProperty {
         guard let asset = assets[assetID] else { throw AssetStoreError.assetNotFound(assetID) }
-        var propertyValue: PropertyValue? = nil
         if let stored = value {
             try validate(stored: stored, against: definition.type, definitionName: definition.name)
-            propertyValue = PropertyValue(definitionID: definition.id, value: stored)
         }
-        let prop = AssetProperty(definition: definition, value: propertyValue)
+        let prop = AssetProperty(definition: definition, value: value)
         asset.customProperties.append(prop)
         return prop
     }
 
-    /// Sets (insert or replace) the value on an existing custom property.
+    /// Replaces the value on an existing custom property.
     @discardableResult
     func setCustomPropertyValue(
         _ stored: StoredValue,
@@ -259,15 +184,15 @@ final class AssetStore {
     ) throws -> AssetProperty {
         guard let asset = assets[assetID] else { throw AssetStoreError.assetNotFound(assetID) }
         guard let prop = asset.customProperties.first(where: { $0.id == propID }) else {
-            throw AssetStoreError.customPropertyNotFound(propID)
+            throw AssetStoreError.propertyNotFound(propID)
         }
         try validate(stored: stored, against: prop.definition.type, definitionName: prop.definition.name)
-        prop.value = PropertyValue(definitionID: prop.definition.id, value: stored)
+        prop.value = stored
         return prop
     }
 
-    /// Updates the definition (name, type, isRequired) of an existing custom property.
-    /// Clears the stored value if the type changes, since the old value may no longer be valid.
+    /// Updates the definition of an existing custom property.
+    /// Clears the stored value if the type changes.
     func updateCustomProperty(
         id propID: UUID,
         onAssetID assetID: UUID,
@@ -277,28 +202,27 @@ final class AssetStore {
     ) throws {
         guard let asset = assets[assetID] else { throw AssetStoreError.assetNotFound(assetID) }
         guard let prop = asset.customProperties.first(where: { $0.id == propID }) else {
-            throw AssetStoreError.customPropertyNotFound(propID)
+            throw AssetStoreError.propertyNotFound(propID)
         }
         if let name { prop.definition.name = name }
         if let isRequired { prop.definition.isRequired = isRequired }
         if let type {
             prop.definition.type = type
-            prop.value = nil  // clear stale value when type changes
+            prop.value = nil
         }
     }
 
-    /// Removes a custom property (and its value) from an asset.
+    /// Removes a custom property and its value from an asset.
     func removeCustomProperty(id propID: UUID, fromAssetID assetID: UUID) throws {
         guard let asset = assets[assetID] else { throw AssetStoreError.assetNotFound(assetID) }
         guard asset.customProperties.contains(where: { $0.id == propID }) else {
-            throw AssetStoreError.customPropertyNotFound(propID)
+            throw AssetStoreError.propertyNotFound(propID)
         }
         asset.customProperties.removeAll { $0.id == propID }
     }
 
     // MARK: - ComboListDefinition CRUD
 
-    /// Creates a new combo list with predefined system options and optional user options.
     @discardableResult
     func createComboList(
         name: String,
@@ -321,9 +245,6 @@ final class AssetStore {
         comboListDefinitions.removeValue(forKey: id)
     }
 
-    /// Appends a new option to the user-defined portion of a combo list.
-    /// Throws `.comboListNotExtensible` if the list does not allow user additions.
-    /// Silently skips if the option already exists (case-sensitive).
     func addUserOption(_ option: String, toComboListID id: UUID) throws {
         guard let cl = comboListDefinitions[id] else { throw AssetStoreError.comboListNotFound(id) }
         guard cl.isUserExtensible else { throw AssetStoreError.comboListNotExtensible(id) }
@@ -331,9 +252,6 @@ final class AssetStore {
         cl.userOptions.append(option)
     }
 
-    /// Removes a user-defined option.
-    /// Throws `.comboListNotExtensible` if the list does not allow user modifications.
-    /// Throws `.cannotModifySystemOption` if the option is system-defined.
     func removeUserOption(_ option: String, fromComboListID id: UUID) throws {
         guard let cl = comboListDefinitions[id] else { throw AssetStoreError.comboListNotFound(id) }
         guard cl.isUserExtensible else { throw AssetStoreError.comboListNotExtensible(id) }
@@ -345,8 +263,6 @@ final class AssetStore {
 
     // MARK: - CompositeTypeDefinition CRUD
 
-    /// Creates a composite *value* type with purely user-defined fields (no system fields) by default.
-    /// To create a type with system fields, pass them explicitly via `systemFields:`.
     @discardableResult
     func createCompositeType(
         name: String,
@@ -359,8 +275,6 @@ final class AssetStore {
         return ct
     }
 
-    /// Updates the name of a composite type.
-    /// Fields are managed separately via `addUserField`, `removeUserField`, `updateUserField`.
     func updateCompositeType(id: UUID, name: String) throws {
         guard let ct = compositeTypes[id] else { throw AssetStoreError.compositeTypeNotFound(id) }
         ct.name = name
@@ -371,9 +285,6 @@ final class AssetStore {
         compositeTypes.removeValue(forKey: id)
     }
 
-    // MARK: - User field management on composite types
-
-    /// Appends a user-defined field to an existing composite type.
     @discardableResult
     func addUserField(_ field: PropertyDefinition, toCompositeTypeID typeID: UUID) throws -> PropertyDefinition {
         guard let ct = compositeTypes[typeID] else { throw AssetStoreError.compositeTypeNotFound(typeID) }
@@ -382,7 +293,6 @@ final class AssetStore {
         return field
     }
 
-    /// Removes a user-defined field. Throws `.cannotModifySystemField` if the field is system-defined.
     func removeUserField(id fieldID: UUID, fromCompositeTypeID typeID: UUID) throws {
         guard let ct = compositeTypes[typeID] else { throw AssetStoreError.compositeTypeNotFound(typeID) }
         guard ct.isUserExtensible else { throw AssetStoreError.notUserExtensible(typeID) }
@@ -395,8 +305,6 @@ final class AssetStore {
         ct.userFields.removeAll { $0.id == fieldID }
     }
 
-    /// Updates a user-defined field's name, type, or isRequired flag.
-    /// Throws `.cannotModifySystemField` if the field is system-defined.
     func updateUserField(
         id fieldID: UUID,
         inCompositeTypeID typeID: UUID,
@@ -419,14 +327,12 @@ final class AssetStore {
 
     // MARK: - Validation helpers
 
-    /// Recursively validates a StoredValue against a PropertyType.
     func validate(stored: StoredValue, against type: PropertyType, definitionName: String) throws {
         switch type {
         case .basic(let basic):
             guard let actual = stored.basicType, actual == basic else {
                 let expected = basic.rawValue
-                let got: String
-                if let b = stored.basicType { got = b.rawValue } else { got = "composite" }
+                let got = stored.basicType?.rawValue ?? "composite"
                 throw AssetStoreError.typeMismatch(expected: expected, got: got)
             }
 
@@ -435,7 +341,6 @@ final class AssetStore {
                 let got = stored.basicType?.rawValue ?? "composite"
                 throw AssetStoreError.typeMismatch(expected: "comboList(\(list.name))", got: got)
             }
-            // When the list is not user-extensible, the value must already be in allOptions.
             if !list.isUserExtensible && !list.allOptions.contains(value) {
                 throw AssetStoreError.typeMismatch(
                     expected: "one of [\(list.allOptions.joined(separator: ", "))]",
@@ -449,8 +354,6 @@ final class AssetStore {
                 throw AssetStoreError.typeMismatch(expected: "composite(\(definition.name))", got: got)
             }
             let fieldsByName = Dictionary(uniqueKeysWithValues: definition.fields.map { ($0.name, $0) })
-
-            // Enforce required fields are present in the payload
             for field in definition.fields where field.isRequired {
                 if payload[field.name] == nil {
                     throw AssetStoreError.compositeFieldMismatch(
@@ -458,8 +361,6 @@ final class AssetStore {
                     )
                 }
             }
-
-            // Validate each supplied field value (optional fields are fine to omit; unknown keys are rejected)
             for (key, subValue) in payload {
                 guard let fieldDef = fieldsByName[key] else {
                     throw AssetStoreError.compositeFieldMismatch(
@@ -473,11 +374,8 @@ final class AssetStore {
 
     // MARK: - Asset hierarchy
 
-    /// Makes `childID` a direct child of `parentID`.
-    /// Throws `.hierarchyCycle` if `parentID` is already a descendant of `childID`,
-    /// or if `childID == parentID`.
     func addChild(assetID childID: UUID, toParentID parentID: UUID) throws {
-        guard let child  = assets[childID]  else { throw AssetStoreError.assetNotFound(childID) }
+        guard let child     = assets[childID]  else { throw AssetStoreError.assetNotFound(childID) }
         guard let newParent = assets[parentID] else { throw AssetStoreError.assetNotFound(parentID) }
         guard childID != parentID else {
             throw AssetStoreError.hierarchyCycle(childID: childID, ancestorID: parentID)
@@ -489,28 +387,32 @@ final class AssetStore {
         newParent._addChild(child)
     }
 
-    /// Detaches `assetID` from its current parent, making it a root asset.
-    /// No-op if the asset is already a root.
     func removeFromParent(assetID: UUID) throws {
         guard let asset = assets[assetID] else { throw AssetStoreError.assetNotFound(assetID) }
         asset.parent?._removeChild(asset)
     }
 
-    /// Moves `assetID` to a new parent, replacing any existing parent relationship.
     func moveAsset(assetID: UUID, toParentID newParentID: UUID) throws {
         try removeFromParent(assetID: assetID)
         try addChild(assetID: assetID, toParentID: newParentID)
     }
 
-    /// All root assets (no parent) across the entire store.
     var rootAssets: [Asset] {
         assets.values.filter(\.isRoot)
     }
 
-    /// All root assets whose type is `typeID` or any descendant of it.
-    func rootAssets(ofTypeID typeID: UUID) throws -> [Asset] {
-        guard let node = typeNodes[typeID] else { throw AssetStoreError.typeNodeNotFound(typeID) }
-        let matchIDs = Set(([node] + node.descendants).map(\.id))
-        return assets.values.filter { $0.isRoot && matchIDs.contains($0.type.id) }
+    func rootAssets(ofCategoryID categoryID: UUID) throws -> [Asset] {
+        guard categories[categoryID] != nil else { throw AssetStoreError.categoryNotFound(categoryID) }
+        return assets.values.filter { $0.isRoot && $0.category.id == categoryID }
+    }
+
+    // MARK: - Private helpers
+
+    private func handleComboListAutoAdd(stored: StoredValue, type: PropertyType) {
+        guard case .comboList(let list) = type,
+              case .text(let value) = stored,
+              list.isUserExtensible,
+              !list.allOptions.contains(value) else { return }
+        list.userOptions.append(value)
     }
 }

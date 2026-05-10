@@ -3,7 +3,7 @@ import Foundation
 // MARK: - CompositeTypeDefinition
 
 /// A composite *value* type assembled from named fields (e.g. W × L, an Address struct).
-/// Distinct from `TypeNode`, which describes what kind of object an `Asset` is —
+/// Distinct from `AssetCategory`, which defines the property template for an `Asset` —
 /// `CompositeTypeDefinition` describes the shape of a structured value.
 ///
 /// Fields are split into two groups:

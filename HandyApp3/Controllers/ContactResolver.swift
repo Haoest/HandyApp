@@ -69,10 +69,10 @@ final class ContactResolver {
 
 extension AssetStore {
 
-    /// Returns the CNContact identifier stored in a `.contact` PropertyValue, if present.
+    /// Returns the CNContact identifier stored in a `.contact` StoredValue, if present.
     func contactIdentifier(forDefinitionID definitionID: UUID, onAssetID assetID: UUID) -> String? {
         guard let asset = assets[assetID],
-              case .contact(let identifier) = asset.value(for: definitionID)?.value
+              case .contact(let identifier) = asset.value(for: definitionID)
         else { return nil }
         return identifier
     }

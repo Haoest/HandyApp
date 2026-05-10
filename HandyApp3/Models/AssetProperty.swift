@@ -1,16 +1,13 @@
 import Foundation
 
-/// A self-contained, per-asset property: bundles a PropertyDefinition (schema)
-/// with an optional PropertyValue (data) and lives exclusively on one Asset instance.
-///
-/// Unlike category-level PropertyDefinitions, an AssetProperty is not shared across
-/// assets — it is defined and owned by a single asset.
+/// A self-contained property: bundles a PropertyDefinition (schema) with an
+/// optional StoredValue (data). Lives on one Asset instance — not shared across assets.
 final class AssetProperty: Identifiable, Equatable {
     let id: UUID
     var definition: PropertyDefinition
-    var value: PropertyValue?
+    var value: StoredValue?
 
-    init(id: UUID = UUID(), definition: PropertyDefinition, value: PropertyValue? = nil) {
+    init(id: UUID = UUID(), definition: PropertyDefinition, value: StoredValue? = nil) {
         self.id = id
         self.definition = definition
         self.value = value

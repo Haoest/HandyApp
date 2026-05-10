@@ -1,7 +1,7 @@
 import Foundation
 
-/// Describes a named, typed property slot. Used as a `localField` on a `TypeNode`,
-/// as a field on a `CompositeTypeDefinition`, or as the schema for an `AssetProperty`.
+/// Describes a named, typed property slot. Used as a field on a `CompositeTypeDefinition`
+/// or as the schema embedded in an `AssetProperty`.
 struct PropertyDefinition: Identifiable, Equatable {
     let id: UUID
     var name: String
