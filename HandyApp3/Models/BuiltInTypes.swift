@@ -34,6 +34,7 @@ extension AssetStore {
         let templates: [CompositeTypeDefinition] = [
             BuiltInTypes.widthByLength(),
             BuiltInTypes.widthByLengthByHeight(),
+            BuiltInTypes.imageJPG(),
         ]
         var seeded: [CompositeTypeDefinition] = []
         for template in templates {

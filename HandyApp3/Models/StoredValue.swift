@@ -10,6 +10,8 @@ indirect enum StoredValue: Equatable {
     case contact(String)
     /// Keyed by field name, mirrors a CompositeTypeDefinition's fields.
     case composite([String: StoredValue])
+    /// Raw binary data (Foundation.Data).
+    case data(Data)
 
     var basicType: BasicType? {
         switch self {
@@ -19,6 +21,7 @@ indirect enum StoredValue: Equatable {
         case .date:      return .date
         case .contact:   return .contact
         case .composite: return nil
+        case .data:      return .data
         }
     }
 }
