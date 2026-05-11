@@ -12,11 +12,10 @@ extension BuiltInTypes {
     static func imageJPG() -> CompositeTypeDefinition {
         CompositeTypeDefinition(
             name: "Image JPG",
-            systemFields: [
+            fields: [
                 PropertyDefinition(name: "imageType", type: .basic(.text), isRequired: false),
                 PropertyDefinition(name: "imageData", type: .basic(.data), isRequired: true),
-            ],
-            isUserExtensible: false
+            ]
         )
     }
 }

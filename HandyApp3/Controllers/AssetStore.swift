@@ -13,10 +13,6 @@ enum AssetStoreError: Error, Equatable {
     case compositeFieldMismatch(details: String)
     /// Attaching a child would create a cycle in the asset hierarchy.
     case hierarchyCycle(childID: UUID, ancestorID: UUID)
-    /// Attempted to remove or edit a system-defined field on a composite type.
-    case cannotModifySystemField(UUID)
-    /// Attempted to add, edit, or remove a user field on a non-extensible composite type.
-    case notUserExtensible(UUID)
     /// A ComboListDefinition with the given ID was not found.
     case comboListNotFound(UUID)
     /// Attempted to modify a system combo list option.
@@ -266,11 +262,9 @@ final class AssetStore {
     @discardableResult
     func createCompositeType(
         name: String,
-        systemFields: [PropertyDefinition] = [],
-        userFields: [PropertyDefinition] = [],
-        isUserExtensible: Bool = true
+        fields: [PropertyDefinition] = []
     ) -> CompositeTypeDefinition {
-        let ct = CompositeTypeDefinition(name: name, systemFields: systemFields, userFields: userFields, isUserExtensible: isUserExtensible)
+        let ct = CompositeTypeDefinition(name: name, fields: fields)
         compositeTypes[ct.id] = ct
         return ct
     }
@@ -286,26 +280,21 @@ final class AssetStore {
     }
 
     @discardableResult
-    func addUserField(_ field: PropertyDefinition, toCompositeTypeID typeID: UUID) throws -> PropertyDefinition {
+    func addField(_ field: PropertyDefinition, toCompositeTypeID typeID: UUID) throws -> PropertyDefinition {
         guard let ct = compositeTypes[typeID] else { throw AssetStoreError.compositeTypeNotFound(typeID) }
-        guard ct.isUserExtensible else { throw AssetStoreError.notUserExtensible(typeID) }
-        ct.userFields.append(field)
+        ct.fields.append(field)
         return field
     }
 
-    func removeUserField(id fieldID: UUID, fromCompositeTypeID typeID: UUID) throws {
+    func removeField(id fieldID: UUID, fromCompositeTypeID typeID: UUID) throws {
         guard let ct = compositeTypes[typeID] else { throw AssetStoreError.compositeTypeNotFound(typeID) }
-        guard ct.isUserExtensible else { throw AssetStoreError.notUserExtensible(typeID) }
-        if ct.systemFields.contains(where: { $0.id == fieldID }) {
-            throw AssetStoreError.cannotModifySystemField(fieldID)
-        }
-        guard ct.userFields.contains(where: { $0.id == fieldID }) else {
+        guard ct.fields.contains(where: { $0.id == fieldID }) else {
             throw AssetStoreError.definitionNotFound(fieldID)
         }
-        ct.userFields.removeAll { $0.id == fieldID }
+        ct.fields.removeAll { $0.id == fieldID }
     }
 
-    func updateUserField(
+    func updateField(
         id fieldID: UUID,
         inCompositeTypeID typeID: UUID,
         name: String? = nil,
@@ -313,16 +302,12 @@ final class AssetStore {
         isRequired: Bool? = nil
     ) throws {
         guard let ct = compositeTypes[typeID] else { throw AssetStoreError.compositeTypeNotFound(typeID) }
-        guard ct.isUserExtensible else { throw AssetStoreError.notUserExtensible(typeID) }
-        if ct.systemFields.contains(where: { $0.id == fieldID }) {
-            throw AssetStoreError.cannotModifySystemField(fieldID)
-        }
-        guard let idx = ct.userFields.firstIndex(where: { $0.id == fieldID }) else {
+        guard let idx = ct.fields.firstIndex(where: { $0.id == fieldID }) else {
             throw AssetStoreError.definitionNotFound(fieldID)
         }
-        if let name       { ct.userFields[idx].name       = name       }
-        if let type       { ct.userFields[idx].type       = type       }
-        if let isRequired { ct.userFields[idx].isRequired = isRequired }
+        if let name       { ct.fields[idx].name       = name       }
+        if let type       { ct.fields[idx].type       = type       }
+        if let isRequired { ct.fields[idx].isRequired = isRequired }
     }
 
     // MARK: - Validation helpers

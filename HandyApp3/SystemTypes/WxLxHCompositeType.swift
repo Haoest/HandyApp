@@ -16,13 +16,12 @@ extension BuiltInTypes {
     static func widthByLengthByHeight() -> CompositeTypeDefinition {
         CompositeTypeDefinition(
             name: "W × L × H",
-            systemFields: [
+            fields: [
                 PropertyDefinition(name: "Width",  type: .basic(.number), isRequired: true),
                 PropertyDefinition(name: "Length", type: .basic(.number), isRequired: true),
                 PropertyDefinition(name: "Height", type: .basic(.number), isRequired: true),
                 PropertyDefinition(name: "Unit",   type: .basic(.text),   isRequired: false),
-            ],
-            isUserExtensible: false
+            ]
         )
     }
 }
