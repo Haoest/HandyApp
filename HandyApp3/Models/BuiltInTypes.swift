@@ -28,7 +28,34 @@ extension AssetStore {
         return seeded
     }
 
-    /// Registers built-in composite *value* types (W × L, W × L × H). Idempotent.
+    /// Registers built-in asset categories. Idempotent.
+    /// Calls `seedBuiltInComboLists()` first (Range and Cloth Dryer reference Power Source).
+    @discardableResult
+    func seedBuiltInCategories() -> [AssetCategory] {
+        seedBuiltInComboLists()
+        var seeded: [AssetCategory] = []
+
+        for (name, defs) in BuiltInTypes.categoryTemplates {
+            guard !categories.values.contains(where: { $0.name == name }) else { continue }
+            let props = defs.map { AssetProperty(definition: $0) }
+            seeded.append(createCategory(name: name, propertyTemplates: props))
+        }
+
+        guard let powerSource = comboListDefinitions.values.first(where: { $0.name == "PowerSourceComboList" }) else {
+            return seeded
+        }
+        let applianceTemplates: [AssetCategory] = [
+            BuiltInTypes.rangeCategory(powerSource: powerSource),
+            BuiltInTypes.clothDryerCategory(powerSource: powerSource),
+        ]
+        for template in applianceTemplates {
+            guard !categories.values.contains(where: { $0.name == template.name }) else { continue }
+            seeded.append(createCategory(name: template.name, propertyTemplates: template.propertyTemplates))
+        }
+        return seeded
+    }
+
+    /// Registers built-in composite *value* types (2D Size, 3D Size, Image JPG). Idempotent.
     @discardableResult
     func seedBuiltInTypes() -> [CompositeTypeDefinition] {
         let templates: [CompositeTypeDefinition] = [
