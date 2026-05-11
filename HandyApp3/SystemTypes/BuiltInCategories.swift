@@ -15,9 +15,9 @@ extension BuiltInTypes {
     ]
 
     /// Keyed by category name; value is the ordered list of property definitions.
-    /// Range and Cloth Dryer are excluded — they reference a ComboListDefinition at seed time.
     static let categoryTemplates: [String: [PropertyDefinition]] = {
         let applianceBase = Array(applianceBaseDefinitions.values)
+        let powerSourceField = PropertyDefinition(name: "Power source", type: .comboList(powerSourceComboList()), isRequired: true)
         return [
             "housingUnit": [
                 PropertyDefinition(name: "Address",       type: .basic(.text), isRequired: true),
@@ -39,20 +39,8 @@ extension BuiltInTypes {
             "refrigerator": applianceBase,
             "clothWasher":  applianceBase,
             "hvac":         applianceBase,
+            "range":      applianceBase + [powerSourceField],
+            "clothDryer": applianceBase + [powerSourceField],
         ]
     }()
-
-    static func rangeCategory(powerSource: ComboListDefinition) -> AssetCategory {
-        let defs = (categoryTemplates["appliance"] ?? []) + [
-            PropertyDefinition(name: "Power source", type: .comboList(powerSource), isRequired: true),
-        ]
-        return AssetCategory(name: "Range", propertyTemplates: defs.map { AssetProperty(definition: $0) })
-    }
-
-    static func clothDryerCategory(powerSource: ComboListDefinition) -> AssetCategory {
-        let defs = (categoryTemplates["appliance"] ?? []) + [
-            PropertyDefinition(name: "Power source", type: .comboList(powerSource), isRequired: true),
-        ]
-        return AssetCategory(name: "Cloth Dryer", propertyTemplates: defs.map { AssetProperty(definition: $0) })
-    }
 }

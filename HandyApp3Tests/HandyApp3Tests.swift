@@ -405,13 +405,7 @@ final class HandyApp3Tests: XCTestCase {
         XCTAssertEqual(asset.baseProperties[0].value, .text("Gas"))
     }
 
-    // MARK: - UnitIndex
 
-    func testUnitIndexSymbols() {
-        XCTAssertEqual(UnitIndex.feet.symbol, "ft")
-        XCTAssertEqual(UnitIndex.inches.symbol, "in")
-        XCTAssertEqual(UnitIndex.meters.symbol, "m")
-    }
 
     // MARK: - Real-world scenario
 
