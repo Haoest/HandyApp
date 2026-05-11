@@ -32,8 +32,8 @@ extension AssetStore {
     @discardableResult
     func seedBuiltInTypes() -> [CompositeTypeDefinition] {
         let templates: [CompositeTypeDefinition] = [
-            BuiltInTypes.widthByLength(),
-            BuiltInTypes.widthByLengthByHeight(),
+            BuiltInTypes.size2D(),
+            BuiltInTypes.size3D(),
             BuiltInTypes.imageJPG(),
         ]
         var seeded: [CompositeTypeDefinition] = []

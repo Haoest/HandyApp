@@ -1,6 +1,6 @@
 import Foundation
 
-// MARK: - W × L System Type
+// MARK: - 2D Size System Type
 
 extension BuiltInTypes {
 
@@ -12,9 +12,9 @@ extension BuiltInTypes {
     ///   • Width  — Number   (required)
     ///   • Length — Number   (required)
     ///   • Unit   — Text     (optional, e.g. UnitIndex.feet.symbol → "ft")
-    static func widthByLength() -> CompositeTypeDefinition {
+    static func size2D() -> CompositeTypeDefinition {
         CompositeTypeDefinition(
-            name: "W × L",
+            name: "2D Size",
             fields: [
                 PropertyDefinition(name: "Width",  type: .basic(.number), isRequired: true),
                 PropertyDefinition(name: "Length", type: .basic(.number), isRequired: true),
