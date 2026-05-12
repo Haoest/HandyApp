@@ -75,6 +75,29 @@ final class Asset: Identifiable, Equatable {
 
     var isRoot: Bool { parent == nil }
 
+    // MARK: - Custom property management
+
+    @discardableResult
+    func addProperty(_ definition: PropertyDefinition, value: StoredValue? = nil) -> AssetProperty {
+        let prop = AssetProperty(definition: definition, value: value)
+        customProperties.append(prop)
+        return prop
+    }
+
+    func removeProperty(id: UUID) {
+        customProperties.removeAll { $0.id == id }
+    }
+
+    /// Changing `type` clears the stored value to avoid type mismatch.
+    /// Pass `value: .some(nil)` to explicitly clear the stored value; omit to leave it unchanged.
+    func updateProperty(id: UUID, name: String? = nil, type: PropertyType? = nil, isRequired: Bool? = nil, value: StoredValue?? = .none) {
+        guard let prop = customProperties.first(where: { $0.id == id }) else { return }
+        if let name { prop.definition.name = name }
+        if let isRequired { prop.definition.isRequired = isRequired }
+        if let type { prop.definition.type = type; prop.value = nil }
+        if let value { prop.value = value }
+    }
+
     // MARK: - Internal child management (called only by AssetStore)
 
     func _addChild(_ child: Asset) {
