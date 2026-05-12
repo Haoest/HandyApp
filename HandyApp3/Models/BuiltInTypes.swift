@@ -32,9 +32,9 @@ extension AssetStore {
     @discardableResult
     func seedBuiltInCategories() -> [AssetCategory] {
         var seeded: [AssetCategory] = []
-        for (name, defs) in BuiltInTypes.categoryTemplates {
-            guard !categories.values.contains(where: { $0.name == name }) else { continue }
-            seeded.append(createCategory(name: name, propertyTemplates: defs.map { AssetProperty(definition: $0) }))
+        for (key, defs) in BuiltInTypes.categoryTemplates {
+            guard !categories.values.contains(where: { $0.name == key.rawValue }) else { continue }
+            seeded.append(createCategory(name: key.rawValue, propertyTemplates: defs.map { AssetProperty(definition: $0) }))
         }
         return seeded
     }

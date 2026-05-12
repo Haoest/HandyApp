@@ -14,12 +14,12 @@ extension BuiltInTypes {
         "Notes":         PropertyDefinition(name: "Notes",         type: .basic(.text),     isRequired: false),
     ]
 
-    /// Keyed by category name; value is the ordered list of property definitions.
-    static let categoryTemplates: [String: [PropertyDefinition]] = {
+    /// Keyed by SystemCategory; value is the ordered list of property definitions.
+    static let categoryTemplates: [SystemCategory: [PropertyDefinition]] = {
         let applianceBase = Array(applianceBaseDefinitions.values)
         let powerSourceField = PropertyDefinition(name: "Power source", type: .comboList(powerSourceComboList()), isRequired: true)
         return [
-            "housingUnit": [
+            .residentialHousing: [
                 PropertyDefinition(name: "Address",       type: .basic(.text), isRequired: true),
                 PropertyDefinition(name: "Address2",      type: .basic(.text), isRequired: false),
                 PropertyDefinition(name: "City",          type: .basic(.text), isRequired: false),
@@ -27,7 +27,7 @@ extension BuiltInTypes {
                 PropertyDefinition(name: "Zip",           type: .basic(.text), isRequired: false),
                 PropertyDefinition(name: "Purchase date", type: .basic(.date), isRequired: false),
             ],
-            "automobile": [
+            .automobile: [
                 PropertyDefinition(name: "Make",          type: .basic(.text),   isRequired: true),
                 PropertyDefinition(name: "Model",         type: .basic(.text),   isRequired: true),
                 PropertyDefinition(name: "Year",          type: .basic(.number), isRequired: false),
@@ -35,12 +35,12 @@ extension BuiltInTypes {
                 PropertyDefinition(name: "Engine Oil",    type: .basic(.text),   isRequired: false),
                 PropertyDefinition(name: "Oil Filter",    type: .basic(.text),   isRequired: false),
             ],
-            "appliance":    applianceBase,
-            "refrigerator": applianceBase,
-            "clothWasher":  applianceBase,
-            "hvac":         applianceBase,
-            "range":      applianceBase + [powerSourceField],
-            "clothDryer": applianceBase + [powerSourceField],
+            .appliance:    applianceBase,
+            .refrigerator: applianceBase,
+            .clothWasher:  applianceBase,
+            .hvac:         applianceBase,
+            .range:      applianceBase + [powerSourceField],
+            .clothDryer: applianceBase + [powerSourceField],
         ]
     }()
 }

@@ -3,6 +3,13 @@ import XCTest
 
 final class AssetTests: XCTestCase {
 
+    var store: AssetStore!
+
+    override func setUp() {
+        super.setUp()
+        store = AssetStore()
+    }
+
     private func makeCategory(name: String = "Test") -> AssetCategory {
         AssetCategory(name: name)
     }
@@ -36,6 +43,25 @@ final class AssetTests: XCTestCase {
 
         XCTAssertEqual(child.ancestors.map(\.name), ["Grandparent", "Parent"])
         XCTAssertTrue(grandparent.ancestors.isEmpty)
+    }
+
+    func testResidentialHousingAssetMatchesTemplate() throws {
+        store.seedBuiltInCategories()
+
+        let categoryName = SystemCategory.residentialHousing.rawValue
+        let category = try XCTUnwrap(store.allCategories.first { $0.name == categoryName })
+        let asset = try store.createAsset(name: "My House", categoryID: category.id)
+
+        let templateNames = Set(category.propertyTemplates.map { $0.definition.name })
+        let assetPropertyNames = Set(asset.baseProperties.map { $0.definition.name })
+        XCTAssertEqual(assetPropertyNames, templateNames)
+
+        let templateTypes = Dictionary(uniqueKeysWithValues: category.propertyTemplates.map { ($0.definition.name, $0.definition.type) })
+        for prop in asset.baseProperties {
+            XCTAssertEqual(prop.definition.type, templateTypes[prop.definition.name], "Type mismatch for '\(prop.definition.name)'")
+        }
+
+        XCTAssertTrue(asset.baseProperties.allSatisfy { $0.value == nil })
     }
 
     // descendants returns all nodes in the subtree (breadth-first, excluding self).
