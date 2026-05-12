@@ -45,6 +45,44 @@ final class AssetTests: XCTestCase {
         XCTAssertTrue(grandparent.ancestors.isEmpty)
     }
 
+    func testAutomobileAssetWithCustomPropertyAndRandomizedValues() throws {
+        store.seedBuiltInCategories()
+
+        let category = try XCTUnwrap(store.allCategories.first { $0.name == SystemCategory.automobile.rawValue })
+        let asset = try store.createAsset(name: "My Car", categoryID: category.id)
+
+        // Randomize template property values
+        var expectedValues: [String: StoredValue] = [:]
+        for prop in asset.baseProperties {
+            let value: StoredValue
+            switch prop.definition.type {
+            case .basic(.text):   value = .text(UUID().uuidString)
+            case .basic(.number): value = .number(Double.random(in: 1900...2100))
+            default: continue
+            }
+            try store.setPropertyValue(value, forDefinitionID: prop.definition.id, onAssetID: asset.id)
+            expectedValues[prop.definition.name] = value
+        }
+
+        // Add custom "Purchase Price" property
+        let priceDef = PropertyDefinition(name: "Purchase Price", type: .basic(.currency))
+        let priceValue: StoredValue = .currency(10000)
+        try store.addCustomProperty(definition: priceDef, value: priceValue, toAssetID: asset.id)
+        expectedValues["Purchase Price"] = priceValue
+
+        // Verify all template properties are present with correct values
+        let templateNames = Set(category.propertyTemplates.map { $0.definition.name })
+        XCTAssertTrue(templateNames.isSubset(of: Set(asset.baseProperties.map { $0.definition.name })))
+        for prop in asset.baseProperties {
+            XCTAssertEqual(prop.value, expectedValues[prop.definition.name], "Value mismatch for '\(prop.definition.name)'")
+        }
+
+        // Verify custom property is present with correct value
+        let customProp = try XCTUnwrap(asset.customProperties.first { $0.definition.name == "Purchase Price" })
+        XCTAssertEqual(customProp.definition.type, .basic(.currency))
+        XCTAssertEqual(customProp.value, priceValue)
+    }
+
     func testResidentialHousingAssetMatchesTemplate() throws {
         store.seedBuiltInCategories()
 
