@@ -141,6 +141,57 @@ final class AssetTests: XCTestCase {
         XCTAssertEqual(installProp.value, .text("slide in"))
     }
 
+    // removing a child from its parent clears both directions of the relationship
+    func testDisassociatingParenthoodClearsBothSides() throws {
+        store.seedBuiltInCategories()
+        let categoryID = try XCTUnwrap(store.allCategories.first).id
+
+        let parent = try store.createAsset(name: "Parent", categoryID: categoryID)
+        let child  = try store.createAsset(name: "Child",  categoryID: categoryID)
+
+        try store.addChild(assetID: child.id, toParentID: parent.id)
+        try store.removeFromParent(assetID: child.id)
+
+        XCTAssertNil(child.parent)
+        XCTAssertFalse(parent.children.contains(where: { $0.id == child.id }))
+    }
+
+    // re-parenting requires explicit removeFromParent first
+    func testAssetCanHaveAtMostOneParent() throws {
+        store.seedBuiltInCategories()
+        let categoryID = try XCTUnwrap(store.allCategories.first).id
+
+        let parentA = try store.createAsset(name: "Parent A", categoryID: categoryID)
+        let parentB = try store.createAsset(name: "Parent B", categoryID: categoryID)
+        let child   = try store.createAsset(name: "Child",    categoryID: categoryID)
+
+        try store.addChild(assetID: child.id, toParentID: parentA.id)
+        XCTAssertEqual(child.parent?.id, parentA.id)
+
+        try store.removeFromParent(assetID: child.id)
+        try store.addChild(assetID: child.id, toParentID: parentB.id)
+        XCTAssertEqual(child.parent?.id, parentB.id)
+        XCTAssertTrue(parentB.children.contains(where: { $0.id == child.id }))
+        XCTAssertFalse(parentA.children.contains(where: { $0.id == child.id }))
+    }
+
+    // addChild throws if the child already has a parent
+    func testAddChildThrowsIfChildAlreadyHasParent() throws {
+        store.seedBuiltInCategories()
+        let categoryID = try XCTUnwrap(store.allCategories.first).id
+
+        let parentA = try store.createAsset(name: "Parent A", categoryID: categoryID)
+        let parentB = try store.createAsset(name: "Parent B", categoryID: categoryID)
+        let child   = try store.createAsset(name: "Child",    categoryID: categoryID)
+
+        try store.addChild(assetID: child.id, toParentID: parentA.id)
+
+        XCTAssertThrowsError(try store.addChild(assetID: child.id, toParentID: parentB.id)) { error in
+            XCTAssertEqual(error as? AssetStoreError, .assetAlreadyHasParent(child.id))
+        }
+        XCTAssertEqual(child.parent?.id, parentA.id)
+    }
+
     // descendants returns all nodes in the subtree (breadth-first, excluding self).
     func testDescendantsIncludesAllSubtreeNodes() {
         let root = makeAsset(name: "Root")

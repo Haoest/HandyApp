@@ -21,6 +21,8 @@ enum AssetStoreError: Error, Equatable {
     case comboListNotExtensible(UUID)
     /// An AssetProperty with the given id was not found on the specified asset.
     case propertyNotFound(UUID)
+    /// Attempted to add a child that already has a parent; call removeFromParent first.
+    case assetAlreadyHasParent(UUID)
 }
 
 // MARK: - AssetStore
@@ -366,10 +368,12 @@ final class AssetStore {
         guard childID != parentID else {
             throw AssetStoreError.hierarchyCycle(childID: childID, ancestorID: parentID)
         }
+        if child.parent != nil {
+            throw AssetStoreError.assetAlreadyHasParent(childID)
+        }
         if child.descendants.contains(where: { $0.id == parentID }) {
             throw AssetStoreError.hierarchyCycle(childID: childID, ancestorID: parentID)
         }
-        child.parent?._removeChild(child)
         newParent._addChild(child)
     }
 
