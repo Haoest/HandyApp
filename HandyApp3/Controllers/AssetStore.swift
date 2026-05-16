@@ -85,8 +85,9 @@ final class AssetStore {
     @discardableResult
     func createAsset(name: String, categoryID: UUID) throws -> Asset {
         guard let cat = categories[categoryID] else { throw AssetStoreError.categoryNotFound(categoryID) }
-        let baseProperties = cat.propertyTemplates.map {
-            AssetProperty(definition: $0.definition, value: $0.value)
+        let baseProperties = cat.propertyTemplates.enumerated().map { index, template in
+            AssetProperty(definition: template.definition, value: template.value,
+                          sortOrder: Double(index) * AssetProperty.sortOrderIncrement)
         }
         let asset = Asset(name: name, category: cat, baseProperties: baseProperties)
         assets[asset.id] = asset

@@ -45,6 +45,7 @@ final class AssetTests: XCTestCase {
         XCTAssertTrue(grandparent.ancestors.isEmpty)
     }
 
+    //automobile test
     func testAutomobileAssetWithCustomPropertyAndRandomizedValues() throws {
         store.seedBuiltInCategories()
 
@@ -83,6 +84,7 @@ final class AssetTests: XCTestCase {
         XCTAssertEqual(customProp.value, priceValue)
     }
 
+    //residential housing test
     func testResidentialHousingAssetMatchesTemplate() throws {
         store.seedBuiltInCategories()
 
@@ -100,6 +102,43 @@ final class AssetTests: XCTestCase {
         }
 
         XCTAssertTrue(asset.baseProperties.allSatisfy { $0.value == nil })
+    }
+
+    // appliance base properties match template and sortOrder starts at 0, incremented by sortOrderIncrement
+    func testApplianceBasePropertiesMatchTemplateWithSortOrder() throws {
+        store.seedBuiltInCategories()
+
+        let category = try XCTUnwrap(store.allCategories.first { $0.name == SystemCategory.appliance.rawValue })
+        let asset = try store.createAsset(name: "My Appliance", categoryID: category.id)
+
+        XCTAssertEqual(asset.baseProperties.count, category.propertyTemplates.count)
+
+        for (index, (assetProp, templateProp)) in zip(asset.baseProperties, category.propertyTemplates).enumerated() {
+            XCTAssertEqual(assetProp.definition.name, templateProp.definition.name, "Name mismatch at index \(index)")
+            XCTAssertEqual(assetProp.sortOrder, Double(index) * AssetProperty.sortOrderIncrement, "sortOrder mismatch at index \(index)")
+        }
+    }
+
+    // range appliance with power source, color, and installation type
+    func testRangeAssetWithPowerSourceAndCustomAttributes() throws {
+        store.seedBuiltInCategories()
+
+        let category = try XCTUnwrap(store.allCategories.first { $0.name == SystemCategory.range.rawValue })
+        let asset = try store.createAsset(name: "Range", categoryID: category.id)
+
+        let powerSourceProp = try XCTUnwrap(asset.baseProperties.first { $0.definition.name == "Power source" })
+        try store.setPropertyValue(.text("Natural Gas"), forDefinitionID: powerSourceProp.definition.id, onAssetID: asset.id)
+
+        try store.addCustomProperty(definition: PropertyDefinition(name: "Color", type: .basic(.text)), value: .text("black"), toAssetID: asset.id)
+        try store.addCustomProperty(definition: PropertyDefinition(name: "Installation type", type: .basic(.text)), value: .text("slide in"), toAssetID: asset.id)
+
+        XCTAssertEqual(asset.value(for: powerSourceProp.definition.id), .text("Natural Gas"))
+
+        let colorProp = try XCTUnwrap(asset.customProperties.first { $0.definition.name == "Color" })
+        XCTAssertEqual(colorProp.value, .text("black"))
+
+        let installProp = try XCTUnwrap(asset.customProperties.first { $0.definition.name == "Installation type" })
+        XCTAssertEqual(installProp.value, .text("slide in"))
     }
 
     // descendants returns all nodes in the subtree (breadth-first, excluding self).
