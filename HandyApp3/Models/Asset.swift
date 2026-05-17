@@ -1,6 +1,8 @@
 import Foundation
+import Observation
 
 /// A physical asset owned by the user (e.g. "My House", "2022 Toyota Camry").
+@Observable
 final class Asset: Identifiable, Equatable {
     let id: UUID
     var name: String

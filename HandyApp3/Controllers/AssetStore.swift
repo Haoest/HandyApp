@@ -1,4 +1,5 @@
 import Foundation
+import Observation
 
 // MARK: - Errors
 
@@ -29,6 +30,7 @@ enum AssetStoreError: Error, Equatable {
 
 /// Single in-memory store for the entire domain.
 /// All mutations happen through this object; there is no persistence at this layer.
+@Observable
 final class AssetStore {
 
     // MARK: - Storage

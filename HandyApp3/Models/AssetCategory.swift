@@ -1,8 +1,10 @@
 import Foundation
+import Observation
 
 /// A named template that defines the base properties for a class of assets.
 /// When an Asset is created from a category, each template entry is deep-copied
 /// into the asset's `baseProperties`.
+@Observable
 final class AssetCategory: Identifiable, Equatable {
     let id: UUID
     var name: String

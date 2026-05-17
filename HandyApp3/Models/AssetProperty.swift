@@ -1,7 +1,9 @@
 import Foundation
+import Observation
 
 /// A self-contained property: bundles a PropertyDefinition (schema) with an
 /// optional StoredValue (data). Lives on one Asset instance — not shared across assets.
+@Observable
 final class AssetProperty: Identifiable, Equatable {
     let id: UUID
     var definition: PropertyDefinition
