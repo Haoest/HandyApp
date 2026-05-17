@@ -1,12 +1,12 @@
 import Foundation
 
 enum SystemCategory: String {
-    case residentialHousing
-    case automobile
-    case appliance
-    case refrigerator
-    case clothWasher
-    case hvac
-    case range
-    case clothDryer
+    case residentialHousing = "Residential Housing"
+    case automobile         = "Automobile"
+    case appliance          = "Appliance"
+    case refrigerator       = "Refrigerator"
+    case clothWasher        = "Cloth Washer"
+    case hvac               = "HVAC"
+    case range              = "Range"
+    case clothDryer         = "Cloth Dryer"
 }
