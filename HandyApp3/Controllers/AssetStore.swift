@@ -99,6 +99,7 @@ final class AssetStore {
     func updateAsset(id: UUID, name: String) throws {
         guard let asset = assets[id] else { throw AssetStoreError.assetNotFound(id) }
         asset.name = name
+        asset.modifiedDate = Date()
     }
 
     func deleteAsset(id: UUID) throws {
@@ -133,12 +134,14 @@ final class AssetStore {
             try validate(stored: stored, against: prop.definition.type, definitionName: prop.definition.name)
             handleComboListAutoAdd(stored: stored, type: prop.definition.type)
             prop.value = stored
+            asset.modifiedDate = Date()
             return prop
         }
         if let prop = asset.customProperties.first(where: { $0.definition.id == definitionID }) {
             try validate(stored: stored, against: prop.definition.type, definitionName: prop.definition.name)
             handleComboListAutoAdd(stored: stored, type: prop.definition.type)
             prop.value = stored
+            asset.modifiedDate = Date()
             return prop
         }
         throw AssetStoreError.definitionNotFound(definitionID)
@@ -148,10 +151,14 @@ final class AssetStore {
     func removePropertyValue(forDefinitionID definitionID: UUID, fromAssetID assetID: UUID) throws {
         guard let asset = assets[assetID] else { throw AssetStoreError.assetNotFound(assetID) }
         if let prop = asset.baseProperties.first(where: { $0.definition.id == definitionID }) {
-            prop.value = nil; return
+            prop.value = nil
+            asset.modifiedDate = Date()
+            return
         }
         if let prop = asset.customProperties.first(where: { $0.definition.id == definitionID }) {
-            prop.value = nil; return
+            prop.value = nil
+            asset.modifiedDate = Date()
+            return
         }
         throw AssetStoreError.definitionNotFound(definitionID)
     }
@@ -171,6 +178,7 @@ final class AssetStore {
         }
         let prop = AssetProperty(definition: definition, value: value)
         asset.customProperties.append(prop)
+        asset.modifiedDate = Date()
         return prop
     }
 
@@ -187,6 +195,7 @@ final class AssetStore {
         }
         try validate(stored: stored, against: prop.definition.type, definitionName: prop.definition.name)
         prop.value = stored
+        asset.modifiedDate = Date()
         return prop
     }
 
@@ -209,6 +218,7 @@ final class AssetStore {
             prop.definition.type = type
             prop.value = nil
         }
+        asset.modifiedDate = Date()
     }
 
     /// Removes a custom property and its value from an asset.
@@ -218,6 +228,7 @@ final class AssetStore {
             throw AssetStoreError.propertyNotFound(propID)
         }
         asset.customProperties.removeAll { $0.id == propID }
+        asset.modifiedDate = Date()
     }
 
     // MARK: - ComboListDefinition CRUD

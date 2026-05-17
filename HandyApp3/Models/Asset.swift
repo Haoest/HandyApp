@@ -4,6 +4,8 @@ import Foundation
 final class Asset: Identifiable, Equatable {
     let id: UUID
     var name: String
+    let createdDate: Date
+    var modifiedDate: Date
 
     /// The category this asset was created from.
     var category: AssetCategory
@@ -26,13 +28,17 @@ final class Asset: Identifiable, Equatable {
         name: String,
         category: AssetCategory,
         baseProperties: [AssetProperty] = [],
-        customProperties: [AssetProperty] = []
+        customProperties: [AssetProperty] = [],
+        createdDate: Date = Date(),
+        modifiedDate: Date = Date()
     ) {
         self.id = id
         self.name = name
         self.category = category
         self.baseProperties = baseProperties
         self.customProperties = customProperties
+        self.createdDate = createdDate
+        self.modifiedDate = modifiedDate
     }
 
     // MARK: - Property value convenience
