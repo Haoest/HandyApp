@@ -1,30 +1,40 @@
 import SwiftUI
 
-// MARK: - Menu data model
-
-struct HomeMenuAction: Identifiable {
-    let id: String
-    let label: String
-    let systemImage: String
-    let destination: HomeDestination
-
-    static let all: [HomeMenuAction] = [
-        .init(id: "newAsset",    label: "New Asset",    systemImage: "plus.circle",      destination: .newAsset),
-        .init(id: "newCategory", label: "New Category", systemImage: "folder.badge.plus", destination: .newCategory),
-        .init(id: "preferences", label: "Preferences",  systemImage: "gearshape",         destination: .preferences),
-    ]
-}
-
-enum HomeDestination: String, Identifiable {
-    case newAsset, newCategory, preferences
-    var id: String { rawValue }
-}
-
-// MARK: - Home screen
+// MARK: - Root
 
 struct ContentView: View {
+    var body: some View {
+        TabView {
+            HomeTab()
+                .tabItem { Image(systemName: "house") }
+            AssetTab()
+                .tabItem { Image(systemName: "shippingbox") }
+            CategoryTab()
+                .tabItem { Image(systemName: "folder") }
+            ActivityTab()
+                .tabItem { Image(systemName: "waveform") }
+            PreferenceTab()
+                .tabItem { Image(systemName: "gearshape") }
+        }
+    }
+}
+
+// MARK: - Home tab
+
+struct HomeTab: View {
+    var body: some View {
+        NavigationStack {
+            Text("Home")
+                .navigationTitle("Home")
+        }
+    }
+}
+
+// MARK: - Asset tab
+
+struct AssetTab: View {
     @Environment(AssetStore.self) private var store
-    @State private var activeSheet: HomeDestination?
+    @State private var newAssetPresented = false
 
     private var sortedAssets: [Asset] {
         store.allAssets.sorted { $0.modifiedDate > $1.modifiedDate }
@@ -34,56 +44,63 @@ struct ContentView: View {
         NavigationStack {
             Group {
                 if store.allAssets.isEmpty {
-                    emptyState
+                    ContentUnavailableView(
+                        "No Assets",
+                        systemImage: "shippingbox",
+                        description: Text("Tap + to add your first asset.")
+                    )
                 } else {
-                    assetList
-                }
-            }
-            .navigationTitle("My Assets")
-            .toolbar { menuButton }
-            .sheet(item: $activeSheet, content: sheetContent)
-        }
-    }
-
-    private var emptyState: some View {
-        ContentUnavailableView(
-            "No Assets Yet",
-            systemImage: "shippingbox",
-            description: Text("Use the menu to add your first asset.")
-        )
-    }
-
-    private var assetList: some View {
-        List(sortedAssets) { asset in
-            NavigationLink(destination: Text(asset.name)) {
-                AssetRow(asset: asset)
-            }
-        }
-    }
-
-    @ToolbarContentBuilder
-    private var menuButton: some ToolbarContent {
-        ToolbarItem(placement: .topBarTrailing) {
-            Menu {
-                ForEach(HomeMenuAction.all) { action in
-                    Button {
-                        activeSheet = action.destination
-                    } label: {
-                        Label(action.label, systemImage: action.systemImage)
+                    List(sortedAssets) { asset in
+                        NavigationLink(destination: Text(asset.name)) {
+                            AssetRow(asset: asset)
+                        }
                     }
                 }
-            } label: {
-                Image(systemName: "line.3.horizontal")
+            }
+            .navigationTitle("Assets")
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button { newAssetPresented = true } label: {
+                        Image(systemName: "plus")
+                    }
+                }
+            }
+            .sheet(isPresented: $newAssetPresented) {
+                NewAssetView()
             }
         }
     }
+}
 
-    @ViewBuilder
-    private func sheetContent(_ destination: HomeDestination) -> some View {
-        switch destination {
-        case .newAsset:    NewAssetView()
-        case .newCategory: NewCategoryView()
-        case .preferences: PreferencesView()
+// MARK: - Category tab
+
+struct CategoryTab: View {
+    var body: some View {
+        NavigationStack {
+            Text("Categories")
+                .navigationTitle("Categories")
+        }
+    }
+}
+
+// MARK: - Activity tab
+
+struct ActivityTab: View {
+    var body: some View {
+        NavigationStack {
+            Text("Activity")
+                .navigationTitle("Activity")
+        }
+    }
+}
+
+// MARK: - Preference tab
+
+struct PreferenceTab: View {
+    var body: some View {
+        NavigationStack {
+            Text("Preferences")
+                .navigationTitle("Preferences")
         }
     }
 }
@@ -109,7 +126,7 @@ private struct AssetRow: View {
     }
 }
 
-// MARK: - Destination stubs
+// MARK: - Stub sheets
 
 struct NewAssetView: View {
     var body: some View {
@@ -125,15 +142,6 @@ struct NewCategoryView: View {
         NavigationStack {
             Text("New Category")
                 .navigationTitle("New Category")
-        }
-    }
-}
-
-struct PreferencesView: View {
-    var body: some View {
-        NavigationStack {
-            Text("Preferences")
-                .navigationTitle("Preferences")
         }
     }
 }
