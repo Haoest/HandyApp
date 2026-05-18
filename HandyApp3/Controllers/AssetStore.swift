@@ -50,8 +50,8 @@ final class AssetStore {
     // MARK: - AssetCategory CRUD
 
     @discardableResult
-    func createCategory(name: String, propertyTemplates: [AssetProperty] = []) -> AssetCategory {
-        let cat = AssetCategory(name: name, propertyTemplates: propertyTemplates)
+    func createCategory(name: String, iconName: String = "square.grid.2x2", propertyTemplates: [AssetProperty] = []) -> AssetCategory {
+        let cat = AssetCategory(name: name, iconName: iconName, propertyTemplates: propertyTemplates)
         categories[cat.id] = cat
         return cat
     }

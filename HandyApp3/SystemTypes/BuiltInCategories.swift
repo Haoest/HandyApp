@@ -14,6 +14,21 @@ extension BuiltInTypes {
         "Notes":         PropertyDefinition(name: "Notes",         type: .basic(.text),     isRequired: false),
     ]
 
+    /// SF Symbol name for each system category. Appliance descendants share the appliance icon.
+    static let categoryIcons: [SystemCategory: String] = {
+        let applianceIcon = "washer"
+        return [
+            .residentialHousing: "house",
+            .automobile:         "car",
+            .appliance:          applianceIcon,
+            .refrigerator:       applianceIcon,
+            .clothWasher:        applianceIcon,
+            .hvac:               applianceIcon,
+            .range:              applianceIcon,
+            .clothDryer:         applianceIcon,
+        ]
+    }()
+
     /// Keyed by SystemCategory; value is the ordered list of property definitions.
     static let categoryTemplates: [SystemCategory: [PropertyDefinition]] = {
         let applianceBase = Array(applianceBaseDefinitions.values)

@@ -8,12 +8,14 @@ import Observation
 final class AssetCategory: Identifiable, Equatable {
     let id: UUID
     var name: String
+    var iconName: String
     /// The property templates that get stamped onto new assets of this category.
     var propertyTemplates: [AssetProperty]
 
-    init(id: UUID = UUID(), name: String, propertyTemplates: [AssetProperty] = []) {
+    init(id: UUID = UUID(), name: String, iconName: String = "square.grid.2x2", propertyTemplates: [AssetProperty] = []) {
         self.id = id
         self.name = name
+        self.iconName = iconName
         self.propertyTemplates = propertyTemplates
     }
 
