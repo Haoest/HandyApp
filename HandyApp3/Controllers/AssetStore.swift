@@ -74,6 +74,23 @@ final class AssetStore {
         return property
     }
 
+    func setTemplatePropertyValue(_ stored: StoredValue, forPropertyID propID: UUID, inCategoryID categoryID: UUID) throws {
+        guard let cat = categories[categoryID] else { throw AssetStoreError.categoryNotFound(categoryID) }
+        guard let prop = cat.propertyTemplates.first(where: { $0.id == propID }) else {
+            throw AssetStoreError.propertyNotFound(propID)
+        }
+        try validate(stored: stored, against: prop.definition.type, definitionName: prop.definition.name)
+        prop.value = stored
+    }
+
+    func removeTemplatePropertyValue(forPropertyID propID: UUID, inCategoryID categoryID: UUID) throws {
+        guard let cat = categories[categoryID] else { throw AssetStoreError.categoryNotFound(categoryID) }
+        guard let prop = cat.propertyTemplates.first(where: { $0.id == propID }) else {
+            throw AssetStoreError.propertyNotFound(propID)
+        }
+        prop.value = nil
+    }
+
     /// Removes a template property from a category. Does not affect existing assets.
     func removeTemplateProperty(id propID: UUID, fromCategoryID categoryID: UUID) throws {
         guard let cat = categories[categoryID] else { throw AssetStoreError.categoryNotFound(categoryID) }

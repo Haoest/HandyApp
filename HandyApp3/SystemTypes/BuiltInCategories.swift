@@ -4,14 +4,14 @@ import Foundation
 
 extension BuiltInTypes {
 
-    /// Shared appliance fields, keyed by field name.
-    static let applianceBaseDefinitions: [String: PropertyDefinition] = [
-        "Make":          PropertyDefinition(name: "Make",          type: .basic(.text),     isRequired: true),
-        "Purchase date": PropertyDefinition(name: "Purchase date", type: .basic(.date),     isRequired: false),
-        "Price":         PropertyDefinition(name: "Price",         type: .basic(.currency), isRequired: false),
-        "Warranty":      PropertyDefinition(name: "Warranty",      type: .basic(.text),     isRequired: false),
-        "Retailer":      PropertyDefinition(name: "Retailer",      type: .basic(.text),     isRequired: false),
-        "Notes":         PropertyDefinition(name: "Notes",         type: .basic(.text),     isRequired: false),
+    /// Shared appliance fields in display order.
+    static let applianceBaseDefinitions: [PropertyDefinition] = [
+        PropertyDefinition(name: "Make",          type: .basic(.text),     isRequired: true),
+        PropertyDefinition(name: "Purchase date", type: .basic(.date),     isRequired: false),
+        PropertyDefinition(name: "Price",         type: .basic(.currency), isRequired: false),
+        PropertyDefinition(name: "Warranty",      type: .basic(.text),     isRequired: false),
+        PropertyDefinition(name: "Retailer",      type: .basic(.text),     isRequired: false),
+        PropertyDefinition(name: "Notes",         type: .basic(.text),     isRequired: false),
     ]
 
     /// SF Symbol name for each system category. Appliance descendants share the appliance icon.
@@ -31,7 +31,7 @@ extension BuiltInTypes {
 
     /// Keyed by SystemCategory; value is the ordered list of property definitions.
     static let categoryTemplates: [SystemCategory: [PropertyDefinition]] = {
-        let applianceBase = Array(applianceBaseDefinitions.values)
+        let applianceBase = applianceBaseDefinitions
         let powerSourceField = PropertyDefinition(name: "Power source", type: .comboList(powerSourceComboList()), isRequired: true)
         return [
             .residentialHousing: [
