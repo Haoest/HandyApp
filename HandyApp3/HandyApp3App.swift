@@ -7,6 +7,7 @@ struct HandyApp3App: App {
         s.seedBuiltInComboLists()
         s.seedBuiltInCategories()
         s.seedBuiltInTypes()
+        s.seedBuiltInAssets()
         return s
     }()
 

@@ -28,6 +28,26 @@ extension AssetStore {
         return seeded
     }
 
+    /// Seeds a small set of starter assets. Idempotent (skips if name already exists in category).
+    @discardableResult
+    func seedBuiltInAssets() -> [Asset] {
+        let seeds: [(categoryName: String, assetName: String)] = [
+            (SystemCategory.appliance.rawValue,          "Fridge"),
+            (SystemCategory.automobile.rawValue,         "2006 toyota"),
+            (SystemCategory.residentialHousing.rawValue, "1 main"),
+        ]
+        var seeded: [Asset] = []
+        for seed in seeds {
+            guard let cat = categories.values.first(where: { $0.name == seed.categoryName }) else { continue }
+            let existing = (try? assets(ofCategoryID: cat.id)) ?? []
+            guard !existing.contains(where: { $0.name == seed.assetName }) else { continue }
+            if let asset = try? createAsset(name: seed.assetName, categoryID: cat.id) {
+                seeded.append(asset)
+            }
+        }
+        return seeded
+    }
+
     /// Registers built-in asset categories. Idempotent.
     @discardableResult
     func seedBuiltInCategories() -> [AssetCategory] {
