@@ -26,3 +26,4 @@ An `Asset` is a named physical object. It belongs to one `AssetCategory`, which 
 
 ## Open work
 
+- every category has an icon
