@@ -61,6 +61,11 @@ final class AssetStore {
         cat.name = name
     }
 
+    func updateCategoryIcon(id: UUID, iconName: String) throws {
+        guard let cat = categories[id] else { throw AssetStoreError.categoryNotFound(id) }
+        cat.iconName = iconName
+    }
+
     func deleteCategory(id: UUID) throws {
         guard categories[id] != nil else { throw AssetStoreError.categoryNotFound(id) }
         categories.removeValue(forKey: id)
