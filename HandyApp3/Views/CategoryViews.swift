@@ -267,6 +267,7 @@ struct CategoryPropertyDefsView: View {
     @Environment(AssetStore.self) private var store
     let category: AssetCategory
     @State private var iconPickerPresented = false
+    @State private var addPropertyPresented = false
 
     var body: some View {
         Form {
@@ -302,10 +303,23 @@ struct CategoryPropertyDefsView: View {
         }
         .navigationTitle(category.name)
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                Button { addPropertyPresented = true } label: {
+                    Image(systemName: "plus")
+                }
+            }
+        }
         .sheet(isPresented: $iconPickerPresented) {
             IconPickerView(current: category.iconName) { newIcon in
                 try? store.updateCategoryIcon(id: category.id, iconName: newIcon)
                 iconPickerPresented = false
+            }
+        }
+        .sheet(isPresented: $addPropertyPresented) {
+            PropertyEditView { definition in
+                let prop = AssetProperty(definition: definition)
+                try? store.addTemplateProperty(prop, toCategoryID: category.id)
             }
         }
     }

@@ -360,6 +360,7 @@ struct AssetDetailView: View {
     @Environment(\.dismiss) private var dismiss
     let asset: Asset
     @State private var deleteConfirmationPresented = false
+    @State private var addPropertyPresented = false
 
     private var sortedBase: [AssetProperty] {
         asset.baseProperties.sorted { $0.sortOrder < $1.sortOrder }
@@ -383,10 +384,27 @@ struct AssetDetailView: View {
                     }
                 }
             }
-            if !sortedCustom.isEmpty {
-                Section("Custom") {
+            Section {
+                if sortedCustom.isEmpty {
+                    Text("None").foregroundStyle(.secondary)
+                } else {
                     ForEach(sortedCustom) { prop in
                         PropertyDetailRow(assetID: asset.id, property: prop)
+                            .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                                Button(role: .destructive) {
+                                    try? store.removeCustomProperty(id: prop.id, fromAssetID: asset.id)
+                                } label: {
+                                    Label("Delete", systemImage: "trash")
+                                }
+                            }
+                    }
+                }
+            } header: {
+                HStack {
+                    Text("Custom Field")
+                    Spacer()
+                    Button { addPropertyPresented = true } label: {
+                        Image(systemName: "plus")
                     }
                 }
             }
@@ -400,6 +418,11 @@ struct AssetDetailView: View {
                 Button("Delete Asset", role: .destructive) {
                     deleteConfirmationPresented = true
                 }
+            }
+        }
+        .sheet(isPresented: $addPropertyPresented) {
+            PropertyEditView { definition in
+                try? store.addCustomProperty(definition: definition, toAssetID: asset.id)
             }
         }
         .confirmationDialog("Delete \"\(asset.name)\"?", isPresented: $deleteConfirmationPresented, titleVisibility: .visible) {
