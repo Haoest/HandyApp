@@ -43,6 +43,9 @@ final class AssetTests: XCTestCase {
 
         XCTAssertEqual(child.ancestors.map(\.name), ["Grandparent", "Parent"])
         XCTAssertTrue(grandparent.ancestors.isEmpty)
+        XCTAssertEqual(parent.parentID, grandparent.id)
+        XCTAssertEqual(child.parentID, parent.id)
+        XCTAssertNil(grandparent.parentID)
     }
 
     //automobile test
@@ -153,6 +156,7 @@ final class AssetTests: XCTestCase {
         try store.removeFromParent(assetID: child.id)
 
         XCTAssertNil(child.parent)
+        XCTAssertNil(child.parentID)
         XCTAssertFalse(parent.children.contains(where: { $0.id == child.id }))
     }
 
@@ -171,6 +175,7 @@ final class AssetTests: XCTestCase {
         try store.removeFromParent(assetID: child.id)
         try store.addChild(assetID: child.id, toParentID: parentB.id)
         XCTAssertEqual(child.parent?.id, parentB.id)
+        XCTAssertEqual(child.parentID, parentB.id)
         XCTAssertTrue(parentB.children.contains(where: { $0.id == child.id }))
         XCTAssertFalse(parentA.children.contains(where: { $0.id == child.id }))
     }

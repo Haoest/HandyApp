@@ -19,7 +19,10 @@ final class Asset: Identifiable, Equatable {
     /// Per-instance properties defined by the user specifically for this asset.
     var customProperties: [AssetProperty]
 
-    /// The asset that directly contains this one (e.g. a House contains a Refrigerator).
+    /// ID of the asset that directly contains this one. Nil means top-level.
+    var parentID: UUID?
+
+    /// Resolved in-memory reference to the parent. Set by AssetStore hierarchy methods.
     weak var parent: Asset?
 
     /// Direct children of this asset. Mutated exclusively through AssetStore hierarchy methods.
@@ -31,6 +34,7 @@ final class Asset: Identifiable, Equatable {
         category: AssetCategory,
         baseProperties: [AssetProperty] = [],
         customProperties: [AssetProperty] = [],
+        parentID: UUID? = nil,
         createdDate: Date = Date(),
         modifiedDate: Date = Date()
     ) {
@@ -39,6 +43,7 @@ final class Asset: Identifiable, Equatable {
         self.category = category
         self.baseProperties = baseProperties
         self.customProperties = customProperties
+        self.parentID = parentID
         self.createdDate = createdDate
         self.modifiedDate = modifiedDate
     }
@@ -112,11 +117,13 @@ final class Asset: Identifiable, Equatable {
         guard !children.contains(where: { $0.id == child.id }) else { return }
         children.append(child)
         child.parent = self
+        child.parentID = self.id
     }
 
     func _removeChild(_ child: Asset) {
         children.removeAll { $0.id == child.id }
         child.parent = nil
+        child.parentID = nil
     }
 
     static func == (lhs: Asset, rhs: Asset) -> Bool {
