@@ -294,6 +294,13 @@ struct CategoryPropertyDefsView: View {
             Section {
                 ForEach(category.propertyTemplates) { prop in
                     TemplatePropertyRow(categoryID: category.id, property: prop, onEditLabel: { propertyToEdit = prop })
+                        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                            Button(role: .destructive) {
+                                try? store.removeTemplateProperty(id: prop.id, fromCategoryID: category.id)
+                            } label: {
+                                Label("Delete", systemImage: "trash")
+                            }
+                        }
                 }
             } header: {
                 Text("Default Values")
