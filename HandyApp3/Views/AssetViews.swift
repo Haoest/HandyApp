@@ -356,7 +356,10 @@ private struct ComboListEditRow: View {
 // MARK: - Asset detail view
 
 struct AssetDetailView: View {
+    @Environment(AssetStore.self) private var store
+    @Environment(\.dismiss) private var dismiss
     let asset: Asset
+    @State private var deleteConfirmationPresented = false
 
     private var sortedBase: [AssetProperty] {
         asset.baseProperties.sorted { $0.sortOrder < $1.sortOrder }
@@ -365,6 +368,8 @@ struct AssetDetailView: View {
     private var sortedCustom: [AssetProperty] {
         asset.customProperties.sorted { $0.sortOrder < $1.sortOrder }
     }
+
+    private var childCount: Int { asset.children.count }
 
     var body: some View {
         Form {
@@ -390,6 +395,24 @@ struct AssetDetailView: View {
             }
         }
         .navigationTitle(asset.name)
+        .toolbar {
+            ToolbarItem(placement: .bottomBar) {
+                Button("Delete Asset", role: .destructive) {
+                    deleteConfirmationPresented = true
+                }
+            }
+        }
+        .confirmationDialog("Delete \"\(asset.name)\"?", isPresented: $deleteConfirmationPresented, titleVisibility: .visible) {
+            Button("Delete", role: .destructive) {
+                try? store.softDeleteAsset(id: asset.id)
+                dismiss()
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            if childCount > 0 {
+                Text("\(childCount) item\(childCount == 1 ? "" : "s") inside will not be deleted and will lose association.")
+            }
+        }
     }
 }
 

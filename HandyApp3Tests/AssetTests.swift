@@ -197,6 +197,29 @@ final class AssetTests: XCTestCase {
         XCTAssertEqual(child.parent?.id, parentA.id)
     }
 
+    // soft-deleting an asset orphans its direct children and removes it from allAssets.
+    func testSoftDeleteOrphansChildrenAndHidesAsset() throws {
+        store.seedBuiltInCategories()
+        let categoryID = try XCTUnwrap(store.allCategories.first).id
+
+        let parent = try store.createAsset(name: "Parent", categoryID: categoryID)
+        let childA = try store.createAsset(name: "Child A", categoryID: categoryID)
+        let childB = try store.createAsset(name: "Child B", categoryID: categoryID)
+
+        try store.addChild(assetID: childA.id, toParentID: parent.id)
+        try store.addChild(assetID: childB.id, toParentID: parent.id)
+
+        try store.softDeleteAsset(id: parent.id)
+
+        XCTAssertFalse(store.allAssets.contains(where: { $0.id == parent.id }))
+        XCTAssertNil(childA.parent)
+        XCTAssertNil(childA.parentID)
+        XCTAssertNil(childB.parent)
+        XCTAssertNil(childB.parentID)
+        XCTAssertTrue(childA.isRoot)
+        XCTAssertTrue(childB.isRoot)
+    }
+
     // descendants returns all nodes in the subtree (breadth-first, excluding self).
     func testDescendantsIncludesAllSubtreeNodes() {
         let root = makeAsset(name: "Root")

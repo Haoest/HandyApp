@@ -42,7 +42,7 @@ final class AssetStore {
 
     // MARK: - Derived collections
 
-    var allAssets: [Asset] { Array(assets.values) }
+    var allAssets: [Asset] { assets.values.filter { !$0.isDeleted } }
     var allCategories: [AssetCategory] { Array(categories.values) }
     var allCompositeTypes: [CompositeTypeDefinition] { Array(compositeTypes.values) }
     var allComboListDefinitions: [ComboListDefinition] { Array(comboListDefinitions.values) }
@@ -135,6 +135,18 @@ final class AssetStore {
             grandparent?._addChild(child)
         }
         assets.removeValue(forKey: id)
+    }
+
+    /// Marks the asset as deleted without removing it from the store.
+    /// Detaches it from its parent and sets all direct children to top-level.
+    func softDeleteAsset(id: UUID) throws {
+        guard let asset = assets[id] else { throw AssetStoreError.assetNotFound(id) }
+        asset.parent?._removeChild(asset)
+        for child in Array(asset.children) {
+            asset._removeChild(child)
+        }
+        asset.isDeleted = true
+        asset.modifiedDate = Date()
     }
 
     /// All assets belonging to the given category.

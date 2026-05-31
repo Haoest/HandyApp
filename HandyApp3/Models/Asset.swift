@@ -22,6 +22,8 @@ final class Asset: Identifiable, Equatable {
     /// ID of the asset that directly contains this one. Nil means top-level.
     var parentID: UUID?
 
+    var isDeleted: Bool = false
+
     /// Resolved in-memory reference to the parent. Set by AssetStore hierarchy methods.
     weak var parent: Asset?
 
