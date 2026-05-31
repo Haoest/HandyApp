@@ -86,7 +86,7 @@ struct NewAssetSheet: View {
     var body: some View {
         NavigationStack {
             CategoryPickerContent { asset in createdAsset = asset }
-                .navigationTitle("Select Category")
+                .navigationTitle("New Asset")
                 .toolbar {
                     ToolbarItem(placement: .cancellationAction) {
                         Button("Cancel") { dismiss() }
@@ -125,17 +125,21 @@ private struct CategoryPickerContent: View {
                 description: Text("Create a category first in the Categories tab.")
             )
         } else {
-            List(sortedCategories) { category in
-                Button(category.name) {
-                    let count = (try? store.assets(ofCategoryID: category.id))?.count ?? 0
-                    if let asset = try? store.createAsset(
-                        name: "\(category.name) \(count + 1)",
-                        categoryID: category.id
-                    ) {
-                        onCreate(asset)
+            List {
+                Section("Select Category") {
+                    ForEach(sortedCategories) { category in
+                        Button(category.name) {
+                            let count = (try? store.assets(ofCategoryID: category.id))?.count ?? 0
+                            if let asset = try? store.createAsset(
+                                name: "\(category.name) \(count + 1)",
+                                categoryID: category.id
+                            ) {
+                                onCreate(asset)
+                            }
+                        }
+                        .foregroundStyle(.primary)
                     }
                 }
-                .foregroundStyle(.primary)
             }
         }
     }
