@@ -27,3 +27,7 @@ An `Asset` is a named physical object. It belongs to one `AssetCategory`, which 
 ## Open work
 
 - every category has an icon
+- flesh out photo properties to allow selection, viewing, thumbnail
+- work on real persistence
+- enable icloud backup
+- application version

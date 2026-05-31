@@ -361,13 +361,15 @@ struct AssetDetailView: View {
     let asset: Asset
     @State private var deleteConfirmationPresented = false
     @State private var addPropertyPresented = false
+    @State private var customPropertyToEdit: AssetProperty?
 
     private var sortedBase: [AssetProperty] {
         asset.baseProperties.sorted { $0.sortOrder < $1.sortOrder }
     }
 
     private var sortedCustom: [AssetProperty] {
-        asset.customProperties.sorted { $0.sortOrder < $1.sortOrder }
+        _ = asset.modifiedDate
+        return asset.customProperties.sorted { $0.sortOrder < $1.sortOrder }
     }
 
     private var childCount: Int { asset.children.count }
@@ -389,7 +391,7 @@ struct AssetDetailView: View {
                     Text("None").foregroundStyle(.secondary)
                 } else {
                     ForEach(sortedCustom) { prop in
-                        PropertyDetailRow(assetID: asset.id, property: prop)
+                        PropertyDetailRow(assetID: asset.id, property: prop, onEditLabel: { customPropertyToEdit = prop })
                             .swipeActions(edge: .trailing, allowsFullSwipe: false) {
                                 Button(role: .destructive) {
                                     try? store.removeCustomProperty(id: prop.id, fromAssetID: asset.id)
@@ -421,8 +423,18 @@ struct AssetDetailView: View {
             }
         }
         .sheet(isPresented: $addPropertyPresented) {
-            PropertyEditView { definition in
-                try? store.addCustomProperty(definition: definition, toAssetID: asset.id)
+            PropertyEditView { definition, value in
+                try? store.addCustomProperty(definition: definition, value: value, toAssetID: asset.id)
+            }
+        }
+        .sheet(item: $customPropertyToEdit) { prop in
+            PropertyEditView(existing: prop) { definition, value in
+                try? store.updateCustomProperty(id: prop.id, onAssetID: asset.id, name: definition.name, type: definition.type)
+                if let value {
+                    try? store.setPropertyValue(value, forDefinitionID: prop.definition.id, onAssetID: asset.id)
+                } else {
+                    try? store.removePropertyValue(forDefinitionID: prop.definition.id, fromAssetID: asset.id)
+                }
             }
         }
         .confirmationDialog("Delete \"\(asset.name)\"?", isPresented: $deleteConfirmationPresented, titleVisibility: .visible) {
@@ -577,22 +589,31 @@ private struct NameDetailField: View {
 private struct PropertyDetailRow: View {
     let assetID: UUID
     let property: AssetProperty
+    var onEditLabel: (() -> Void)? = nil
 
     var body: some View {
         switch property.definition.type {
         case .basic(.text), .basic(.contact):
-            TextDetailField(assetID: assetID, property: property)
+            TextDetailField(assetID: assetID, property: property, onEditLabel: onEditLabel)
         case .basic(.number):
-            NumberDetailField(assetID: assetID, property: property)
+            NumberDetailField(assetID: assetID, property: property, onEditLabel: onEditLabel)
         case .basic(.currency):
-            CurrencyDetailField(assetID: assetID, property: property)
+            CurrencyDetailField(assetID: assetID, property: property, onEditLabel: onEditLabel)
         case .basic(.date):
-            DateDetailRow(assetID: assetID, property: property)
+            DateDetailRow(assetID: assetID, property: property, onEditLabel: onEditLabel)
         case .comboList(let list):
-            ComboListDetailRow(assetID: assetID, property: property, list: list)
+            ComboListDetailRow(assetID: assetID, property: property, list: list, onEditLabel: onEditLabel)
         default:
-            LabeledContent(property.definition.name) {
+            LabeledContent {
                 Text("—").foregroundStyle(.tertiary)
+            } label: {
+                if let onEditLabel {
+                    Button(property.definition.name) { onEditLabel() }
+                        .buttonStyle(.plain)
+                        .foregroundStyle(.primary)
+                } else {
+                    Text(property.definition.name)
+                }
             }
         }
     }
@@ -602,23 +623,41 @@ private struct TextDetailField: View {
     @Environment(AssetStore.self) private var store
     let assetID: UUID
     let property: AssetProperty
+    let onEditLabel: (() -> Void)?
     @State private var text: String
     @FocusState private var isFocused: Bool
 
-    init(assetID: UUID, property: AssetProperty) {
+    init(assetID: UUID, property: AssetProperty, onEditLabel: (() -> Void)? = nil) {
         self.assetID = assetID
         self.property = property
+        self.onEditLabel = onEditLabel
         if case .text(let s) = property.value { _text = State(initialValue: s) }
         else { _text = State(initialValue: "") }
     }
 
     var body: some View {
-        LabeledContent(property.definition.name) {
+        LabeledContent {
             TextField("", text: $text, axis: .vertical)
                 .multilineTextAlignment(.trailing)
                 .focused($isFocused)
                 .onSubmit { commit() }
                 .onChange(of: isFocused) { _, focused in if !focused { commit() } }
+                .onChange(of: property.value) { _, newValue in
+                    guard !isFocused else { return }
+                    switch newValue {
+                    case .text(let s): text = s
+                    case .contact(let s): text = s
+                    default: text = ""
+                    }
+                }
+        } label: {
+            if let onEditLabel {
+                Button(property.definition.name) { onEditLabel() }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(.primary)
+            } else {
+                Text(property.definition.name)
+            }
         }
     }
 
@@ -635,23 +674,37 @@ private struct NumberDetailField: View {
     @Environment(AssetStore.self) private var store
     let assetID: UUID
     let property: AssetProperty
+    let onEditLabel: (() -> Void)?
     @State private var text: String
     @FocusState private var isFocused: Bool
 
-    init(assetID: UUID, property: AssetProperty) {
+    init(assetID: UUID, property: AssetProperty, onEditLabel: (() -> Void)? = nil) {
         self.assetID = assetID
         self.property = property
+        self.onEditLabel = onEditLabel
         if case .number(let d) = property.value { _text = State(initialValue: "\(d)") }
         else { _text = State(initialValue: "") }
     }
 
     var body: some View {
-        LabeledContent(property.definition.name) {
+        LabeledContent {
             TextField("", text: $text)
                 .keyboardType(.decimalPad)
                 .multilineTextAlignment(.trailing)
                 .focused($isFocused)
                 .onChange(of: isFocused) { _, focused in if !focused { commit() } }
+                .onChange(of: property.value) { _, newValue in
+                    guard !isFocused else { return }
+                    if case .number(let d) = newValue { text = "\(d)" } else { text = "" }
+                }
+        } label: {
+            if let onEditLabel {
+                Button(property.definition.name) { onEditLabel() }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(.primary)
+            } else {
+                Text(property.definition.name)
+            }
         }
     }
 
@@ -668,23 +721,37 @@ private struct CurrencyDetailField: View {
     @Environment(AssetStore.self) private var store
     let assetID: UUID
     let property: AssetProperty
+    let onEditLabel: (() -> Void)?
     @State private var text: String
     @FocusState private var isFocused: Bool
 
-    init(assetID: UUID, property: AssetProperty) {
+    init(assetID: UUID, property: AssetProperty, onEditLabel: (() -> Void)? = nil) {
         self.assetID = assetID
         self.property = property
+        self.onEditLabel = onEditLabel
         if case .currency(let d) = property.value { _text = State(initialValue: "\(d)") }
         else { _text = State(initialValue: "") }
     }
 
     var body: some View {
-        LabeledContent(property.definition.name) {
+        LabeledContent {
             TextField("", text: $text)
                 .keyboardType(.decimalPad)
                 .multilineTextAlignment(.trailing)
                 .focused($isFocused)
                 .onChange(of: isFocused) { _, focused in if !focused { commit() } }
+                .onChange(of: property.value) { _, newValue in
+                    guard !isFocused else { return }
+                    if case .currency(let d) = newValue { text = "\(d)" } else { text = "" }
+                }
+        } label: {
+            if let onEditLabel {
+                Button(property.definition.name) { onEditLabel() }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(.primary)
+            } else {
+                Text(property.definition.name)
+            }
         }
     }
 
@@ -701,6 +768,7 @@ private struct DateDetailRow: View {
     @Environment(AssetStore.self) private var store
     let assetID: UUID
     let property: AssetProperty
+    let onEditLabel: (() -> Void)?
 
     private var dateBinding: Binding<Date> {
         Binding(
@@ -710,7 +778,18 @@ private struct DateDetailRow: View {
     }
 
     var body: some View {
-        DatePicker(property.definition.name, selection: dateBinding, displayedComponents: .date)
+        LabeledContent {
+            DatePicker("", selection: dateBinding, displayedComponents: .date)
+                .labelsHidden()
+        } label: {
+            if let onEditLabel {
+                Button(property.definition.name) { onEditLabel() }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(.primary)
+            } else {
+                Text(property.definition.name)
+            }
+        }
     }
 }
 
@@ -719,6 +798,7 @@ private struct ComboListDetailRow: View {
     let assetID: UUID
     let property: AssetProperty
     let list: ComboListDefinition
+    let onEditLabel: (() -> Void)?
 
     private var selectionBinding: Binding<String> {
         Binding(
@@ -734,10 +814,21 @@ private struct ComboListDetailRow: View {
     }
 
     var body: some View {
-        Picker(property.definition.name, selection: selectionBinding) {
-            Text("—").tag("")
-            ForEach(list.allOptions, id: \.self) { option in
-                Text(option).tag(option)
+        LabeledContent {
+            Picker("", selection: selectionBinding) {
+                Text("—").tag("")
+                ForEach(list.allOptions, id: \.self) { option in
+                    Text(option).tag(option)
+                }
+            }
+            .labelsHidden()
+        } label: {
+            if let onEditLabel {
+                Button(property.definition.name) { onEditLabel() }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(.primary)
+            } else {
+                Text(property.definition.name)
             }
         }
     }

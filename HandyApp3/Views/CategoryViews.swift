@@ -325,14 +325,19 @@ struct CategoryPropertyDefsView: View {
             }
         }
         .sheet(isPresented: $addPropertyPresented) {
-            PropertyEditView { definition in
-                let prop = AssetProperty(definition: definition)
+            PropertyEditView { definition, value in
+                let prop = AssetProperty(definition: definition, value: value)
                 try? store.addTemplateProperty(prop, toCategoryID: category.id)
             }
         }
         .sheet(item: $propertyToEdit) { prop in
-            PropertyEditView(existing: prop.definition) { definition in
+            PropertyEditView(existing: prop) { definition, value in
                 try? store.updateTemplateProperty(id: prop.id, inCategoryID: category.id, name: definition.name, type: definition.type)
+                if let value {
+                    try? store.setTemplatePropertyValue(value, forPropertyID: prop.id, inCategoryID: category.id)
+                } else {
+                    try? store.removeTemplatePropertyValue(forPropertyID: prop.id, inCategoryID: category.id)
+                }
             }
         }
     }
@@ -391,6 +396,14 @@ private struct TemplateTextRow: View {
                 .focused($isFocused)
                 .onSubmit { commit() }
                 .onChange(of: isFocused) { _, focused in if !focused { commit() } }
+                .onChange(of: property.value) { _, newValue in
+                    guard !isFocused else { return }
+                    switch newValue {
+                    case .text(let s): text = s
+                    case .contact(let s): text = s
+                    default: text = ""
+                    }
+                }
         } label: {
             Button(property.definition.name) { onEditLabel() }
                 .buttonStyle(.plain)
@@ -430,6 +443,10 @@ private struct TemplateNumberRow: View {
                 .multilineTextAlignment(.trailing)
                 .focused($isFocused)
                 .onChange(of: isFocused) { _, focused in if !focused { commit() } }
+                .onChange(of: property.value) { _, newValue in
+                    guard !isFocused else { return }
+                    if case .number(let d) = newValue { text = "\(d)" } else { text = "" }
+                }
         } label: {
             Button(property.definition.name) { onEditLabel() }
                 .buttonStyle(.plain)
@@ -469,6 +486,10 @@ private struct TemplateCurrencyRow: View {
                 .multilineTextAlignment(.trailing)
                 .focused($isFocused)
                 .onChange(of: isFocused) { _, focused in if !focused { commit() } }
+                .onChange(of: property.value) { _, newValue in
+                    guard !isFocused else { return }
+                    if case .currency(let d) = newValue { text = "\(d)" } else { text = "" }
+                }
         } label: {
             Button(property.definition.name) { onEditLabel() }
                 .buttonStyle(.plain)
