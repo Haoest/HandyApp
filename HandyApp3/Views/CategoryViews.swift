@@ -268,6 +268,7 @@ struct CategoryPropertyDefsView: View {
     let category: AssetCategory
     @State private var iconPickerPresented = false
     @State private var addPropertyPresented = false
+    @State private var propertyToEdit: AssetProperty?
 
     var body: some View {
         Form {
@@ -292,7 +293,7 @@ struct CategoryPropertyDefsView: View {
 
             Section {
                 ForEach(category.propertyTemplates) { prop in
-                    TemplatePropertyRow(categoryID: category.id, property: prop)
+                    TemplatePropertyRow(categoryID: category.id, property: prop, onEditLabel: { propertyToEdit = prop })
                 }
             } header: {
                 Text("Default Values")
@@ -322,6 +323,11 @@ struct CategoryPropertyDefsView: View {
                 try? store.addTemplateProperty(prop, toCategoryID: category.id)
             }
         }
+        .sheet(item: $propertyToEdit) { prop in
+            PropertyEditView(existing: prop.definition) { definition in
+                try? store.updateTemplateProperty(id: prop.id, inCategoryID: category.id, name: definition.name, type: definition.type)
+            }
+        }
     }
 }
 
@@ -329,22 +335,27 @@ private struct TemplatePropertyRow: View {
     @Environment(AssetStore.self) private var store
     let categoryID: UUID
     let property: AssetProperty
+    let onEditLabel: () -> Void
 
     var body: some View {
         switch property.definition.type {
         case .basic(.text), .basic(.contact):
-            TemplateTextRow(categoryID: categoryID, property: property)
+            TemplateTextRow(categoryID: categoryID, property: property, onEditLabel: onEditLabel)
         case .basic(.number):
-            TemplateNumberRow(categoryID: categoryID, property: property)
+            TemplateNumberRow(categoryID: categoryID, property: property, onEditLabel: onEditLabel)
         case .basic(.currency):
-            TemplateCurrencyRow(categoryID: categoryID, property: property)
+            TemplateCurrencyRow(categoryID: categoryID, property: property, onEditLabel: onEditLabel)
         case .basic(.date):
-            TemplateDateRow(categoryID: categoryID, property: property)
+            TemplateDateRow(categoryID: categoryID, property: property, onEditLabel: onEditLabel)
         case .comboList(let list):
-            TemplateComboRow(categoryID: categoryID, property: property, list: list)
+            TemplateComboRow(categoryID: categoryID, property: property, list: list, onEditLabel: onEditLabel)
         default:
-            LabeledContent(property.definition.name) {
+            LabeledContent {
                 Text("—").foregroundStyle(.tertiary)
+            } label: {
+                Button(property.definition.name) { onEditLabel() }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(.primary)
             }
         }
     }
@@ -354,23 +365,29 @@ private struct TemplateTextRow: View {
     @Environment(AssetStore.self) private var store
     let categoryID: UUID
     let property: AssetProperty
+    let onEditLabel: () -> Void
     @State private var text: String
     @FocusState private var isFocused: Bool
 
-    init(categoryID: UUID, property: AssetProperty) {
+    init(categoryID: UUID, property: AssetProperty, onEditLabel: @escaping () -> Void) {
         self.categoryID = categoryID
         self.property = property
+        self.onEditLabel = onEditLabel
         if case .text(let s) = property.value { _text = State(initialValue: s) }
         else { _text = State(initialValue: "") }
     }
 
     var body: some View {
-        LabeledContent(property.definition.name) {
+        LabeledContent {
             TextField("", text: $text, axis: .vertical)
                 .multilineTextAlignment(.trailing)
                 .focused($isFocused)
                 .onSubmit { commit() }
                 .onChange(of: isFocused) { _, focused in if !focused { commit() } }
+        } label: {
+            Button(property.definition.name) { onEditLabel() }
+                .buttonStyle(.plain)
+                .foregroundStyle(.primary)
         }
     }
 
@@ -387,23 +404,29 @@ private struct TemplateNumberRow: View {
     @Environment(AssetStore.self) private var store
     let categoryID: UUID
     let property: AssetProperty
+    let onEditLabel: () -> Void
     @State private var text: String
     @FocusState private var isFocused: Bool
 
-    init(categoryID: UUID, property: AssetProperty) {
+    init(categoryID: UUID, property: AssetProperty, onEditLabel: @escaping () -> Void) {
         self.categoryID = categoryID
         self.property = property
+        self.onEditLabel = onEditLabel
         if case .number(let d) = property.value { _text = State(initialValue: "\(d)") }
         else { _text = State(initialValue: "") }
     }
 
     var body: some View {
-        LabeledContent(property.definition.name) {
+        LabeledContent {
             TextField("", text: $text)
                 .keyboardType(.decimalPad)
                 .multilineTextAlignment(.trailing)
                 .focused($isFocused)
                 .onChange(of: isFocused) { _, focused in if !focused { commit() } }
+        } label: {
+            Button(property.definition.name) { onEditLabel() }
+                .buttonStyle(.plain)
+                .foregroundStyle(.primary)
         }
     }
 
@@ -420,23 +443,29 @@ private struct TemplateCurrencyRow: View {
     @Environment(AssetStore.self) private var store
     let categoryID: UUID
     let property: AssetProperty
+    let onEditLabel: () -> Void
     @State private var text: String
     @FocusState private var isFocused: Bool
 
-    init(categoryID: UUID, property: AssetProperty) {
+    init(categoryID: UUID, property: AssetProperty, onEditLabel: @escaping () -> Void) {
         self.categoryID = categoryID
         self.property = property
+        self.onEditLabel = onEditLabel
         if case .currency(let d) = property.value { _text = State(initialValue: "\(d)") }
         else { _text = State(initialValue: "") }
     }
 
     var body: some View {
-        LabeledContent(property.definition.name) {
+        LabeledContent {
             TextField("", text: $text)
                 .keyboardType(.decimalPad)
                 .multilineTextAlignment(.trailing)
                 .focused($isFocused)
                 .onChange(of: isFocused) { _, focused in if !focused { commit() } }
+        } label: {
+            Button(property.definition.name) { onEditLabel() }
+                .buttonStyle(.plain)
+                .foregroundStyle(.primary)
         }
     }
 
@@ -453,6 +482,7 @@ private struct TemplateDateRow: View {
     @Environment(AssetStore.self) private var store
     let categoryID: UUID
     let property: AssetProperty
+    let onEditLabel: () -> Void
 
     private var dateBinding: Binding<Date> {
         Binding(
@@ -462,7 +492,14 @@ private struct TemplateDateRow: View {
     }
 
     var body: some View {
-        DatePicker(property.definition.name, selection: dateBinding, displayedComponents: .date)
+        LabeledContent {
+            DatePicker("", selection: dateBinding, displayedComponents: .date)
+                .labelsHidden()
+        } label: {
+            Button(property.definition.name) { onEditLabel() }
+                .buttonStyle(.plain)
+                .foregroundStyle(.primary)
+        }
     }
 }
 
@@ -471,6 +508,7 @@ private struct TemplateComboRow: View {
     let categoryID: UUID
     let property: AssetProperty
     let list: ComboListDefinition
+    let onEditLabel: () -> Void
 
     private var selectionBinding: Binding<String> {
         Binding(
@@ -486,11 +524,18 @@ private struct TemplateComboRow: View {
     }
 
     var body: some View {
-        Picker(property.definition.name, selection: selectionBinding) {
-            Text("—").tag("")
-            ForEach(list.allOptions, id: \.self) { option in
-                Text(option).tag(option)
+        LabeledContent {
+            Picker("", selection: selectionBinding) {
+                Text("—").tag("")
+                ForEach(list.allOptions, id: \.self) { option in
+                    Text(option).tag(option)
+                }
             }
+            .labelsHidden()
+        } label: {
+            Button(property.definition.name) { onEditLabel() }
+                .buttonStyle(.plain)
+                .foregroundStyle(.primary)
         }
     }
 }

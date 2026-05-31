@@ -105,6 +105,23 @@ final class AssetStore {
         cat.propertyTemplates.removeAll { $0.id == propID }
     }
 
+    func updateTemplateProperty(
+        id propID: UUID,
+        inCategoryID categoryID: UUID,
+        name: String? = nil,
+        type: PropertyType? = nil
+    ) throws {
+        guard let cat = categories[categoryID] else { throw AssetStoreError.categoryNotFound(categoryID) }
+        guard let prop = cat.propertyTemplates.first(where: { $0.id == propID }) else {
+            throw AssetStoreError.propertyNotFound(propID)
+        }
+        if let name { prop.definition.name = name }
+        if let type {
+            prop.definition.type = type
+            prop.value = nil
+        }
+    }
+
     // MARK: - Asset CRUD
 
     /// Creates an Asset, deep-copying the category's property templates into baseProperties.

@@ -7,9 +7,16 @@ struct PropertyEditView: View {
     @Environment(AssetStore.self) private var store
     @Environment(\.dismiss) private var dismiss
 
+    let existing: PropertyDefinition?
     let onSave: (PropertyDefinition) -> Void
 
-    @State private var name: String = ""
+    init(existing: PropertyDefinition? = nil, onSave: @escaping (PropertyDefinition) -> Void) {
+        self.existing = existing
+        self.onSave = onSave
+        _name = State(initialValue: existing?.name ?? "")
+    }
+
+    @State private var name: String
     @State private var selectedTypeIndex: Int = 0
     @FocusState private var nameFieldFocused: Bool
 
@@ -66,8 +73,13 @@ struct PropertyEditView: View {
                     .pickerStyle(.menu)
                 }
             }
-            .navigationTitle("New Property")
+            .navigationTitle(existing == nil ? "New Property" : "Edit Property")
             .navigationBarTitleDisplayMode(.inline)
+            .onAppear {
+                if let existing, let idx = availableTypes.firstIndex(where: { $0 == existing.type }) {
+                    selectedTypeIndex = idx
+                }
+            }
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") { dismiss() }
