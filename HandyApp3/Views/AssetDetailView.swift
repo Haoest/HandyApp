@@ -250,6 +250,8 @@ private struct PropertyDetailRow: View {
             DateDetailRow(assetID: assetID, property: property, onEditLabel: onEditLabel)
         case .comboList(let list):
             ComboListDetailRow(assetID: assetID, property: property, list: list, onEditLabel: onEditLabel)
+        case .composite(let def):
+            CompositeDetailLink(assetID: assetID, property: property, definition: def, onEditLabel: onEditLabel)
         default:
             LabeledContent {
                 Text("—").foregroundStyle(.tertiary)
@@ -407,6 +409,51 @@ private struct CurrencyDetailField: View {
             try? store.setPropertyValue(.currency(d), forDefinitionID: property.definition.id, onAssetID: assetID)
         } else if text.isEmpty {
             try? store.removePropertyValue(forDefinitionID: property.definition.id, fromAssetID: assetID)
+        }
+    }
+}
+
+private struct CompositeDetailLink: View {
+    @Environment(AssetStore.self) private var store
+    let assetID: UUID
+    let property: AssetProperty
+    let definition: CompositeTypeDefinition
+    let onEditLabel: (() -> Void)?
+
+    private var valueBinding: Binding<StoredValue?> {
+        Binding(
+            get: { property.value },
+            set: { newValue in
+                if let newValue {
+                    try? store.setPropertyValue(newValue, forDefinitionID: property.definition.id, onAssetID: assetID)
+                } else {
+                    try? store.removePropertyValue(forDefinitionID: property.definition.id, fromAssetID: assetID)
+                }
+            }
+        )
+    }
+
+    var body: some View {
+        // The trailing summary is the NavigationLink (drill-in to edit values); the
+        // label stays a rename Button for custom properties. Keeping them as separate
+        // tap targets avoids nesting a Button inside a NavigationLink.
+        LabeledContent {
+            NavigationLink {
+                CompositeEditView(definition: definition, value: valueBinding)
+            } label: {
+                let summary = property.value?.compositeSummary(for: definition) ?? ""
+                Text(summary.isEmpty ? "—" : summary)
+                    .foregroundStyle(summary.isEmpty ? .tertiary : .secondary)
+            }
+        } label: {
+            let title = "\(property.definition.name) (\(definition.fieldInitials))"
+            if let onEditLabel {
+                Button(title) { onEditLabel() }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(.primary)
+            } else {
+                Text(title)
+            }
         }
     }
 }

@@ -32,7 +32,7 @@ struct AssetEditView: View {
                 Section("Properties") {
                     ForEach(sortedProperties) { prop in
                         PropertyEditRow(
-                            property: prop,
+                            definition: prop.definition,
                             value: draftBinding(for: prop.definition.id)
                         )
                     }
@@ -147,25 +147,45 @@ private struct CategoryPickerContent: View {
 
 // MARK: - Property edit rows
 
-private struct PropertyEditRow: View {
-    let property: AssetProperty
+struct PropertyEditRow: View {
+    let definition: PropertyDefinition
     @Binding var value: StoredValue?
 
     var body: some View {
-        switch property.definition.type {
+        switch definition.type {
         case .basic(.text), .basic(.contact):
-            TextEditRow(label: property.definition.name, value: $value)
+            TextEditRow(label: definition.name, value: $value)
         case .basic(.number):
-            NumberEditRow(label: property.definition.name, value: $value)
+            NumberEditRow(label: definition.name, value: $value)
         case .basic(.currency):
-            CurrencyEditRow(label: property.definition.name, value: $value)
+            CurrencyEditRow(label: definition.name, value: $value)
         case .basic(.date):
-            DateEditRow(label: property.definition.name, value: $value)
+            DateEditRow(label: definition.name, value: $value)
         case .comboList(let list):
-            ComboListEditRow(label: property.definition.name, list: list, value: $value)
+            ComboListEditRow(label: definition.name, list: list, value: $value)
+        case .composite(let def):
+            CompositeFieldLink(label: definition.name, definition: def, value: $value)
         default:
-            LabeledContent(property.definition.name) {
+            LabeledContent(definition.name) {
                 Text("—").foregroundStyle(.tertiary)
+            }
+        }
+    }
+}
+
+private struct CompositeFieldLink: View {
+    let label: String
+    let definition: CompositeTypeDefinition
+    @Binding var value: StoredValue?
+
+    var body: some View {
+        NavigationLink {
+            CompositeEditView(definition: definition, value: $value)
+        } label: {
+            LabeledContent("\(label) (\(definition.fieldInitials))") {
+                let summary = value?.compositeSummary(for: definition) ?? ""
+                Text(summary.isEmpty ? "—" : summary)
+                    .foregroundStyle(summary.isEmpty ? .tertiary : .secondary)
             }
         }
     }
