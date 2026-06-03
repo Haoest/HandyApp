@@ -6,12 +6,14 @@ extension BuiltInTypes {
 
     /// Shared appliance fields in display order.
     static let applianceBaseDefinitions: [PropertyDefinition] = [
-        PropertyDefinition(name: "Make",          type: .basic(.text),     isRequired: true),
-        PropertyDefinition(name: "Purchase date", type: .basic(.date),     isRequired: false),
-        PropertyDefinition(name: "Price",         type: .basic(.currency), isRequired: false),
-        PropertyDefinition(name: "Warranty",      type: .basic(.text),     isRequired: false),
-        PropertyDefinition(name: "Retailer",      type: .basic(.text),     isRequired: false),
-        PropertyDefinition(name: "Notes",         type: .basic(.text),     isRequired: false),
+        PropertyDefinition(name: "Make",          type: .basic(.text),          isRequired: true),
+        PropertyDefinition(name: "Purchase date", type: .basic(.date),          isRequired: false),
+        PropertyDefinition(name: "Price",         type: .basic(.currency),      isRequired: false),
+        PropertyDefinition(name: "Size",          type: .composite(size3D()),   isRequired: false),
+        PropertyDefinition(name: "Warranty",      type: .basic(.text),          isRequired: false),
+        PropertyDefinition(name: "Retailer",      type: .basic(.text),          isRequired: false),
+        PropertyDefinition(name: "Notes",         type: .basic(.text),          isRequired: false),
+        
     ]
 
     /// SF Symbol name for each system category. Appliance descendants share the appliance icon.
