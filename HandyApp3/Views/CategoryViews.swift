@@ -69,7 +69,7 @@ struct CategoryTab: View {
                     if let cat = store.categories[id] { CategoryPropertyDefsView(category: cat) }
                 }
             }
-            .sheet(isPresented: $newCategoryPresented) { NewCategoryView() }
+            .sheet(isPresented: $newCategoryPresented) { CategoryNewView() }
             .sheet(item: $assetToEdit) { asset in NavigationStack { AssetEditView(asset: asset) } }
         }
     }
@@ -151,7 +151,7 @@ private struct CategoryRow: View {
 
 // MARK: - Icon picker
 
-private struct IconPickerView: View {
+struct IconPickerView: View {
     let current: String
     let onSelect: (String) -> Void
 
@@ -361,6 +361,8 @@ private struct TemplatePropertyRow: View {
             TemplateDateRow(categoryID: categoryID, property: property, onEditLabel: onEditLabel)
         case .comboList(let list):
             TemplateComboRow(categoryID: categoryID, property: property, list: list, onEditLabel: onEditLabel)
+        case .composite(let def):
+            TemplateCompositeRow(categoryID: categoryID, property: property, definition: def, onEditLabel: onEditLabel)
         default:
             LabeledContent {
                 Text("—").foregroundStyle(.tertiary)
@@ -525,6 +527,43 @@ private struct TemplateDateRow: View {
                 .labelsHidden()
         } label: {
             Button(property.definition.name) { onEditLabel() }
+                .buttonStyle(.plain)
+                .foregroundStyle(.primary)
+        }
+    }
+}
+
+private struct TemplateCompositeRow: View {
+    @Environment(AssetStore.self) private var store
+    let categoryID: UUID
+    let property: AssetProperty
+    let definition: CompositeTypeDefinition
+    let onEditLabel: () -> Void
+
+    private var valueBinding: Binding<StoredValue?> {
+        Binding(
+            get: { property.value },
+            set: { newValue in
+                if let newValue {
+                    try? store.setTemplatePropertyValue(newValue, forPropertyID: property.id, inCategoryID: categoryID)
+                } else {
+                    try? store.removeTemplatePropertyValue(forPropertyID: property.id, inCategoryID: categoryID)
+                }
+            }
+        )
+    }
+
+    var body: some View {
+        LabeledContent {
+            NavigationLink {
+                CompositeEditView(definition: definition, value: valueBinding)
+            } label: {
+                let summary = property.value?.compositeSummary(for: definition) ?? ""
+                Text(summary.isEmpty ? "—" : summary)
+                    .foregroundStyle(summary.isEmpty ? .tertiary : .secondary)
+            }
+        } label: {
+            Button("\(property.definition.name) (\(definition.fieldInitials))") { onEditLabel() }
                 .buttonStyle(.plain)
                 .foregroundStyle(.primary)
         }

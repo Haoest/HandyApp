@@ -52,17 +52,6 @@ struct PreferenceTab: View {
     }
 }
 
-// MARK: - Stub sheets
-
-struct NewCategoryView: View {
-    var body: some View {
-        NavigationStack {
-            Text("New Category")
-                .navigationTitle("New Category")
-        }
-    }
-}
-
 // MARK: - Preview
 
 #Preview {
