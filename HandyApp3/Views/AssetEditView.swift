@@ -26,7 +26,18 @@ struct AssetEditView: View {
     var body: some View {
         Form {
             Section("Name") {
-                TextField("Asset name", text: $name)
+                HStack {
+                    TextField("Asset name", text: $name)
+                    if !name.isEmpty {
+                        Button {
+                            name = ""
+                        } label: {
+                            Image(systemName: "xmark.circle.fill")
+                                .foregroundStyle(.secondary)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
             }
             if !sortedProperties.isEmpty {
                 Section("Properties") {

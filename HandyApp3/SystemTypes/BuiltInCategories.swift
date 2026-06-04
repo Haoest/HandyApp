@@ -28,6 +28,7 @@ extension BuiltInTypes {
             .hvac:               applianceIcon,
             .range:              applianceIcon,
             .clothDryer:         applianceIcon,
+            .noCategory:         "tray",
         ]
     }()
 
@@ -58,6 +59,9 @@ extension BuiltInTypes {
             .hvac:         applianceBase,
             .range:      applianceBase + [powerSourceField],
             .clothDryer: applianceBase + [powerSourceField],
+            .noCategory: [
+                PropertyDefinition(name: "Notes", type: .basic(.text), isRequired: false),
+            ],
         ]
     }()
 }
