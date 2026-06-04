@@ -32,4 +32,3 @@ An `Asset` is a named physical object. It belongs to one `AssetCategory`, which 
 - enable icloud backup
 - application version
 - asset view needs a view option: by single tree, by multiple tree, by category
-- add validation do not allow duplicate category name, asset name
