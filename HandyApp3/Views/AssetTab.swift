@@ -111,6 +111,7 @@ private struct AssetTreeRow: View {
     let asset: Asset
     let depth: Int
     @Binding var expanded: Set<UUID>
+    @State private var showDetail = false
 
     private var children: [Asset] {
         asset.children
@@ -141,15 +142,19 @@ private struct AssetTreeRow: View {
                 }
                 .buttonStyle(.plain)
 
-                NavigationLink {
-                    AssetDetailView(asset: asset)
+                Button {
+                    showDetail = true
                 } label: {
-                    Image(systemName: "info.circle")
-                        .foregroundStyle(.tint)
+                    Image(systemName: "chevron.right")
+                        .font(.footnote.weight(.semibold))
+                        .foregroundStyle(.tertiary)
                 }
                 .buttonStyle(.plain)
             }
             .listRowInsets(EdgeInsets(top: 6, leading: 16 + CGFloat(depth) * 20, bottom: 6, trailing: 16))
+            .navigationDestination(isPresented: $showDetail) {
+                AssetDetailView(asset: asset)
+            }
 
             if isExpanded {
                 ForEach(children) { child in

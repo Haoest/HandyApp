@@ -98,7 +98,7 @@ struct AssetDetailView: View {
 
 // MARK: - Belongs-to row
 
-private struct BelongsToRow: View {
+struct BelongsToRow: View {
     @Environment(AssetStore.self) private var store
     let asset: Asset
     @State private var pickerPresented = false
@@ -133,7 +133,7 @@ private struct BelongsToRow: View {
     }
 }
 
-private struct AssetParentPickerSheet: View {
+struct AssetParentPickerSheet: View {
     @Environment(AssetStore.self) private var store
     @Environment(\.dismiss) private var dismiss
     let asset: Asset

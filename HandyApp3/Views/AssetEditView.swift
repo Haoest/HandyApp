@@ -38,6 +38,9 @@ struct AssetEditView: View {
                     }
                 }
             }
+            Section("Relationship") {
+                BelongsToRow(asset: asset)
+            }
         }
         .navigationTitle("New \(asset.category.name)")
         .navigationBarTitleDisplayMode(.inline)
