@@ -12,21 +12,50 @@ final class HandyApp3Tests: XCTestCase {
 
     // MARK: - AssetCategory CRUD
 
-    func testCreateCategory() {
-        let cat = store.createCategory(name: "Appliance")
+    func testCreateCategory() throws {
+        let cat = try store.createCategory(name: "Appliance")
         XCTAssertEqual(store.allCategories.count, 1)
         XCTAssertEqual(cat.name, "Appliance")
         XCTAssertTrue(cat.propertyTemplates.isEmpty)
     }
 
+    func testCreateCategoryDuplicateNameThrows() throws {
+        try store.createCategory(name: "Tools")
+        XCTAssertThrowsError(try store.createCategory(name: "Tools")) { error in
+            XCTAssertEqual(error as? AssetStoreError, .duplicateCategoryName("Tools"))
+        }
+    }
+
+    func testCreateCategoryDuplicateNameCaseInsensitive() throws {
+        try store.createCategory(name: "Tools")
+        XCTAssertThrowsError(try store.createCategory(name: "tools")) { error in
+            XCTAssertEqual(error as? AssetStoreError, .duplicateCategoryName("tools"))
+        }
+    }
+
+    func testCreateCategoryDuplicateNameTrimsWhitespace() throws {
+        try store.createCategory(name: "Tools")
+        XCTAssertThrowsError(try store.createCategory(name: "  Tools  ")) { error in
+            XCTAssertEqual(error as? AssetStoreError, .duplicateCategoryName("Tools"))
+        }
+    }
+
+    func testCreateCategoryAfterDeleteAllowsSameName() throws {
+        let cat = try store.createCategory(name: "Tools")
+        try store.deleteCategory(id: cat.id)
+        let cat2 = try store.createCategory(name: "Tools")
+        XCTAssertEqual(cat2.name, "Tools")
+        XCTAssertEqual(store.allCategories.count, 1)
+    }
+
     func testUpdateCategoryName() throws {
-        let cat = store.createCategory(name: "Old")
+        let cat = try store.createCategory(name: "Old")
         try store.updateCategory(id: cat.id, name: "New")
         XCTAssertEqual(cat.name, "New")
     }
 
     func testDeleteCategory() throws {
-        let cat = store.createCategory(name: "Temp")
+        let cat = try store.createCategory(name: "Temp")
         try store.deleteCategory(id: cat.id)
         XCTAssertTrue(store.allCategories.isEmpty)
     }
@@ -38,7 +67,7 @@ final class HandyApp3Tests: XCTestCase {
     }
 
     func testAddTemplateProperty() throws {
-        let cat = store.createCategory(name: "Car")
+        let cat = try store.createCategory(name: "Car")
         let def = PropertyDefinition(name: "Make", type: .basic(.text))
         let template = AssetProperty(definition: def)
         try store.addTemplateProperty(template, toCategoryID: cat.id)
@@ -47,7 +76,7 @@ final class HandyApp3Tests: XCTestCase {
     }
 
     func testRemoveTemplateProperty() throws {
-        let cat = store.createCategory(name: "Car")
+        let cat = try store.createCategory(name: "Car")
         let def = PropertyDefinition(name: "Make", type: .basic(.text))
         let template = AssetProperty(definition: def)
         try store.addTemplateProperty(template, toCategoryID: cat.id)
@@ -58,7 +87,7 @@ final class HandyApp3Tests: XCTestCase {
     // MARK: - Asset creation from category
 
     func testCreateAssetCopiesTemplates() throws {
-        let cat = store.createCategory(name: "Car")
+        let cat = try store.createCategory(name: "Car")
         let makeDef = PropertyDefinition(name: "Make", type: .basic(.text))
         let yearDef = PropertyDefinition(name: "Year", type: .basic(.number))
         try store.addTemplateProperty(AssetProperty(definition: makeDef), toCategoryID: cat.id)
@@ -73,7 +102,7 @@ final class HandyApp3Tests: XCTestCase {
     }
 
     func testCreateAssetBasePropertiesAreIndependent() throws {
-        let cat = store.createCategory(name: "Car")
+        let cat = try store.createCategory(name: "Car")
         let def = PropertyDefinition(name: "Make", type: .basic(.text))
         try store.addTemplateProperty(AssetProperty(definition: def), toCategoryID: cat.id)
 
@@ -91,7 +120,7 @@ final class HandyApp3Tests: XCTestCase {
     }
 
     func testCreateAssetWithTemplateDefaultValue() throws {
-        let cat = store.createCategory(name: "Car")
+        let cat = try store.createCategory(name: "Car")
         let def = PropertyDefinition(name: "Fuel", type: .basic(.text))
         let template = AssetProperty(definition: def, value: .text("Gasoline"))
         try store.addTemplateProperty(template, toCategoryID: cat.id)
@@ -103,7 +132,7 @@ final class HandyApp3Tests: XCTestCase {
     // MARK: - Property value management
 
     func testSetBasePropertyValue() throws {
-        let cat = store.createCategory(name: "Car")
+        let cat = try store.createCategory(name: "Car")
         let def = PropertyDefinition(name: "Make", type: .basic(.text))
         try store.addTemplateProperty(AssetProperty(definition: def), toCategoryID: cat.id)
         let asset = try store.createAsset(name: "My Car", categoryID: cat.id)
@@ -113,7 +142,7 @@ final class HandyApp3Tests: XCTestCase {
     }
 
     func testSetPropertyValueTypeMismatch() throws {
-        let cat = store.createCategory(name: "Car")
+        let cat = try store.createCategory(name: "Car")
         let def = PropertyDefinition(name: "Year", type: .basic(.number))
         try store.addTemplateProperty(AssetProperty(definition: def), toCategoryID: cat.id)
         let asset = try store.createAsset(name: "My Car", categoryID: cat.id)
@@ -126,7 +155,7 @@ final class HandyApp3Tests: XCTestCase {
     }
 
     func testRemovePropertyValue() throws {
-        let cat = store.createCategory(name: "Car")
+        let cat = try store.createCategory(name: "Car")
         let def = PropertyDefinition(name: "Make", type: .basic(.text))
         try store.addTemplateProperty(AssetProperty(definition: def), toCategoryID: cat.id)
         let asset = try store.createAsset(name: "My Car", categoryID: cat.id)
@@ -138,7 +167,7 @@ final class HandyApp3Tests: XCTestCase {
     }
 
     func testSetPropertyValueUnknownDefinition() throws {
-        let cat = store.createCategory(name: "Empty")
+        let cat = try store.createCategory(name: "Empty")
         let asset = try store.createAsset(name: "X", categoryID: cat.id)
         XCTAssertThrowsError(
             try store.setPropertyValue(.text("v"), forDefinitionID: UUID(), onAssetID: asset.id)
@@ -150,7 +179,7 @@ final class HandyApp3Tests: XCTestCase {
     // MARK: - Custom properties
 
     func testAddCustomProperty() throws {
-        let cat = store.createCategory(name: "Car")
+        let cat = try store.createCategory(name: "Car")
         let asset = try store.createAsset(name: "My Car", categoryID: cat.id)
         let def = PropertyDefinition(name: "Notes", type: .basic(.text))
 
@@ -161,7 +190,7 @@ final class HandyApp3Tests: XCTestCase {
     }
 
     func testAddCustomPropertyWithInitialValue() throws {
-        let cat = store.createCategory(name: "Car")
+        let cat = try store.createCategory(name: "Car")
         let asset = try store.createAsset(name: "My Car", categoryID: cat.id)
         let def = PropertyDefinition(name: "Notes", type: .basic(.text))
 
@@ -170,7 +199,7 @@ final class HandyApp3Tests: XCTestCase {
     }
 
     func testSetCustomPropertyValue() throws {
-        let cat = store.createCategory(name: "Car")
+        let cat = try store.createCategory(name: "Car")
         let asset = try store.createAsset(name: "My Car", categoryID: cat.id)
         let def = PropertyDefinition(name: "Notes", type: .basic(.text))
         let prop = try store.addCustomProperty(definition: def, toAssetID: asset.id)
@@ -180,7 +209,7 @@ final class HandyApp3Tests: XCTestCase {
     }
 
     func testRemoveCustomProperty() throws {
-        let cat = store.createCategory(name: "Car")
+        let cat = try store.createCategory(name: "Car")
         let asset = try store.createAsset(name: "My Car", categoryID: cat.id)
         let def = PropertyDefinition(name: "Notes", type: .basic(.text))
         let prop = try store.addCustomProperty(definition: def, toAssetID: asset.id)
@@ -190,7 +219,7 @@ final class HandyApp3Tests: XCTestCase {
     }
 
     func testUpdateCustomPropertyClearsValueOnTypeChange() throws {
-        let cat = store.createCategory(name: "Car")
+        let cat = try store.createCategory(name: "Car")
         let asset = try store.createAsset(name: "My Car", categoryID: cat.id)
         let def = PropertyDefinition(name: "Mileage", type: .basic(.number))
         let prop = try store.addCustomProperty(definition: def, value: .number(50000), toAssetID: asset.id)
@@ -203,7 +232,7 @@ final class HandyApp3Tests: XCTestCase {
     // MARK: - Asset value helper
 
     func testAssetValueHelperChecksBaseAndCustom() throws {
-        let cat = store.createCategory(name: "Car")
+        let cat = try store.createCategory(name: "Car")
         let baseDef = PropertyDefinition(name: "Make", type: .basic(.text))
         try store.addTemplateProperty(AssetProperty(definition: baseDef), toCategoryID: cat.id)
         let asset = try store.createAsset(name: "My Car", categoryID: cat.id)
@@ -223,7 +252,7 @@ final class HandyApp3Tests: XCTestCase {
     // MARK: - Asset lifecycle
 
     func testDeleteAsset() throws {
-        let cat = store.createCategory(name: "Car")
+        let cat = try store.createCategory(name: "Car")
         let asset = try store.createAsset(name: "My Car", categoryID: cat.id)
         try store.deleteAsset(id: asset.id)
         XCTAssertNil(store.assets[asset.id])
@@ -236,8 +265,8 @@ final class HandyApp3Tests: XCTestCase {
     }
 
     func testAssetsByCategoryID() throws {
-        let car = store.createCategory(name: "Car")
-        let appliance = store.createCategory(name: "Appliance")
+        let car = try store.createCategory(name: "Car")
+        let appliance = try store.createCategory(name: "Appliance")
         let a1 = try store.createAsset(name: "Camry", categoryID: car.id)
         let a2 = try store.createAsset(name: "Corolla", categoryID: car.id)
         _ = try store.createAsset(name: "Fridge", categoryID: appliance.id)
@@ -249,7 +278,7 @@ final class HandyApp3Tests: XCTestCase {
     // MARK: - Asset containment hierarchy
 
     func testAddChild() throws {
-        let cat = store.createCategory(name: "Generic")
+        let cat = try store.createCategory(name: "Generic")
         let house = try store.createAsset(name: "House", categoryID: cat.id)
         let fridge = try store.createAsset(name: "Fridge", categoryID: cat.id)
 
@@ -260,7 +289,7 @@ final class HandyApp3Tests: XCTestCase {
     }
 
     func testHierarchyCycleSelf() throws {
-        let cat = store.createCategory(name: "Generic")
+        let cat = try store.createCategory(name: "Generic")
         let asset = try store.createAsset(name: "X", categoryID: cat.id)
 
         XCTAssertThrowsError(try store.addChild(assetID: asset.id, toParentID: asset.id)) { error in
@@ -269,7 +298,7 @@ final class HandyApp3Tests: XCTestCase {
     }
 
     func testHierarchyCycleAncestor() throws {
-        let cat = store.createCategory(name: "Generic")
+        let cat = try store.createCategory(name: "Generic")
         let a = try store.createAsset(name: "A", categoryID: cat.id)
         let b = try store.createAsset(name: "B", categoryID: cat.id)
         let c = try store.createAsset(name: "C", categoryID: cat.id)
@@ -283,7 +312,7 @@ final class HandyApp3Tests: XCTestCase {
     }
 
     func testRemoveFromParent() throws {
-        let cat = store.createCategory(name: "Generic")
+        let cat = try store.createCategory(name: "Generic")
         let house = try store.createAsset(name: "House", categoryID: cat.id)
         let fridge = try store.createAsset(name: "Fridge", categoryID: cat.id)
         try store.addChild(assetID: fridge.id, toParentID: house.id)
@@ -294,7 +323,7 @@ final class HandyApp3Tests: XCTestCase {
     }
 
     func testMoveAsset() throws {
-        let cat = store.createCategory(name: "Generic")
+        let cat = try store.createCategory(name: "Generic")
         let house = try store.createAsset(name: "House", categoryID: cat.id)
         let garage = try store.createAsset(name: "Garage", categoryID: cat.id)
         let car = try store.createAsset(name: "Car", categoryID: cat.id)
@@ -307,7 +336,7 @@ final class HandyApp3Tests: XCTestCase {
     }
 
     func testDeleteAssetPromotesChildrenToGrandparent() throws {
-        let cat = store.createCategory(name: "Generic")
+        let cat = try store.createCategory(name: "Generic")
         let house = try store.createAsset(name: "House", categoryID: cat.id)
         let room = try store.createAsset(name: "Room", categoryID: cat.id)
         let lamp = try store.createAsset(name: "Lamp", categoryID: cat.id)
@@ -322,7 +351,7 @@ final class HandyApp3Tests: XCTestCase {
     }
 
     func testRootAssets() throws {
-        let cat = store.createCategory(name: "Generic")
+        let cat = try store.createCategory(name: "Generic")
         let house = try store.createAsset(name: "House", categoryID: cat.id)
         let fridge = try store.createAsset(name: "Fridge", categoryID: cat.id)
         try store.addChild(assetID: fridge.id, toParentID: house.id)
@@ -351,7 +380,7 @@ final class HandyApp3Tests: XCTestCase {
         store.seedBuiltInTypes()
         let wxl = store.allCompositeTypes.first(where: { $0.name == "W × L" })!
 
-        let cat = store.createCategory(name: "Room")
+        let cat = try store.createCategory(name: "Room")
         let def = PropertyDefinition(name: "Dimensions", type: .composite(wxl))
         try store.addTemplateProperty(AssetProperty(definition: def), toCategoryID: cat.id)
         let asset = try store.createAsset(name: "Living Room", categoryID: cat.id)
@@ -369,7 +398,7 @@ final class HandyApp3Tests: XCTestCase {
         store.seedBuiltInTypes()
         let wxl = store.allCompositeTypes.first(where: { $0.name == "W × L" })!
 
-        let cat = store.createCategory(name: "Room")
+        let cat = try store.createCategory(name: "Room")
         let def = PropertyDefinition(name: "Dimensions", type: .composite(wxl))
         try store.addTemplateProperty(AssetProperty(definition: def), toCategoryID: cat.id)
         let asset = try store.createAsset(name: "Living Room", categoryID: cat.id)
@@ -396,7 +425,7 @@ final class HandyApp3Tests: XCTestCase {
         store.seedBuiltInComboLists()
         let powerSource = store.allComboListDefinitions.first(where: { $0.name == "Power Source" })!
 
-        let cat = store.createCategory(name: "Appliance")
+        let cat = try store.createCategory(name: "Appliance")
         let def = PropertyDefinition(name: "Power", type: .comboList(powerSource))
         try store.addTemplateProperty(AssetProperty(definition: def), toCategoryID: cat.id)
         let asset = try store.createAsset(name: "Range", categoryID: cat.id)
@@ -405,14 +434,12 @@ final class HandyApp3Tests: XCTestCase {
         XCTAssertEqual(asset.baseProperties[0].value, .text("Gas"))
     }
 
-
-
     // MARK: - Real-world scenario
 
     func testHouseWithRoomAndAppliance() throws {
-        let houseCat = store.createCategory(name: "House")
-        let roomCat = store.createCategory(name: "Room")
-        let applianceCat = store.createCategory(name: "Appliance")
+        let houseCat = try store.createCategory(name: "House")
+        let roomCat = try store.createCategory(name: "Room")
+        let applianceCat = try store.createCategory(name: "Appliance")
 
         let house = try store.createAsset(name: "My House", categoryID: houseCat.id)
         let kitchen = try store.createAsset(name: "Kitchen", categoryID: roomCat.id)

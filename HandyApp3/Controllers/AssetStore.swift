@@ -24,6 +24,8 @@ enum AssetStoreError: Error, Equatable {
     case propertyNotFound(UUID)
     /// Attempted to add a child that already has a parent; call removeFromParent first.
     case assetAlreadyHasParent(UUID)
+    /// A category with the given name already exists.
+    case duplicateCategoryName(String)
 }
 
 // MARK: - AssetStore
@@ -50,8 +52,12 @@ final class AssetStore {
     // MARK: - AssetCategory CRUD
 
     @discardableResult
-    func createCategory(name: String, iconName: String = "square.grid.2x2", propertyTemplates: [AssetProperty] = []) -> AssetCategory {
-        let cat = AssetCategory(name: name, iconName: iconName, propertyTemplates: propertyTemplates)
+    func createCategory(name: String, iconName: String = "square.grid.2x2", propertyTemplates: [AssetProperty] = []) throws -> AssetCategory {
+        let trimmed = name.trimmingCharacters(in: .whitespaces)
+        if categories.values.contains(where: { $0.name.caseInsensitiveCompare(trimmed) == .orderedSame }) {
+            throw AssetStoreError.duplicateCategoryName(trimmed)
+        }
+        let cat = AssetCategory(name: trimmed, iconName: iconName, propertyTemplates: propertyTemplates)
         categories[cat.id] = cat
         return cat
     }

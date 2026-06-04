@@ -10,6 +10,7 @@ struct CategoryNewView: View {
     @State private var iconPickerPresented = false
     @State private var addPropertyPresented = false
     @State private var propertyToEdit: AssetProperty?
+    @State private var showDuplicateNameAlert = false
 
     var body: some View {
         NavigationStack {
@@ -107,15 +108,24 @@ struct CategoryNewView: View {
                     }
                 }
             }
+            .alert("Duplicate Name", isPresented: $showDuplicateNameAlert) {
+                Button("OK", role: .cancel) {}
+            } message: {
+                Text("A category named \"\(name.trimmingCharacters(in: .whitespaces))\" already exists.")
+            }
         }
     }
 
     private func save() {
-        _ = store.createCategory(
-            name: name.trimmingCharacters(in: .whitespaces),
-            iconName: iconName,
-            propertyTemplates: properties
-        )
-        dismiss()
+        do {
+            try store.createCategory(
+                name: name.trimmingCharacters(in: .whitespaces),
+                iconName: iconName,
+                propertyTemplates: properties
+            )
+            dismiss()
+        } catch AssetStoreError.duplicateCategoryName {
+            showDuplicateNameAlert = true
+        } catch {}
     }
 }

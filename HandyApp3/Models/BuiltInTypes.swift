@@ -55,7 +55,9 @@ extension AssetStore {
         for (key, defs) in BuiltInTypes.categoryTemplates {
             guard !categories.values.contains(where: { $0.name == key.rawValue }) else { continue }
             let icon = BuiltInTypes.categoryIcons[key] ?? "square.grid.2x2"
-            seeded.append(createCategory(name: key.rawValue, iconName: icon, propertyTemplates: defs.map { AssetProperty(definition: $0) }))
+            if let cat = try? createCategory(name: key.rawValue, iconName: icon, propertyTemplates: defs.map { AssetProperty(definition: $0) }) {
+                seeded.append(cat)
+            }
         }
         return seeded
     }
