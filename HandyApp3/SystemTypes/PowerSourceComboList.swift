@@ -4,7 +4,7 @@ extension BuiltInTypes {
 
     static func powerSourceComboList() -> ComboListDefinition {
         ComboListDefinition(
-            name: "PowerSourceComboList",
+            name: "Power Source",
             systemOptions: [
                 "Electricity",
                 "Natural Gas",

@@ -62,13 +62,12 @@ extension AssetStore {
         return seeded
     }
 
-    /// Registers built-in composite *value* types (2D Size, 3D Size, Image JPG). Idempotent.
+    /// Registers built-in composite *value* types (2D Size, 3D Size). Idempotent.
     @discardableResult
     func seedBuiltInTypes() -> [CompositeTypeDefinition] {
         let templates: [CompositeTypeDefinition] = [
             BuiltInTypes.size2D(),
             BuiltInTypes.size3D(),
-            BuiltInTypes.imageJPG(),
         ]
         var seeded: [CompositeTypeDefinition] = []
         for template in templates {

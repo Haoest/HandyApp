@@ -40,11 +40,6 @@
                BlueprintName = "HandyApp3Tests"
                ReferencedContainer = "container:HandyApp3.xcodeproj">
             </BuildableReference>
-            <SkippedTests>
-               <Test
-                  Identifier = "HandyApp3Tests/testCompositeRequiredFieldMissing()">
-               </Test>
-            </SkippedTests>
          </TestableReference>
          <TestableReference
             skipped = "NO"

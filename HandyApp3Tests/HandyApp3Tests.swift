@@ -361,13 +361,13 @@ final class HandyApp3Tests: XCTestCase {
         XCTAssertEqual(roots[0].id, house.id)
     }
 
-    // MARK: - Composite value type (W × L)
+    // MARK: - Composite value type
 
     func testSeedBuiltInCompositeTypes() {
         store.seedBuiltInTypes()
         XCTAssertEqual(store.allCompositeTypes.count, 2)
-        XCTAssertTrue(store.allCompositeTypes.contains(where: { $0.name == "W × L" }))
-        XCTAssertTrue(store.allCompositeTypes.contains(where: { $0.name == "W × L × H" }))
+        XCTAssertTrue(store.allCompositeTypes.contains(where: { $0.name == "2D Size" }))
+        XCTAssertTrue(store.allCompositeTypes.contains(where: { $0.name == "3D Size" }))
     }
 
     func testSeedBuiltInTypesIdempotent() {
@@ -378,7 +378,7 @@ final class HandyApp3Tests: XCTestCase {
 
     func testSetCompositePropertyValue() throws {
         store.seedBuiltInTypes()
-        let wxl = store.allCompositeTypes.first(where: { $0.name == "W × L" })!
+        let wxl = store.allCompositeTypes.first(where: { $0.name == "2D Size" })!
 
         let cat = try store.createCategory(name: "Room")
         let def = PropertyDefinition(name: "Dimensions", type: .composite(wxl))
@@ -396,7 +396,7 @@ final class HandyApp3Tests: XCTestCase {
 
     func testCompositeRequiredFieldMissing() throws {
         store.seedBuiltInTypes()
-        let wxl = store.allCompositeTypes.first(where: { $0.name == "W × L" })!
+        let wxl = store.allCompositeTypes.first(where: { $0.name == "2D Size" })!
 
         let cat = try store.createCategory(name: "Room")
         let def = PropertyDefinition(name: "Dimensions", type: .composite(wxl))
