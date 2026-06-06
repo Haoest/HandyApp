@@ -7,5 +7,5 @@ enum SystemCategory: String {
     case refrigerator       = "Refrigerator"
     case hvac               = "HVAC"
     case range              = "Range"
-    case noCategory         = "(No category)"
+    case noCategory         = "Uncategorized"
 }
