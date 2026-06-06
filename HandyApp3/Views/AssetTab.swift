@@ -90,14 +90,23 @@ struct AssetTab: View {
             }
             .onAppear {
                 guard let id = router.focusedCategoryID else { return }
-                DispatchQueue.main.async {
-                    withAnimation { proxy.scrollTo(id, anchor: .top) }
-                }
+                DispatchQueue.main.async { flashFocus(id, proxy: proxy) }
             }
             .onChange(of: router.focusedCategoryID) { _, id in
                 guard let id else { return }
-                withAnimation { proxy.scrollTo(id, anchor: .top) }
+                flashFocus(id, proxy: proxy)
             }
+        }
+    }
+
+    /// Scrolls the focused category into view, then clears the highlight after a
+    /// brief pause so it reads as a confirmation flash rather than a sticky selection.
+    /// Bails on clearing if a newer focus has replaced this one mid-wait.
+    private func flashFocus(_ id: UUID, proxy: ScrollViewProxy) {
+        withAnimation { proxy.scrollTo(id, anchor: .top) }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.8) {
+            guard router.focusedCategoryID == id else { return }
+            withAnimation { router.focusedCategoryID = nil }
         }
     }
 

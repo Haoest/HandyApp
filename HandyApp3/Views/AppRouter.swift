@@ -12,7 +12,8 @@ final class AppRouter {
     var selectedTab: AppTab = .home
 
     /// When non-nil, the Assets tab switches to "All", scrolls that category into
-    /// view, and draws a highlighted border around it. Persists so the highlight
-    /// reads as the current selection until another category is chosen.
+    /// view, and flashes a highlighted border around it. The Assets tab clears this
+    /// back to nil after a brief pause, so it reads as a confirmation cue rather than
+    /// a persistent selection.
     var focusedCategoryID: UUID?
 }
