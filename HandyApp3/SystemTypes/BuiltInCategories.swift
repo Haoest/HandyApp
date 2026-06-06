@@ -24,10 +24,8 @@ extension BuiltInTypes {
             .automobile:         "car",
             .appliance:          applianceIcon,
             .refrigerator:       applianceIcon,
-            .clothWasher:        applianceIcon,
             .hvac:               applianceIcon,
             .range:              applianceIcon,
-            .clothDryer:         applianceIcon,
             .noCategory:         "tray",
         ]
     }()
@@ -55,10 +53,8 @@ extension BuiltInTypes {
             ],
             .appliance:    applianceBase,
             .refrigerator: applianceBase,
-            .clothWasher:  applianceBase,
             .hvac:         applianceBase,
             .range:      applianceBase + [powerSourceField],
-            .clothDryer: applianceBase + [powerSourceField],
             .noCategory: [
                 PropertyDefinition(name: "Notes", type: .basic(.text), isRequired: false),
             ],
