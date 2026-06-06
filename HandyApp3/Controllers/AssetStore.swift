@@ -335,9 +335,10 @@ final class AssetStore {
     @discardableResult
     func createCompositeType(
         name: String,
-        fields: [PropertyDefinition] = []
+        fields: [PropertyDefinition] = [],
+        labelHint: String? = nil
     ) -> CompositeTypeDefinition {
-        let ct = CompositeTypeDefinition(name: name, fields: fields)
+        let ct = CompositeTypeDefinition(name: name, fields: fields, labelHint: labelHint)
         compositeTypes[ct.id] = ct
         return ct
     }

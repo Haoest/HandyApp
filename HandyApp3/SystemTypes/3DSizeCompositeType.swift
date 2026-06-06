@@ -21,7 +21,8 @@ extension BuiltInTypes {
                 PropertyDefinition(name: "Length", type: .basic(.number), isRequired: true),
                 PropertyDefinition(name: "Height", type: .basic(.number), isRequired: true),
                 PropertyDefinition(name: "Unit",   type: .basic(.text),   isRequired: false),
-            ]
+            ],
+            labelHint: "WxLxH"
         )
     }
 }

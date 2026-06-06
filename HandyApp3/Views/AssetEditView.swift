@@ -196,7 +196,7 @@ private struct CompositeFieldLink: View {
         NavigationLink {
             CompositeEditView(definition: definition, value: $value)
         } label: {
-            LabeledContent("\(label) (\(definition.fieldInitials))") {
+            LabeledContent(definition.decoratedLabel(label)) {
                 let summary = value?.compositeSummary(for: definition) ?? ""
                 Text(summary.isEmpty ? "—" : summary)
                     .foregroundStyle(summary.isEmpty ? .tertiary : .secondary)

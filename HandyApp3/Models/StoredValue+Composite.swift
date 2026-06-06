@@ -74,11 +74,10 @@ extension StoredValue {
 
 extension CompositeTypeDefinition {
 
-    /// First letters of each field name joined with "x", e.g. Width/Length/Unit → "WxLxU".
-    /// Used as a compact hint after the property name in edit/detail rows.
-    var fieldInitials: String {
-        fields
-            .compactMap { $0.name.first.map { String($0).uppercased() } }
-            .joined(separator: "x")
+    /// Decorates a property label with this composite's `labelHint`, e.g. "Size (WxLxHxU)".
+    /// Returns `name` unchanged when no hint is defined.
+    func decoratedLabel(_ name: String) -> String {
+        guard let labelHint, !labelHint.isEmpty else { return name }
+        return "\(name) (\(labelHint))"
     }
 }

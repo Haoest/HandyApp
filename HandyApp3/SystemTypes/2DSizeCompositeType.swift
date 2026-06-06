@@ -19,7 +19,8 @@ extension BuiltInTypes {
                 PropertyDefinition(name: "Width",  type: .basic(.number), isRequired: true),
                 PropertyDefinition(name: "Length", type: .basic(.number), isRequired: true),
                 PropertyDefinition(name: "Unit",   type: .basic(.text),   isRequired: false),
-            ]
+            ],
+            labelHint: "WxL"
         )
     }
 }

@@ -9,15 +9,20 @@ final class CompositeTypeDefinition: Identifiable, Equatable {
     let id: UUID
     var name: String
     var fields: [PropertyDefinition]
+    /// Optional compact hint shown after a property's label, e.g. "WxLxHxU".
+    /// When empty/nil, no hint is rendered.
+    var labelHint: String?
 
     init(
         id: UUID = UUID(),
         name: String,
-        fields: [PropertyDefinition] = []
+        fields: [PropertyDefinition] = [],
+        labelHint: String? = nil
     ) {
         self.id = id
         self.name = name
         self.fields = fields
+        self.labelHint = labelHint
     }
 
     static func == (lhs: CompositeTypeDefinition, rhs: CompositeTypeDefinition) -> Bool {

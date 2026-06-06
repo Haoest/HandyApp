@@ -74,7 +74,8 @@ extension AssetStore {
             guard !compositeTypes.values.contains(where: { $0.name == template.name }) else { continue }
             let registered = createCompositeType(
                 name: template.name,
-                fields: template.fields
+                fields: template.fields,
+                labelHint: template.labelHint
             )
             seeded.append(registered)
         }

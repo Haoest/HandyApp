@@ -446,7 +446,7 @@ private struct CompositeDetailLink: View {
                     .foregroundStyle(summary.isEmpty ? .tertiary : .secondary)
             }
         } label: {
-            let title = "\(property.definition.name) (\(definition.fieldInitials))"
+            let title = definition.decoratedLabel(property.definition.name)
             if let onEditLabel {
                 Button(title) { onEditLabel() }
                     .buttonStyle(.plain)

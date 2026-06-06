@@ -563,7 +563,7 @@ private struct TemplateCompositeRow: View {
                     .foregroundStyle(summary.isEmpty ? .tertiary : .secondary)
             }
         } label: {
-            Button("\(property.definition.name) (\(definition.fieldInitials))") { onEditLabel() }
+            Button(definition.decoratedLabel(property.definition.name)) { onEditLabel() }
                 .buttonStyle(.plain)
                 .foregroundStyle(.primary)
         }
