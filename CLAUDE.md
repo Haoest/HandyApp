@@ -2,6 +2,12 @@
 
 iOS/SwiftUI app for tracking physical assets the user owns (a house, a car, appliances, etc.) and the structured data attached to them.
 
+## Project / build
+
+- Xcode project format `objectVersion = 77` (Xcode 16+), using **file-system-synchronized groups** — files added to the folders on disk are picked up automatically; no need to register them in the `.pbxproj`.
+- iOS deployment target **18.2**; Swift language version **5.0**; universal (`TARGETED_DEVICE_FAMILY = 1,2`, iPhone + iPad); `MARKETING_VERSION = 1.0`.
+- SwiftUI throughout, with the Observation framework (`@Observable` / `@Environment(Type.self)`) for shared state — `AssetStore` and `AppRouter` are injected this way.
+
 ## Layout
 
 - `HandyApp3/HandyApp3App.swift`, `ContentView.swift` — SwiftUI app entry & root view
@@ -32,3 +38,7 @@ An `Asset` is a named physical object. It belongs to one `AssetCategory`, which 
 - enable icloud backup
 - application version
 - asset view needs a view option: by single tree, by multiple tree, by category
+- add event, transaction
+- support contact type
+- support contact communication (by email/sms)
+- beautify screens
