@@ -3,19 +3,27 @@ import SwiftUI
 // MARK: - Root
 
 struct ContentView: View {
+    @State private var router = AppRouter()
+
     var body: some View {
-        TabView {
+        TabView(selection: $router.selectedTab) {
             HomeTab()
                 .tabItem { Image(systemName: "house") }
+                .tag(AppTab.home)
             AssetTab()
                 .tabItem { Image(systemName: "shippingbox") }
+                .tag(AppTab.assets)
             CategoryTab()
                 .tabItem { Image(systemName: "folder") }
+                .tag(AppTab.categories)
             ActivityTab()
                 .tabItem { Image(systemName: "waveform") }
+                .tag(AppTab.activity)
             PreferenceTab()
                 .tabItem { Image(systemName: "gearshape") }
+                .tag(AppTab.preferences)
         }
+        .environment(router)
     }
 }
 

@@ -7,6 +7,7 @@ enum AssetListMode: String, CaseIterable {
 
 struct AssetTab: View {
     @Environment(AssetStore.self) private var store
+    @Environment(AppRouter.self) private var router
     @State private var newAssetPresented = false
     @State private var viewMode: AssetListMode = .all
     @State private var expanded: Set<UUID> = []
@@ -66,21 +67,55 @@ struct AssetTab: View {
             .sheet(isPresented: $newAssetPresented) {
                 NewAssetSheet()
             }
+            .onAppear { if router.focusedCategoryID != nil { viewMode = .all } }
+            .onChange(of: router.focusedCategoryID) { _, id in
+                if id != nil { viewMode = .all }
+            }
         }
     }
 
     private var allList: some View {
-        List {
-            ForEach(groupedAssets, id: \.category.id) { group in
-                Section(header: Label(group.category.name, systemImage: group.category.iconName)) {
-                    ForEach(group.assets) { asset in
-                        NavigationLink(destination: AssetDetailView(asset: asset)) {
-                            AssetRow(asset: asset)
+        ScrollViewReader { proxy in
+            List {
+                ForEach(groupedAssets, id: \.category.id) { group in
+                    Section(header: categoryHeader(group.category)) {
+                        ForEach(group.assets) { asset in
+                            NavigationLink(destination: AssetDetailView(asset: asset)) {
+                                AssetRow(asset: asset)
+                            }
                         }
                     }
+                    .id(group.category.id)
                 }
             }
+            .onAppear {
+                guard let id = router.focusedCategoryID else { return }
+                DispatchQueue.main.async {
+                    withAnimation { proxy.scrollTo(id, anchor: .top) }
+                }
+            }
+            .onChange(of: router.focusedCategoryID) { _, id in
+                guard let id else { return }
+                withAnimation { proxy.scrollTo(id, anchor: .top) }
+            }
         }
+    }
+
+    @ViewBuilder
+    private func categoryHeader(_ category: AssetCategory) -> some View {
+        let focused = router.focusedCategoryID == category.id
+        Label(category.name, systemImage: category.iconName)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 5)
+            .background(
+                RoundedRectangle(cornerRadius: 7)
+                    .fill(focused ? Color.accentColor.opacity(0.12) : .clear)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 7)
+                    .strokeBorder(focused ? Color.accentColor : .clear, lineWidth: 2)
+            )
+            .animation(.easeInOut(duration: 0.2), value: focused)
     }
 
     private var treeList: some View {

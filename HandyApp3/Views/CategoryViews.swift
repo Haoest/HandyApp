@@ -3,12 +3,12 @@ import SwiftUI
 // MARK: - Category tab
 
 private enum CategoryDest: Hashable {
-    case assets(UUID)
     case propertyDefs(UUID)
 }
 
 struct CategoryTab: View {
     @Environment(AssetStore.self) private var store
+    @Environment(AppRouter.self) private var router
     @State private var navigationPath = NavigationPath()
     @State private var expandedCategoryID: UUID?
     @State private var newCategoryPresented = false
@@ -44,7 +44,10 @@ struct CategoryTab: View {
                                     assetToEdit = asset
                                 }
                             },
-                            onViewAssets: { navigationPath = .init(); navigationPath.append(CategoryDest.assets(category.id)) },
+                            onViewAssets: {
+                                router.focusedCategoryID = category.id
+                                router.selectedTab = .assets
+                            },
                             onViewDefs: { navigationPath = .init(); navigationPath.append(CategoryDest.propertyDefs(category.id)) },
                             onChangeIcon: { newIcon in
                                 try? store.updateCategoryIcon(id: category.id, iconName: newIcon)
@@ -63,8 +66,6 @@ struct CategoryTab: View {
             }
             .navigationDestination(for: CategoryDest.self) { dest in
                 switch dest {
-                case .assets(let id):
-                    if let cat = store.categories[id] { CategoryAssetsView(category: cat) }
                 case .propertyDefs(let id):
                     if let cat = store.categories[id] { CategoryPropertyDefsView(category: cat) }
                 }
@@ -124,6 +125,7 @@ private struct CategoryRow: View {
                                 .font(.caption2)
                         }
                     }
+                    .buttonStyle(.plain)
                     Button(action: onViewDefs) {
                         VStack(spacing: 4) {
                             Image(systemName: "list.bullet.clipboard")
@@ -132,6 +134,7 @@ private struct CategoryRow: View {
                                 .font(.caption2)
                         }
                     }
+                    .buttonStyle(.plain)
                 }
                 .foregroundStyle(.secondary)
                 .padding(.top, 10)
@@ -247,17 +250,6 @@ struct IconPickerView: View {
                 .foregroundStyle(selected ? AnyShapeStyle(Color.accentColor) : AnyShapeStyle(.primary))
         }
         .frame(width: 56, height: 56)
-    }
-}
-
-// MARK: - Category assets list
-
-struct CategoryAssetsView: View {
-    let category: AssetCategory
-
-    var body: some View {
-        Text("Assets in \(category.name)")
-            .navigationTitle("Assets")
     }
 }
 
