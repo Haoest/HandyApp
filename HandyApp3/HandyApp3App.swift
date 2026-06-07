@@ -15,6 +15,7 @@ struct HandyApp3App: App {
         WindowGroup {
             ContentView()
                 .environment(store)
+                .task { try? await ContactResolver.shared.requestAccess() }
         }
     }
 }

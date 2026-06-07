@@ -31,7 +31,7 @@ extension StoredValue {
         case .number(let d):   return Self.numberFormatter.string(from: d as NSNumber) ?? "\(d)"
         case .currency(let d): return Self.currencyFormatter.string(from: d as NSDecimalNumber) ?? "\(d)"
         case .date(let date):  return Self.dateFormatter.string(from: date)
-        case .contact(let id): return id
+        case .contact: return "Contact"
         case .data:            return "data"
         case .composite(let dict):
             return dict.values.map(\.shortDisplay).joined(separator: " · ")

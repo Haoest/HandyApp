@@ -167,8 +167,10 @@ struct PropertyEditRow: View {
 
     var body: some View {
         switch definition.type {
-        case .basic(.text), .basic(.contact):
+        case .basic(.text):
             TextEditRow(label: definition.name, value: $value)
+        case .basic(.contact):
+            ContactEditRow(label: definition.name, value: $value)
         case .basic(.number):
             NumberEditRow(label: definition.name, value: $value)
         case .basic(.currency):
@@ -202,6 +204,52 @@ private struct CompositeFieldLink: View {
                     .foregroundStyle(summary.isEmpty ? .tertiary : .secondary)
             }
         }
+    }
+}
+
+private struct ContactEditRow: View {
+    let label: String
+    @Binding var value: StoredValue?
+    @State private var pickerPresented = false
+
+    private var identifier: String? {
+        if case .contact(let s) = value { return s }
+        return nil
+    }
+
+    private var resolvedName: String? {
+        guard let id = identifier else { return nil }
+        return ContactResolver.shared.displayName(for: id)
+    }
+
+    var body: some View {
+        LabeledContent(label) {
+            if identifier != nil {
+                HStack(spacing: 12) {
+                    if let name = resolvedName {
+                        Text(name).foregroundStyle(.secondary)
+                    } else {
+                        Text("(not found)").foregroundStyle(.tertiary)
+                    }
+                    Button { pickerPresented = true } label: {
+                        Image(systemName: "person.crop.circle")
+                    }
+                    Button { value = nil } label: {
+                        Image(systemName: "xmark.circle.fill")
+                    }
+                    .foregroundStyle(.secondary)
+                }
+            } else {
+                Button { pickerPresented = true } label: {
+                    Image(systemName: "person.crop.circle")
+                }
+            }
+        }
+        .background(
+            ContactPicker(isPresented: $pickerPresented) { id, _ in
+                value = .contact(id)
+            }
+        )
     }
 }
 

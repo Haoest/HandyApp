@@ -240,8 +240,10 @@ private struct PropertyDetailRow: View {
 
     var body: some View {
         switch property.definition.type {
-        case .basic(.text), .basic(.contact):
+        case .basic(.text):
             TextDetailField(assetID: assetID, property: property, onEditLabel: onEditLabel)
+        case .basic(.contact):
+            ContactDetailRow(assetID: assetID, property: property, onEditLabel: onEditLabel)
         case .basic(.number):
             NumberDetailField(assetID: assetID, property: property, onEditLabel: onEditLabel)
         case .basic(.currency):
@@ -265,6 +267,64 @@ private struct PropertyDetailRow: View {
                 }
             }
         }
+    }
+}
+
+private struct ContactDetailRow: View {
+    @Environment(AssetStore.self) private var store
+    let assetID: UUID
+    let property: AssetProperty
+    let onEditLabel: (() -> Void)?
+    @State private var pickerPresented = false
+
+    private var identifier: String? {
+        if case .contact(let s) = property.value { return s }
+        return nil
+    }
+
+    private var resolvedName: String? {
+        guard let id = identifier else { return nil }
+        return ContactResolver.shared.displayName(for: id)
+    }
+
+    var body: some View {
+        LabeledContent {
+            if identifier != nil {
+                HStack(spacing: 12) {
+                    if let name = resolvedName {
+                        Text(name).foregroundStyle(.secondary)
+                    } else {
+                        Text("(not found)").foregroundStyle(.tertiary)
+                    }
+                    Button { pickerPresented = true } label: {
+                        Image(systemName: "person.crop.circle")
+                    }
+                    Button {
+                        try? store.removePropertyValue(forDefinitionID: property.definition.id, fromAssetID: assetID)
+                    } label: {
+                        Image(systemName: "xmark.circle.fill")
+                    }
+                    .foregroundStyle(.secondary)
+                }
+            } else {
+                Button { pickerPresented = true } label: {
+                    Image(systemName: "person.crop.circle")
+                }
+            }
+        } label: {
+            if let onEditLabel {
+                Button(property.definition.name) { onEditLabel() }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(.primary)
+            } else {
+                Text(property.definition.name)
+            }
+        }
+        .background(
+            ContactPicker(isPresented: $pickerPresented) { id, _ in
+                try? store.setPropertyValue(.contact(id), forDefinitionID: property.definition.id, onAssetID: assetID)
+            }
+        )
     }
 }
 
@@ -293,11 +353,7 @@ private struct TextDetailField: View {
                 .onChange(of: isFocused) { _, focused in if !focused { commit() } }
                 .onChange(of: property.value) { _, newValue in
                     guard !isFocused else { return }
-                    switch newValue {
-                    case .text(let s): text = s
-                    case .contact(let s): text = s
-                    default: text = ""
-                    }
+                    if case .text(let s) = newValue { text = s } else { text = "" }
                 }
         } label: {
             if let onEditLabel {

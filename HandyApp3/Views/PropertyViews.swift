@@ -22,6 +22,9 @@ struct PropertyEditView: View {
     @State private var valueDate: Date = Date()
     @State private var valueDateEnabled: Bool = false
     @State private var valueCombo: String = ""
+    @State private var valueContactID: String = ""
+    @State private var valueContactName: String = ""
+    @State private var contactPickerPresented = false
     @FocusState private var nameFieldFocused: Bool
 
     private var availableTypes: [PropertyType] {
@@ -57,7 +60,7 @@ struct PropertyEditView: View {
         case .basic(.text):
             return valueText.isEmpty ? nil : .text(valueText)
         case .basic(.contact):
-            return valueText.isEmpty ? nil : .contact(valueText)
+            return valueContactID.isEmpty ? nil : .contact(valueContactID)
         case .basic(.number):
             return Double(valueText).map { .number($0) }
         case .basic(.currency):
@@ -116,6 +119,12 @@ struct PropertyEditView: View {
             .navigationTitle(existing == nil ? "New Property" : "Edit Property")
             .navigationBarTitleDisplayMode(.inline)
             .onAppear { prepopulate() }
+            .background(
+                ContactPicker(isPresented: $contactPickerPresented) { id, name in
+                    valueContactID = id
+                    valueContactName = name
+                }
+            )
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") { dismiss() }
@@ -141,7 +150,17 @@ struct PropertyEditView: View {
         case .basic(.text):
             TextField("Optional", text: $valueText)
         case .basic(.contact):
-            TextField("Optional", text: $valueText)
+            Button {
+                contactPickerPresented = true
+            } label: {
+                if !valueContactName.isEmpty {
+                    Text(valueContactName).foregroundStyle(.primary)
+                } else if !valueContactID.isEmpty {
+                    Text("(not found)").foregroundStyle(.tertiary)
+                } else {
+                    Text("Choose contact…").foregroundStyle(.tint)
+                }
+            }
         case .basic(.number):
             TextField("Optional", text: $valueText)
                 .keyboardType(.decimalPad)
@@ -181,7 +200,9 @@ struct PropertyEditView: View {
                 case .number(let d): valueText = "\(d)"
                 case .currency(let d): valueText = "\(d)"
                 case .date(let d): valueDate = d; valueDateEnabled = true
-                case .contact(let s): valueText = s
+                case .contact(let s):
+                    valueContactID = s
+                    valueContactName = ContactResolver.shared.displayName(for: s) ?? ""
                 default: break
                 }
             }
@@ -193,5 +214,7 @@ struct PropertyEditView: View {
         valueDate = Date()
         valueDateEnabled = false
         valueCombo = ""
+        valueContactID = ""
+        valueContactName = ""
     }
 }
