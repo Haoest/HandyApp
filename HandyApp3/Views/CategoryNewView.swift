@@ -4,13 +4,28 @@ struct CategoryNewView: View {
     @Environment(AssetStore.self) private var store
     @Environment(\.dismiss) private var dismiss
 
-    @State private var name = ""
-    @State private var iconName = "square.grid.2x2"
-    @State private var properties: [AssetProperty] = []
+    @State private var name: String
+    @State private var iconName: String
+    @State private var properties: [AssetProperty]
     @State private var iconPickerPresented = false
     @State private var addPropertyPresented = false
     @State private var propertyToEdit: AssetProperty?
     @State private var showDuplicateNameAlert = false
+
+    /// Creates an empty new-category form, or — when `duplicating` is provided —
+    /// prefills the icon and properties from an existing category while leaving the
+    /// name blank for the user to fill in.
+    init(duplicating source: AssetCategory? = nil) {
+        _name = State(initialValue: "")
+        _iconName = State(initialValue: source?.iconName ?? "square.grid.2x2")
+        _properties = State(initialValue: source?.propertyTemplates.map { template in
+            AssetProperty(
+                definition: template.definition,
+                value: template.value,
+                sortOrder: template.sortOrder
+            )
+        } ?? [])
+    }
 
     var body: some View {
         NavigationStack {
@@ -98,14 +113,8 @@ struct CategoryNewView: View {
             }
             .sheet(item: $propertyToEdit) { prop in
                 PropertyEditView(existing: prop) { definition, value in
-                    if let idx = properties.firstIndex(where: { $0.id == prop.id }) {
-                        properties[idx] = AssetProperty(
-                            id: prop.id,
-                            definition: definition,
-                            value: value,
-                            sortOrder: prop.sortOrder
-                        )
-                    }
+                    prop.definition = definition
+                    prop.value = value
                 }
             }
             .alert("Duplicate Name", isPresented: $showDuplicateNameAlert) {

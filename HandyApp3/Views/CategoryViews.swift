@@ -12,6 +12,7 @@ struct CategoryTab: View {
     @State private var navigationPath = NavigationPath()
     @State private var expandedCategoryID: UUID?
     @State private var newCategoryPresented = false
+    @State private var categoryToDuplicate: AssetCategory?
     @State private var assetToEdit: Asset?
 
     private var sortedCategories: [AssetCategory] {
@@ -49,6 +50,7 @@ struct CategoryTab: View {
                                 router.selectedTab = .assets
                             },
                             onViewDefs: { navigationPath = .init(); navigationPath.append(CategoryDest.propertyDefs(category.id)) },
+                            onDuplicate: { categoryToDuplicate = category },
                             onChangeIcon: { newIcon in
                                 try? store.updateCategoryIcon(id: category.id, iconName: newIcon)
                             }
@@ -71,6 +73,7 @@ struct CategoryTab: View {
                 }
             }
             .sheet(isPresented: $newCategoryPresented) { CategoryNewView() }
+            .sheet(item: $categoryToDuplicate) { category in CategoryNewView(duplicating: category) }
             .sheet(item: $assetToEdit) { asset in NavigationStack { AssetEditView(asset: asset) } }
         }
     }
@@ -85,6 +88,7 @@ private struct CategoryRow: View {
     let onNewAsset: () -> Void
     let onViewAssets: () -> Void
     let onViewDefs: () -> Void
+    let onDuplicate: () -> Void
     let onChangeIcon: (String) -> Void
 
     @State private var iconPickerPresented = false
@@ -131,6 +135,15 @@ private struct CategoryRow: View {
                             Image(systemName: "list.bullet.clipboard")
                                 .imageScale(.large)
                             Text("Definitions")
+                                .font(.caption2)
+                        }
+                    }
+                    .buttonStyle(.plain)
+                    Button(action: onDuplicate) {
+                        VStack(spacing: 4) {
+                            Image(systemName: "plus.square.on.square")
+                                .imageScale(.large)
+                            Text("Duplicate")
                                 .font(.caption2)
                         }
                     }
