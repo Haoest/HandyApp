@@ -37,6 +37,7 @@ final class ContactResolver {
             CNContactPhoneNumbersKey as CNKeyDescriptor,
             CNContactEmailAddressesKey as CNKeyDescriptor,
             CNContactPostalAddressesKey as CNKeyDescriptor,
+            CNContactInstantMessageAddressesKey as CNKeyDescriptor,
         ]
         return try store.unifiedContact(withIdentifier: identifier, keysToFetch: keys)
     }
