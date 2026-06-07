@@ -36,12 +36,13 @@ extension BuiltInTypes {
         let powerSourceField = PropertyDefinition(name: "Power source", type: .comboList(powerSourceComboList()), isRequired: true)
         return [
             .residentialHousing: [
-                PropertyDefinition(name: "Address",       type: .basic(.text), isRequired: true),
-                PropertyDefinition(name: "Address2",      type: .basic(.text), isRequired: false),
-                PropertyDefinition(name: "City",          type: .basic(.text), isRequired: false),
-                PropertyDefinition(name: "State",         type: .basic(.text), isRequired: false),
-                PropertyDefinition(name: "Zip",           type: .basic(.text), isRequired: false),
-                PropertyDefinition(name: "Purchase date", type: .basic(.date), isRequired: false),
+                PropertyDefinition(name: "Address",       type: .basic(.text),    isRequired: true),
+                PropertyDefinition(name: "Address2",      type: .basic(.text),    isRequired: false),
+                PropertyDefinition(name: "City",          type: .basic(.text),    isRequired: false),
+                PropertyDefinition(name: "State",         type: .basic(.text),    isRequired: false),
+                PropertyDefinition(name: "Zip",           type: .basic(.text),    isRequired: false),
+                PropertyDefinition(name: "Purchase date", type: .basic(.date),    isRequired: false),
+                PropertyDefinition(name: "HOA Contact",   type: .basic(.contact), isRequired: false),
             ],
             .automobile: [
                 PropertyDefinition(name: "Make",          type: .basic(.text),   isRequired: true),
