@@ -299,11 +299,13 @@ private struct ContactDetailRow: View {
                     Button { pickerPresented = true } label: {
                         Image(systemName: "person.crop.circle")
                     }
+                    .buttonStyle(.borderless)
                     Button {
                         try? store.removePropertyValue(forDefinitionID: property.definition.id, fromAssetID: assetID)
                     } label: {
                         Image(systemName: "xmark.circle.fill")
                     }
+                    .buttonStyle(.borderless)
                     .foregroundStyle(.secondary)
                 }
             } else {

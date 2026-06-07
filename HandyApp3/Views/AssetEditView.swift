@@ -234,9 +234,11 @@ private struct ContactEditRow: View {
                     Button { pickerPresented = true } label: {
                         Image(systemName: "person.crop.circle")
                     }
+                    .buttonStyle(.borderless)
                     Button { value = nil } label: {
                         Image(systemName: "xmark.circle.fill")
                     }
+                    .buttonStyle(.borderless)
                     .foregroundStyle(.secondary)
                 }
             } else {
