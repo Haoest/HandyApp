@@ -398,6 +398,7 @@
 				DEVELOPMENT_ASSET_PATHS = "\"HandyApp3/Preview Content\"";
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_NSCameraUsageDescription = "HandyApp uses the camera to attach photos to your assets.";
 				INFOPLIST_KEY_NSContactsUsageDescription = "HandyApp uses Contacts to link people to your assets.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
@@ -427,6 +428,7 @@
 				DEVELOPMENT_ASSET_PATHS = "\"HandyApp3/Preview Content\"";
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_NSCameraUsageDescription = "HandyApp uses the camera to attach photos to your assets.";
 				INFOPLIST_KEY_NSContactsUsageDescription = "HandyApp uses Contacts to link people to your assets.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;

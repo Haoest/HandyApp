@@ -26,6 +26,9 @@ enum AssetStoreError: Error, Equatable {
     case assetAlreadyHasParent(UUID)
     /// A category with the given name already exists.
     case duplicateCategoryName(String)
+    case photoNotFound(UUID)
+    case eventNotFound(UUID)
+    case transactionNotFound(UUID)
 }
 
 // MARK: - AssetStore
@@ -465,6 +468,84 @@ final class AssetStore {
     func rootAssets(ofCategoryID categoryID: UUID) throws -> [Asset] {
         guard categories[categoryID] != nil else { throw AssetStoreError.categoryNotFound(categoryID) }
         return assets.values.filter { $0.isRoot && $0.category.id == categoryID }
+    }
+
+    // MARK: - Attachments
+
+    @discardableResult
+    func addPhoto(imageData: Data, thumbnailData: Data, caption: String = "", toAssetID assetID: UUID) throws -> Photo {
+        guard let asset = assets[assetID] else { throw AssetStoreError.assetNotFound(assetID) }
+        let photo = Photo(imageData: imageData, thumbnailData: thumbnailData, caption: caption)
+        asset.photos.append(photo)
+        asset.modifiedDate = Date()
+        return photo
+    }
+
+    func updatePhotoCaption(_ caption: String, forPhotoID photoID: UUID, onAssetID assetID: UUID) throws {
+        guard let asset = assets[assetID] else { throw AssetStoreError.assetNotFound(assetID) }
+        guard let photo = asset.photos.first(where: { $0.id == photoID }) else { throw AssetStoreError.photoNotFound(photoID) }
+        photo.caption = caption
+        asset.modifiedDate = Date()
+    }
+
+    func removePhoto(id photoID: UUID, fromAssetID assetID: UUID) throws {
+        guard let asset = assets[assetID] else { throw AssetStoreError.assetNotFound(assetID) }
+        guard asset.photos.contains(where: { $0.id == photoID }) else { throw AssetStoreError.photoNotFound(photoID) }
+        asset.photos.removeAll { $0.id == photoID }
+        asset.modifiedDate = Date()
+    }
+
+    @discardableResult
+    func addEvent(title: String, date: Date, notes: String = "", toAssetID assetID: UUID) throws -> Event {
+        guard let asset = assets[assetID] else { throw AssetStoreError.assetNotFound(assetID) }
+        let event = Event(title: title, date: date, notes: notes)
+        asset.events.append(event)
+        asset.modifiedDate = Date()
+        return event
+    }
+
+    func updateEvent(id eventID: UUID, onAssetID assetID: UUID, title: String, date: Date, notes: String) throws {
+        guard let asset = assets[assetID] else { throw AssetStoreError.assetNotFound(assetID) }
+        guard let event = asset.events.first(where: { $0.id == eventID }) else { throw AssetStoreError.eventNotFound(eventID) }
+        event.title = title
+        event.date = date
+        event.notes = notes
+        asset.modifiedDate = Date()
+    }
+
+    func removeEvent(id eventID: UUID, fromAssetID assetID: UUID) throws {
+        guard let asset = assets[assetID] else { throw AssetStoreError.assetNotFound(assetID) }
+        guard asset.events.contains(where: { $0.id == eventID }) else { throw AssetStoreError.eventNotFound(eventID) }
+        asset.events.removeAll { $0.id == eventID }
+        asset.modifiedDate = Date()
+    }
+
+    @discardableResult
+    func addTransaction(details: String, amount: Decimal, date: Date, kind: TransactionKind, payeeContactID: String? = nil, notes: String = "", toAssetID assetID: UUID) throws -> Transaction {
+        guard let asset = assets[assetID] else { throw AssetStoreError.assetNotFound(assetID) }
+        let txn = Transaction(details: details, amount: amount, date: date, kind: kind, payeeContactID: payeeContactID, notes: notes)
+        asset.transactions.append(txn)
+        asset.modifiedDate = Date()
+        return txn
+    }
+
+    func updateTransaction(id txnID: UUID, onAssetID assetID: UUID, details: String, amount: Decimal, date: Date, kind: TransactionKind, payeeContactID: String?, notes: String) throws {
+        guard let asset = assets[assetID] else { throw AssetStoreError.assetNotFound(assetID) }
+        guard let txn = asset.transactions.first(where: { $0.id == txnID }) else { throw AssetStoreError.transactionNotFound(txnID) }
+        txn.details = details
+        txn.amount = abs(amount)
+        txn.date = date
+        txn.kind = kind
+        txn.payeeContactID = payeeContactID
+        txn.notes = notes
+        asset.modifiedDate = Date()
+    }
+
+    func removeTransaction(id txnID: UUID, fromAssetID assetID: UUID) throws {
+        guard let asset = assets[assetID] else { throw AssetStoreError.assetNotFound(assetID) }
+        guard asset.transactions.contains(where: { $0.id == txnID }) else { throw AssetStoreError.transactionNotFound(txnID) }
+        asset.transactions.removeAll { $0.id == txnID }
+        asset.modifiedDate = Date()
     }
 
     // MARK: - Private helpers

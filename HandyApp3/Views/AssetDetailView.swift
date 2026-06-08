@@ -1,5 +1,6 @@
 import SwiftUI
 import Contacts
+import PhotosUI
 
 struct AssetDetailView: View {
     @Environment(AssetStore.self) private var store
@@ -8,6 +9,16 @@ struct AssetDetailView: View {
     @State private var deleteConfirmationPresented = false
     @State private var addPropertyPresented = false
     @State private var customPropertyToEdit: AssetProperty?
+
+    // Photo add state
+    @State private var photoSourceDialogPresented = false
+    @State private var photoLibraryItem: PhotosPickerItem?
+    @State private var photoLibraryPresented = false
+    @State private var cameraPresented = false
+
+    // Event/transaction add state
+    @State private var addEventPresented = false
+    @State private var addTransactionPresented = false
 
     private var sortedBase: [AssetProperty] {
         asset.baseProperties.sorted { $0.sortOrder < $1.sortOrder }
@@ -56,16 +67,76 @@ struct AssetDetailView: View {
                     }
                 }
             }
+            PhotosSection(asset: asset)
+            EventsSection(asset: asset)
+            TransactionsSection(asset: asset)
             Section("Relationship") {
                 BelongsToRow(asset: asset)
             }
         }
         .navigationTitle(asset.name)
         .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                Menu {
+                    Button {
+                        photoSourceDialogPresented = true
+                    } label: {
+                        Label("Photo", systemImage: "photo")
+                    }
+                    Button {
+                        addEventPresented = true
+                    } label: {
+                        Label("Event", systemImage: "calendar")
+                    }
+                    Button {
+                        addTransactionPresented = true
+                    } label: {
+                        Label("Transaction", systemImage: "dollarsign.circle")
+                    }
+                } label: {
+                    Image(systemName: "plus")
+                }
+            }
             ToolbarItem(placement: .bottomBar) {
                 Button("Delete Asset", role: .destructive) {
                     deleteConfirmationPresented = true
                 }
+            }
+        }
+        .confirmationDialog("Add Photo", isPresented: $photoSourceDialogPresented) {
+            Button("Photo Library") { photoLibraryPresented = true }
+            if UIImagePickerController.isSourceTypeAvailable(.camera) {
+                Button("Camera") { cameraPresented = true }
+            }
+            Button("Cancel", role: .cancel) {}
+        }
+        .photosPicker(isPresented: $photoLibraryPresented, selection: $photoLibraryItem, matching: .images)
+        .onChange(of: photoLibraryItem) { _, item in
+            guard let item else { return }
+            Task {
+                guard let data = try? await item.loadTransferable(type: Data.self),
+                      let uiImage = UIImage(data: data),
+                      let imageData = ImageScaling.imageData(from: uiImage),
+                      let thumbData = ImageScaling.thumbnailData(from: uiImage) else { return }
+                try? store.addPhoto(imageData: imageData, thumbnailData: thumbData, toAssetID: asset.id)
+                photoLibraryItem = nil
+            }
+        }
+        .background(
+            CameraPicker(isPresented: $cameraPresented) { uiImage in
+                guard let imageData = ImageScaling.imageData(from: uiImage),
+                      let thumbData = ImageScaling.thumbnailData(from: uiImage) else { return }
+                try? store.addPhoto(imageData: imageData, thumbnailData: thumbData, toAssetID: asset.id)
+            }
+        )
+        .sheet(isPresented: $addEventPresented) {
+            EventEditView { title, date, notes in
+                try? store.addEvent(title: title, date: date, notes: notes, toAssetID: asset.id)
+            }
+        }
+        .sheet(isPresented: $addTransactionPresented) {
+            TransactionEditView { details, amount, date, kind, payeeID, notes in
+                try? store.addTransaction(details: details, amount: amount, date: date, kind: kind, payeeContactID: payeeID, notes: notes, toAssetID: asset.id)
             }
         }
         .sheet(isPresented: $addPropertyPresented) {

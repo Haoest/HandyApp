@@ -32,13 +32,9 @@ An `Asset` is a named physical object. It belongs to one `AssetCategory`, which 
 
 ## Open work
 
-- support contact type
-- every category has an icon
 - flesh out photo properties to allow selection, viewing, thumbnail
 - work on real persistence
 - enable icloud backup
 - application version
-- add event, transaction
-
-- support contact communication (by email/sms)
+- change add icon on asset listing screen and detail screen to differentiate them
 - beautify screens

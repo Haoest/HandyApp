@@ -19,6 +19,10 @@ final class Asset: Identifiable, Equatable {
     /// Per-instance properties defined by the user specifically for this asset.
     var customProperties: [AssetProperty]
 
+    var photos: [Photo] = []
+    var events: [Event] = []
+    var transactions: [Transaction] = []
+
     /// ID of the asset that directly contains this one. Nil means top-level.
     var parentID: UUID?
 
