@@ -20,6 +20,11 @@ struct AssetDetailView: View {
     @State private var addEventPresented = false
     @State private var addTransactionPresented = false
 
+    // Event/transaction edit & duplicate state. Presented from the Form (not the
+    // section) so a row's context menu dismissal can't cancel the first present.
+    @State private var eventSheetMode: EventSheetMode?
+    @State private var transactionSheetMode: TransactionSheetMode?
+
     private var sortedBase: [AssetProperty] {
         asset.baseProperties.sorted { $0.sortOrder < $1.sortOrder }
     }
@@ -68,8 +73,8 @@ struct AssetDetailView: View {
                 }
             }
             PhotosSection(asset: asset)
-            EventsSection(asset: asset)
-            TransactionsSection(asset: asset)
+            EventsSection(asset: asset, sheetMode: $eventSheetMode)
+            TransactionsSection(asset: asset, sheetMode: $transactionSheetMode)
             Section("Relationship") {
                 BelongsToRow(asset: asset)
             }
@@ -142,6 +147,30 @@ struct AssetDetailView: View {
         .sheet(isPresented: $addPropertyPresented) {
             PropertyEditView { definition, value in
                 try? store.addCustomProperty(definition: definition, value: value, toAssetID: asset.id)
+            }
+        }
+        .sheet(item: $eventSheetMode) { mode in
+            switch mode {
+            case .edit(let event):
+                EventEditView(existing: event) { title, date, notes in
+                    try? store.updateEvent(id: event.id, onAssetID: asset.id, title: title, date: date, notes: notes)
+                }
+            case .duplicate(let source):
+                EventEditView(prefill: source) { title, date, notes in
+                    try? store.addEvent(title: title, date: date, notes: notes, toAssetID: asset.id)
+                }
+            }
+        }
+        .sheet(item: $transactionSheetMode) { mode in
+            switch mode {
+            case .edit(let txn):
+                TransactionEditView(existing: txn) { details, amount, date, kind, payeeID, notes in
+                    try? store.updateTransaction(id: txn.id, onAssetID: asset.id, details: details, amount: amount, date: date, kind: kind, payeeContactID: payeeID, notes: notes)
+                }
+            case .duplicate(let source):
+                TransactionEditView(prefill: source) { details, amount, date, kind, payeeID, notes in
+                    try? store.addTransaction(details: details, amount: amount, date: date, kind: kind, payeeContactID: payeeID, notes: notes, toAssetID: asset.id)
+                }
             }
         }
         .sheet(item: $customPropertyToEdit) { prop in

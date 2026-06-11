@@ -129,10 +129,21 @@ struct PhotoViewerSheet: View {
 
 // MARK: - Events section
 
+enum EventSheetMode: Identifiable {
+    case edit(Event)
+    case duplicate(Event)
+
+    var id: UUID {
+        switch self {
+        case .edit(let event), .duplicate(let event): event.id
+        }
+    }
+}
+
 struct EventsSection: View {
     @Environment(AssetStore.self) private var store
     let asset: Asset
-    @State private var eventToEdit: Event?
+    @Binding var sheetMode: EventSheetMode?
 
     private var sorted: [Event] { asset.events.sorted { $0.date > $1.date } }
 
@@ -144,7 +155,7 @@ struct EventsSection: View {
                 ForEach(sorted) { event in
                     EventRow(event: event)
                         .contentShape(Rectangle())
-                        .onTapGesture { eventToEdit = event }
+                        .onTapGesture { sheetMode = .edit(event) }
                         .swipeActions(edge: .trailing, allowsFullSwipe: false) {
                             Button(role: .destructive) {
                                 try? store.removeEvent(id: event.id, fromAssetID: asset.id)
@@ -152,12 +163,19 @@ struct EventsSection: View {
                                 Label("Delete", systemImage: "trash")
                             }
                         }
+                        .contextMenu {
+                            Button {
+                                try? store.addEvent(title: event.title, date: Date(), notes: event.notes, toAssetID: asset.id)
+                            } label: {
+                                Label("Duplicate", systemImage: "plus.square.on.square")
+                            }
+                            Button {
+                                sheetMode = .duplicate(event)
+                            } label: {
+                                Label("Duplicate…", systemImage: "square.and.pencil")
+                            }
+                        }
                 }
-            }
-        }
-        .sheet(item: $eventToEdit) { event in
-            EventEditView(existing: event) { title, date, notes in
-                try? store.updateEvent(id: event.id, onAssetID: asset.id, title: title, date: date, notes: notes)
             }
         }
     }
@@ -195,12 +213,13 @@ struct EventEditView: View {
     @State private var date: Date
     @State private var notes: String
 
-    init(existing: Event? = nil, onSave: @escaping (String, Date, String) -> Void) {
+    init(existing: Event? = nil, prefill: Event? = nil, onSave: @escaping (String, Date, String) -> Void) {
         self.existing = existing
         self.onSave = onSave
-        _title = State(initialValue: existing?.title ?? "")
+        let source = existing ?? prefill
+        _title = State(initialValue: source?.title ?? "")
         _date = State(initialValue: existing?.date ?? Date())
-        _notes = State(initialValue: existing?.notes ?? "")
+        _notes = State(initialValue: source?.notes ?? "")
     }
 
     var body: some View {
@@ -238,10 +257,21 @@ struct EventEditView: View {
 
 // MARK: - Transactions section
 
+enum TransactionSheetMode: Identifiable {
+    case edit(Transaction)
+    case duplicate(Transaction)
+
+    var id: UUID {
+        switch self {
+        case .edit(let txn), .duplicate(let txn): txn.id
+        }
+    }
+}
+
 struct TransactionsSection: View {
     @Environment(AssetStore.self) private var store
     let asset: Asset
-    @State private var transactionToEdit: Transaction?
+    @Binding var sheetMode: TransactionSheetMode?
 
     private var sorted: [Transaction] { asset.transactions.sorted { $0.date > $1.date } }
 
@@ -253,7 +283,7 @@ struct TransactionsSection: View {
                 ForEach(sorted) { txn in
                     TransactionRow(transaction: txn)
                         .contentShape(Rectangle())
-                        .onTapGesture { transactionToEdit = txn }
+                        .onTapGesture { sheetMode = .edit(txn) }
                         .swipeActions(edge: .trailing, allowsFullSwipe: false) {
                             Button(role: .destructive) {
                                 try? store.removeTransaction(id: txn.id, fromAssetID: asset.id)
@@ -261,12 +291,19 @@ struct TransactionsSection: View {
                                 Label("Delete", systemImage: "trash")
                             }
                         }
+                        .contextMenu {
+                            Button {
+                                try? store.addTransaction(details: txn.details, amount: txn.amount, date: Date(), kind: txn.kind, payeeContactID: txn.payeeContactID, notes: txn.notes, toAssetID: asset.id)
+                            } label: {
+                                Label("Duplicate", systemImage: "plus.square.on.square")
+                            }
+                            Button {
+                                sheetMode = .duplicate(txn)
+                            } label: {
+                                Label("Duplicate…", systemImage: "square.and.pencil")
+                            }
+                        }
                 }
-            }
-        }
-        .sheet(item: $transactionToEdit) { txn in
-            TransactionEditView(existing: txn) { details, amount, date, kind, payeeID, notes in
-                try? store.updateTransaction(id: txn.id, onAssetID: asset.id, details: details, amount: amount, date: date, kind: kind, payeeContactID: payeeID, notes: notes)
             }
         }
     }
@@ -337,17 +374,18 @@ struct TransactionEditView: View {
     @State private var notes: String
     @State private var contactPickerPresented = false
 
-    init(existing: Transaction? = nil, onSave: @escaping (String, Decimal, Date, TransactionKind, String?, String) -> Void) {
+    init(existing: Transaction? = nil, prefill: Transaction? = nil, onSave: @escaping (String, Decimal, Date, TransactionKind, String?, String) -> Void) {
         self.existing = existing
         self.onSave = onSave
-        _details = State(initialValue: existing?.details ?? "")
-        _amountText = State(initialValue: existing.map { "\($0.amount)" } ?? "")
+        let source = existing ?? prefill
+        _details = State(initialValue: source?.details ?? "")
+        _amountText = State(initialValue: source.map { "\($0.amount)" } ?? "")
         _date = State(initialValue: existing?.date ?? Date())
-        _kind = State(initialValue: existing?.kind ?? .expense)
-        _payeeContactID = State(initialValue: existing?.payeeContactID)
-        _notes = State(initialValue: existing?.notes ?? "")
+        _kind = State(initialValue: source?.kind ?? .expense)
+        _payeeContactID = State(initialValue: source?.payeeContactID)
+        _notes = State(initialValue: source?.notes ?? "")
         let resolvedName: String
-        if let id = existing?.payeeContactID {
+        if let id = source?.payeeContactID {
             resolvedName = ContactResolver.shared.displayName(for: id) ?? ""
         } else {
             resolvedName = ""
