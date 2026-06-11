@@ -16,4 +16,9 @@ final class AppRouter {
     /// back to nil after a brief pause, so it reads as a confirmation cue rather than
     /// a persistent selection.
     var focusedCategoryID: UUID?
+
+    /// When non-nil, the Assets tab pushes that asset's detail screen (set when the
+    /// user taps a recurrence notification). Cleared back to nil on dismiss by the
+    /// navigation binding.
+    var pendingAssetID: UUID?
 }

@@ -3,9 +3,10 @@ import SwiftUI
 // MARK: - Root
 
 struct ContentView: View {
-    @State private var router = AppRouter()
+    @Environment(AppRouter.self) private var router
 
     var body: some View {
+        @Bindable var router = router
         TabView(selection: $router.selectedTab) {
             HomeTab()
                 .tabItem { Image(systemName: "house") }
@@ -23,7 +24,6 @@ struct ContentView: View {
                 .tabItem { Image(systemName: "gearshape") }
                 .tag(AppTab.preferences)
         }
-        .environment(router)
     }
 }
 
@@ -71,4 +71,5 @@ struct PreferenceTab: View {
     try? store.createAsset(name: "Bosch Refrigerator", categoryID: catID)
     return ContentView()
         .environment(store)
+        .environment(AppRouter())
 }

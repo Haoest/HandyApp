@@ -1,0 +1,6 @@
+command to launch ios notification test
+
+xcodebuild test -project HandyApp3.xcodeproj -scheme HandyApp3 \
+  -destination 'platform=iOS Simulator,name=iPhone 16' \
+  -only-testing:HandyApp3Tests/NotificationLauncherTests \
+  TEST_RUNNER_MANUAL_NOTIFICATION_TEST=1

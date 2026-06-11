@@ -11,6 +11,9 @@ struct PlannedNotification: Equatable {
     let fireDateComponents: DateComponents
     let title: String
     let body: String
+    /// The asset the record is attached to; carried in the notification's userInfo
+    /// so a tap can route to the asset's detail screen.
+    let assetID: UUID
 }
 
 enum NotificationPlanner {
@@ -38,7 +41,7 @@ enum NotificationPlanner {
                     if let planned = makePlanned(
                         identifier: "\(identifierPrefix)event-\(event.id.uuidString)-\(index)",
                         occurrence: date, now: now, calendar: calendar,
-                        title: asset.name, body: event.title
+                        title: asset.name, body: event.title, assetID: asset.id
                     ) {
                         candidates.append(planned)
                     }
@@ -52,7 +55,7 @@ enum NotificationPlanner {
                     if let planned = makePlanned(
                         identifier: "\(identifierPrefix)txn-\(txn.id.uuidString)-\(index)",
                         occurrence: date, now: now, calendar: calendar,
-                        title: asset.name, body: body
+                        title: asset.name, body: body, assetID: asset.id
                     ) {
                         candidates.append(planned)
                     }
@@ -65,14 +68,14 @@ enum NotificationPlanner {
         return Array(sorted.prefix(globalLimit))
     }
 
-    private static func makePlanned(identifier: String, occurrence: Date, now: Date, calendar: Calendar, title: String, body: String) -> PlannedNotification? {
+    private static func makePlanned(identifier: String, occurrence: Date, now: Date, calendar: Calendar, title: String, body: String, assetID: UUID) -> PlannedNotification? {
         var components = calendar.dateComponents([.year, .month, .day], from: occurrence)
         components.hour = 9
         components.minute = 0
         // An occurrence whose 9 AM has already passed (today, later in the day) is
         // unannounceable; the next cycle covers it.
         guard let fireDate = calendar.date(from: components), fireDate > now else { return nil }
-        return PlannedNotification(identifier: identifier, fireDate: fireDate, fireDateComponents: components, title: title, body: body)
+        return PlannedNotification(identifier: identifier, fireDate: fireDate, fireDateComponents: components, title: title, body: body, assetID: assetID)
     }
 }
 
@@ -81,6 +84,10 @@ enum NotificationPlanner {
 final class NotificationScheduler: NSObject, UNUserNotificationCenterDelegate {
     private let center = UNUserNotificationCenter.current()
     private var resyncTask: Task<Void, Never>?
+
+    /// Called on the main actor with the asset ID when the user taps a recurrence
+    /// notification. Wired up at app startup to route to the asset's detail screen.
+    var onOpenAsset: ((UUID) -> Void)?
 
     override init() {
         super.init()
@@ -119,6 +126,7 @@ final class NotificationScheduler: NSObject, UNUserNotificationCenterDelegate {
             content.title = planned.title
             content.body = planned.body
             content.sound = .default
+            content.userInfo = ["assetID": planned.assetID.uuidString]
             let trigger = UNCalendarNotificationTrigger(dateMatching: planned.fireDateComponents, repeats: false)
             try? await center.add(UNNotificationRequest(identifier: planned.identifier, content: content, trigger: trigger))
         }
@@ -127,5 +135,11 @@ final class NotificationScheduler: NSObject, UNUserNotificationCenterDelegate {
     /// iOS suppresses banners while the app is frontmost by default; show them anyway.
     func userNotificationCenter(_ center: UNUserNotificationCenter, willPresent notification: UNNotification) async -> UNNotificationPresentationOptions {
         [.banner, .sound]
+    }
+
+    func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse) async {
+        guard let idString = response.notification.request.content.userInfo["assetID"] as? String,
+              let assetID = UUID(uuidString: idString) else { return }
+        await MainActor.run { onOpenAsset?(assetID) }
     }
 }

@@ -99,6 +99,7 @@ final class NotificationPlannerTests: XCTestCase {
         XCTAssertEqual(first.fireDate, date(2026, 2, 10, hour: 9))
         XCTAssertEqual(first.title, "My House")
         XCTAssertEqual(first.body, "Furnace service")
+        XCTAssertEqual(first.assetID, assetID)
     }
 
     func testTransactionBodyContainsDetailsAmountAndKind() throws {

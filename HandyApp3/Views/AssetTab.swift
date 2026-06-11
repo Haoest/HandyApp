@@ -29,6 +29,7 @@ struct AssetTab: View {
     }
 
     var body: some View {
+        @Bindable var router = router
         NavigationStack {
             VStack(spacing: 0) {
                 if !store.allAssets.isEmpty {
@@ -70,6 +71,17 @@ struct AssetTab: View {
             .onAppear { if router.focusedCategoryID != nil { viewMode = .all } }
             .onChange(of: router.focusedCategoryID) { _, id in
                 if id != nil { viewMode = .all }
+            }
+            .navigationDestination(item: $router.pendingAssetID) { id in
+                if let asset = store.assets[id], !asset.isDeleted {
+                    AssetDetailView(asset: asset)
+                } else {
+                    ContentUnavailableView(
+                        "Asset Not Found",
+                        systemImage: "shippingbox",
+                        description: Text("This asset no longer exists.")
+                    )
+                }
             }
         }
     }

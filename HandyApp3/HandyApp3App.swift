@@ -3,6 +3,7 @@ import SwiftUI
 @main
 struct HandyApp3App: App {
     @Environment(\.scenePhase) private var scenePhase
+    @State private var router = AppRouter()
     @State private var store: AssetStore = {
         let s = AssetStore()
         s.seedBuiltInComboLists()
@@ -17,7 +18,14 @@ struct HandyApp3App: App {
         WindowGroup {
             ContentView()
                 .environment(store)
-                .task { try? await ContactResolver.shared.requestAccess() }
+                .environment(router)
+                .task {
+                    store.notificationScheduler?.onOpenAsset = { assetID in
+                        router.selectedTab = .assets
+                        router.pendingAssetID = assetID
+                    }
+                    try? await ContactResolver.shared.requestAccess()
+                }
         }
         .onChange(of: scenePhase) { _, phase in
             guard phase == .active else { return }
