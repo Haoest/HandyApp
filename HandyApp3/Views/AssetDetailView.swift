@@ -135,13 +135,13 @@ struct AssetDetailView: View {
             }
         )
         .sheet(isPresented: $addEventPresented) {
-            EventEditView { title, date, notes in
-                try? store.addEvent(title: title, date: date, notes: notes, toAssetID: asset.id)
+            EventEditView { title, date, notes, recurrence in
+                try? store.addEvent(title: title, date: date, notes: notes, recurrence: recurrence, toAssetID: asset.id)
             }
         }
         .sheet(isPresented: $addTransactionPresented) {
-            TransactionEditView { details, amount, date, kind, payeeID, notes in
-                try? store.addTransaction(details: details, amount: amount, date: date, kind: kind, payeeContactID: payeeID, notes: notes, toAssetID: asset.id)
+            TransactionEditView { details, amount, date, kind, payeeID, notes, recurrence in
+                try? store.addTransaction(details: details, amount: amount, date: date, kind: kind, payeeContactID: payeeID, notes: notes, recurrence: recurrence, toAssetID: asset.id)
             }
         }
         .sheet(isPresented: $addPropertyPresented) {
@@ -152,24 +152,24 @@ struct AssetDetailView: View {
         .sheet(item: $eventSheetMode) { mode in
             switch mode {
             case .edit(let event):
-                EventEditView(existing: event) { title, date, notes in
-                    try? store.updateEvent(id: event.id, onAssetID: asset.id, title: title, date: date, notes: notes)
+                EventEditView(existing: event) { title, date, notes, recurrence in
+                    try? store.updateEvent(id: event.id, onAssetID: asset.id, title: title, date: date, notes: notes, recurrence: recurrence)
                 }
             case .duplicate(let source):
-                EventEditView(prefill: source) { title, date, notes in
-                    try? store.addEvent(title: title, date: date, notes: notes, toAssetID: asset.id)
+                EventEditView(prefill: source) { title, date, notes, recurrence in
+                    try? store.addEvent(title: title, date: date, notes: notes, recurrence: recurrence, toAssetID: asset.id)
                 }
             }
         }
         .sheet(item: $transactionSheetMode) { mode in
             switch mode {
             case .edit(let txn):
-                TransactionEditView(existing: txn) { details, amount, date, kind, payeeID, notes in
-                    try? store.updateTransaction(id: txn.id, onAssetID: asset.id, details: details, amount: amount, date: date, kind: kind, payeeContactID: payeeID, notes: notes)
+                TransactionEditView(existing: txn) { details, amount, date, kind, payeeID, notes, recurrence in
+                    try? store.updateTransaction(id: txn.id, onAssetID: asset.id, details: details, amount: amount, date: date, kind: kind, payeeContactID: payeeID, notes: notes, recurrence: recurrence)
                 }
             case .duplicate(let source):
-                TransactionEditView(prefill: source) { details, amount, date, kind, payeeID, notes in
-                    try? store.addTransaction(details: details, amount: amount, date: date, kind: kind, payeeContactID: payeeID, notes: notes, toAssetID: asset.id)
+                TransactionEditView(prefill: source) { details, amount, date, kind, payeeID, notes, recurrence in
+                    try? store.addTransaction(details: details, amount: amount, date: date, kind: kind, payeeContactID: payeeID, notes: notes, recurrence: recurrence, toAssetID: asset.id)
                 }
             }
         }

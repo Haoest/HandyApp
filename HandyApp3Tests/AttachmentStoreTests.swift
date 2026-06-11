@@ -76,9 +76,18 @@ final class AttachmentStoreTests: XCTestCase {
     func testUpdateEventBumpsModifiedDate() throws {
         let event = try store.addEvent(title: "Old", date: Date(), toAssetID: assetID)
         let before = store.assets[assetID]!.modifiedDate
-        try store.updateEvent(id: event.id, onAssetID: assetID, title: "New", date: Date(), notes: "note")
+        try store.updateEvent(id: event.id, onAssetID: assetID, title: "New", date: Date(), notes: "note", recurrence: nil)
         XCTAssertEqual(store.assets[assetID]!.events.first?.title, "New")
         XCTAssertGreaterThan(store.assets[assetID]!.modifiedDate, before)
+    }
+
+    func testEventRecurrenceRoundTrip() throws {
+        let event = try store.addEvent(title: "Service", date: Date(), notes: "", recurrence: .monthly, toAssetID: assetID)
+        XCTAssertEqual(store.assets[assetID]!.events.first?.recurrence, .monthly)
+        try store.updateEvent(id: event.id, onAssetID: assetID, title: "Service", date: Date(), notes: "", recurrence: .annually)
+        XCTAssertEqual(store.assets[assetID]!.events.first?.recurrence, .annually)
+        try store.updateEvent(id: event.id, onAssetID: assetID, title: "Service", date: Date(), notes: "", recurrence: nil)
+        XCTAssertNil(store.assets[assetID]!.events.first?.recurrence)
     }
 
     func testRemoveEventRoundTrip() throws {
@@ -124,9 +133,16 @@ final class AttachmentStoreTests: XCTestCase {
     func testUpdateTransactionBumpsModifiedDate() throws {
         let txn = try store.addTransaction(details: "Old", amount: 10, date: Date(), kind: .expense, toAssetID: assetID)
         let before = store.assets[assetID]!.modifiedDate
-        try store.updateTransaction(id: txn.id, onAssetID: assetID, details: "New", amount: 20, date: Date(), kind: .income, payeeContactID: nil)
+        try store.updateTransaction(id: txn.id, onAssetID: assetID, details: "New", amount: 20, date: Date(), kind: .income, payeeContactID: nil, notes: "", recurrence: nil)
         XCTAssertEqual(store.assets[assetID]!.transactions.first?.details, "New")
         XCTAssertGreaterThan(store.assets[assetID]!.modifiedDate, before)
+    }
+
+    func testTransactionRecurrenceRoundTrip() throws {
+        let txn = try store.addTransaction(details: "Pool", amount: 100, date: Date(), kind: .expense, recurrence: .quarterly, toAssetID: assetID)
+        XCTAssertEqual(store.assets[assetID]!.transactions.first?.recurrence, .quarterly)
+        try store.updateTransaction(id: txn.id, onAssetID: assetID, details: "Pool", amount: 100, date: Date(), kind: .expense, payeeContactID: nil, notes: "", recurrence: nil)
+        XCTAssertNil(store.assets[assetID]!.transactions.first?.recurrence)
     }
 
     func testRemoveTransactionRoundTrip() throws {

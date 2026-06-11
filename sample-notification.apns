@@ -1,0 +1,10 @@
+{
+  "Simuilator Target Bundle":"haoest.HandyApp3",
+  "aps": {
+    "alert": {
+      "title": "My House",
+      "body": "pool service"
+    },
+    "sound": "default"
+  }
+}

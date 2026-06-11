@@ -45,6 +45,10 @@ final class AssetStore {
     private(set) var compositeTypes: [UUID: CompositeTypeDefinition] = [:]
     private(set) var comboListDefinitions: [UUID: ComboListDefinition] = [:]
 
+    /// When set, event/transaction mutations (and asset deletions) trigger a full
+    /// notification resync. Nil in tests keeps the store notification-free.
+    var notificationScheduler: NotificationScheduler?
+
     // MARK: - Derived collections
 
     var allAssets: [Asset] { assets.values.filter { !$0.isDeleted } }
@@ -161,6 +165,7 @@ final class AssetStore {
             grandparent?._addChild(child)
         }
         assets.removeValue(forKey: id)
+        notificationScheduler?.requestResync(assets: allAssets)
     }
 
     /// Marks the asset as deleted without removing it from the store.
@@ -173,6 +178,7 @@ final class AssetStore {
         }
         asset.isDeleted = true
         asset.modifiedDate = Date()
+        notificationScheduler?.requestResync(assets: allAssets)
     }
 
     /// All assets belonging to the given category.
@@ -496,21 +502,24 @@ final class AssetStore {
     }
 
     @discardableResult
-    func addEvent(title: String, date: Date, notes: String = "", toAssetID assetID: UUID) throws -> Event {
+    func addEvent(title: String, date: Date, notes: String = "", recurrence: RecurrenceInterval? = nil, toAssetID assetID: UUID) throws -> Event {
         guard let asset = assets[assetID] else { throw AssetStoreError.assetNotFound(assetID) }
-        let event = Event(title: title, date: date, notes: notes)
+        let event = Event(title: title, date: date, notes: notes, recurrence: recurrence)
         asset.events.append(event)
         asset.modifiedDate = Date()
+        notificationScheduler?.requestResync(assets: allAssets)
         return event
     }
 
-    func updateEvent(id eventID: UUID, onAssetID assetID: UUID, title: String, date: Date, notes: String) throws {
+    func updateEvent(id eventID: UUID, onAssetID assetID: UUID, title: String, date: Date, notes: String, recurrence: RecurrenceInterval?) throws {
         guard let asset = assets[assetID] else { throw AssetStoreError.assetNotFound(assetID) }
         guard let event = asset.events.first(where: { $0.id == eventID }) else { throw AssetStoreError.eventNotFound(eventID) }
         event.title = title
         event.date = date
         event.notes = notes
+        event.recurrence = recurrence
         asset.modifiedDate = Date()
+        notificationScheduler?.requestResync(assets: allAssets)
     }
 
     func removeEvent(id eventID: UUID, fromAssetID assetID: UUID) throws {
@@ -518,18 +527,20 @@ final class AssetStore {
         guard asset.events.contains(where: { $0.id == eventID }) else { throw AssetStoreError.eventNotFound(eventID) }
         asset.events.removeAll { $0.id == eventID }
         asset.modifiedDate = Date()
+        notificationScheduler?.requestResync(assets: allAssets)
     }
 
     @discardableResult
-    func addTransaction(details: String, amount: Decimal, date: Date, kind: TransactionKind, payeeContactID: String? = nil, notes: String = "", toAssetID assetID: UUID) throws -> Transaction {
+    func addTransaction(details: String, amount: Decimal, date: Date, kind: TransactionKind, payeeContactID: String? = nil, notes: String = "", recurrence: RecurrenceInterval? = nil, toAssetID assetID: UUID) throws -> Transaction {
         guard let asset = assets[assetID] else { throw AssetStoreError.assetNotFound(assetID) }
-        let txn = Transaction(details: details, amount: amount, date: date, kind: kind, payeeContactID: payeeContactID, notes: notes)
+        let txn = Transaction(details: details, amount: amount, date: date, kind: kind, payeeContactID: payeeContactID, notes: notes, recurrence: recurrence)
         asset.transactions.append(txn)
         asset.modifiedDate = Date()
+        notificationScheduler?.requestResync(assets: allAssets)
         return txn
     }
 
-    func updateTransaction(id txnID: UUID, onAssetID assetID: UUID, details: String, amount: Decimal, date: Date, kind: TransactionKind, payeeContactID: String?, notes: String) throws {
+    func updateTransaction(id txnID: UUID, onAssetID assetID: UUID, details: String, amount: Decimal, date: Date, kind: TransactionKind, payeeContactID: String?, notes: String, recurrence: RecurrenceInterval?) throws {
         guard let asset = assets[assetID] else { throw AssetStoreError.assetNotFound(assetID) }
         guard let txn = asset.transactions.first(where: { $0.id == txnID }) else { throw AssetStoreError.transactionNotFound(txnID) }
         txn.details = details
@@ -538,7 +549,9 @@ final class AssetStore {
         txn.kind = kind
         txn.payeeContactID = payeeContactID
         txn.notes = notes
+        txn.recurrence = recurrence
         asset.modifiedDate = Date()
+        notificationScheduler?.requestResync(assets: allAssets)
     }
 
     func removeTransaction(id txnID: UUID, fromAssetID assetID: UUID) throws {
@@ -546,6 +559,7 @@ final class AssetStore {
         guard asset.transactions.contains(where: { $0.id == txnID }) else { throw AssetStoreError.transactionNotFound(txnID) }
         asset.transactions.removeAll { $0.id == txnID }
         asset.modifiedDate = Date()
+        notificationScheduler?.requestResync(assets: allAssets)
     }
 
     // MARK: - Private helpers

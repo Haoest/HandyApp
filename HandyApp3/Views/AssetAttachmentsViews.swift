@@ -165,7 +165,7 @@ struct EventsSection: View {
                         }
                         .contextMenu {
                             Button {
-                                try? store.addEvent(title: event.title, date: Date(), notes: event.notes, toAssetID: asset.id)
+                                try? store.addEvent(title: event.title, date: Date(), notes: event.notes, recurrence: event.recurrence, toAssetID: asset.id)
                             } label: {
                                 Label("Duplicate", systemImage: "plus.square.on.square")
                             }
@@ -188,9 +188,14 @@ private struct EventRow: View {
         VStack(alignment: .leading, spacing: 2) {
             Text(event.title)
                 .fontWeight(.medium)
-            Text(event.date.formatted(date: .abbreviated, time: .omitted))
-                .font(.caption)
-                .foregroundStyle(.secondary)
+            HStack(spacing: 6) {
+                Text(event.date.formatted(date: .abbreviated, time: .omitted))
+                if let recurrence = event.recurrence {
+                    Label(recurrence.rawValue, systemImage: "arrow.triangle.2.circlepath")
+                }
+            }
+            .font(.caption)
+            .foregroundStyle(.secondary)
             if !event.notes.isEmpty {
                 Text(event.notes)
                     .font(.caption)
@@ -207,19 +212,23 @@ private struct EventRow: View {
 struct EventEditView: View {
     @Environment(\.dismiss) private var dismiss
     let existing: Event?
-    let onSave: (String, Date, String) -> Void
+    let onSave: (String, Date, String, RecurrenceInterval?) -> Void
 
     @State private var title: String
     @State private var date: Date
     @State private var notes: String
+    @State private var isRecurring: Bool
+    @State private var interval: RecurrenceInterval
 
-    init(existing: Event? = nil, prefill: Event? = nil, onSave: @escaping (String, Date, String) -> Void) {
+    init(existing: Event? = nil, prefill: Event? = nil, onSave: @escaping (String, Date, String, RecurrenceInterval?) -> Void) {
         self.existing = existing
         self.onSave = onSave
         let source = existing ?? prefill
         _title = State(initialValue: source?.title ?? "")
         _date = State(initialValue: existing?.date ?? Date())
         _notes = State(initialValue: source?.notes ?? "")
+        _isRecurring = State(initialValue: source?.recurrence != nil)
+        _interval = State(initialValue: source?.recurrence ?? .monthly)
     }
 
     var body: some View {
@@ -231,6 +240,16 @@ struct EventEditView: View {
                 Section("Date") {
                     DatePicker("", selection: $date, displayedComponents: .date)
                         .labelsHidden()
+                }
+                Section("Recurrence") {
+                    Toggle("Recurring", isOn: $isRecurring)
+                    if isRecurring {
+                        Picker("Repeats", selection: $interval) {
+                            ForEach(RecurrenceInterval.allCases, id: \.self) { option in
+                                Text(option.rawValue).tag(option)
+                            }
+                        }
+                    }
                 }
                 Section("Notes") {
                     TextField("Optional notes", text: $notes, axis: .vertical)
@@ -245,7 +264,7 @@ struct EventEditView: View {
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Save") {
-                        onSave(title.trimmingCharacters(in: .whitespaces), date, notes.trimmingCharacters(in: .whitespaces))
+                        onSave(title.trimmingCharacters(in: .whitespaces), date, notes.trimmingCharacters(in: .whitespaces), isRecurring ? interval : nil)
                         dismiss()
                     }
                     .disabled(title.trimmingCharacters(in: .whitespaces).isEmpty)
@@ -293,7 +312,7 @@ struct TransactionsSection: View {
                         }
                         .contextMenu {
                             Button {
-                                try? store.addTransaction(details: txn.details, amount: txn.amount, date: Date(), kind: txn.kind, payeeContactID: txn.payeeContactID, notes: txn.notes, toAssetID: asset.id)
+                                try? store.addTransaction(details: txn.details, amount: txn.amount, date: Date(), kind: txn.kind, payeeContactID: txn.payeeContactID, notes: txn.notes, recurrence: txn.recurrence, toAssetID: asset.id)
                             } label: {
                                 Label("Duplicate", systemImage: "plus.square.on.square")
                             }
@@ -341,6 +360,11 @@ private struct TransactionRow: View {
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }
+                    if let recurrence = transaction.recurrence {
+                        Label(recurrence.rawValue, systemImage: "arrow.triangle.2.circlepath")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
                 }
                 if !transaction.notes.isEmpty {
                     Text(transaction.notes)
@@ -363,7 +387,7 @@ private struct TransactionRow: View {
 struct TransactionEditView: View {
     @Environment(\.dismiss) private var dismiss
     let existing: Transaction?
-    let onSave: (String, Decimal, Date, TransactionKind, String?, String) -> Void
+    let onSave: (String, Decimal, Date, TransactionKind, String?, String, RecurrenceInterval?) -> Void
 
     @State private var details: String
     @State private var amountText: String
@@ -372,9 +396,11 @@ struct TransactionEditView: View {
     @State private var payeeContactID: String?
     @State private var payeeName: String
     @State private var notes: String
+    @State private var isRecurring: Bool
+    @State private var interval: RecurrenceInterval
     @State private var contactPickerPresented = false
 
-    init(existing: Transaction? = nil, prefill: Transaction? = nil, onSave: @escaping (String, Decimal, Date, TransactionKind, String?, String) -> Void) {
+    init(existing: Transaction? = nil, prefill: Transaction? = nil, onSave: @escaping (String, Decimal, Date, TransactionKind, String?, String, RecurrenceInterval?) -> Void) {
         self.existing = existing
         self.onSave = onSave
         let source = existing ?? prefill
@@ -384,6 +410,8 @@ struct TransactionEditView: View {
         _kind = State(initialValue: source?.kind ?? .expense)
         _payeeContactID = State(initialValue: source?.payeeContactID)
         _notes = State(initialValue: source?.notes ?? "")
+        _isRecurring = State(initialValue: source?.recurrence != nil)
+        _interval = State(initialValue: source?.recurrence ?? .monthly)
         let resolvedName: String
         if let id = source?.payeeContactID {
             resolvedName = ContactResolver.shared.displayName(for: id) ?? ""
@@ -414,6 +442,16 @@ struct TransactionEditView: View {
                 Section("Date") {
                     DatePicker("", selection: $date, displayedComponents: .date)
                         .labelsHidden()
+                }
+                Section("Recurrence") {
+                    Toggle("Recurring", isOn: $isRecurring)
+                    if isRecurring {
+                        Picker("Repeats", selection: $interval) {
+                            ForEach(RecurrenceInterval.allCases, id: \.self) { option in
+                                Text(option.rawValue).tag(option)
+                            }
+                        }
+                    }
                 }
                 Section("Notes") {
                     TextField("Optional notes", text: $notes, axis: .vertical)
@@ -454,7 +492,7 @@ struct TransactionEditView: View {
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Save") {
                         let amount = parsedAmount ?? 0
-                        onSave(details.trimmingCharacters(in: .whitespaces), amount, date, kind, payeeContactID, notes.trimmingCharacters(in: .whitespaces))
+                        onSave(details.trimmingCharacters(in: .whitespaces), amount, date, kind, payeeContactID, notes.trimmingCharacters(in: .whitespaces), isRecurring ? interval : nil)
                         dismiss()
                     }
                     .disabled(details.trimmingCharacters(in: .whitespaces).isEmpty || parsedAmount == nil)
