@@ -127,6 +127,29 @@ struct PhotoViewerSheet: View {
     }
 }
 
+// MARK: - Recurring-first ordering
+
+/// Display order for event/transaction lists: recurring items first, then
+/// non-recurring, each group sorted by date descending.
+private protocol RecurringDatedRecord {
+    var date: Date { get }
+    var recurrence: RecurrenceInterval? { get }
+}
+
+extension Event: RecurringDatedRecord {}
+extension Transaction: RecurringDatedRecord {}
+
+private extension Array where Element: RecurringDatedRecord {
+    func recurringFirstDateDescending() -> [Element] {
+        sorted {
+            if ($0.recurrence != nil) != ($1.recurrence != nil) {
+                return $0.recurrence != nil
+            }
+            return $0.date > $1.date
+        }
+    }
+}
+
 // MARK: - Events section
 
 enum EventSheetMode: Identifiable {
@@ -141,43 +164,95 @@ enum EventSheetMode: Identifiable {
 }
 
 struct EventsSection: View {
-    @Environment(AssetStore.self) private var store
     let asset: Asset
     @Binding var sheetMode: EventSheetMode?
 
-    private var sorted: [Event] { asset.events.sorted { $0.date > $1.date } }
+    /// Non-recurring items shown inline before collapsing behind the "…" row;
+    /// recurring items are never collapsed.
+    static let nonRecurringLimit = 10
+
+    private var sorted: [Event] { asset.events.recurringFirstDateDescending() }
+
+    private var displayed: [Event] {
+        var remaining = Self.nonRecurringLimit
+        return sorted.filter { event in
+            guard event.recurrence == nil else { return true }
+            guard remaining > 0 else { return false }
+            remaining -= 1
+            return true
+        }
+    }
+
+    private var hasMore: Bool {
+        sorted.filter { $0.recurrence == nil }.count > Self.nonRecurringLimit
+    }
 
     var body: some View {
         Section("Events") {
             if asset.events.isEmpty {
                 Text("None").foregroundStyle(.secondary)
             } else {
-                ForEach(sorted) { event in
-                    EventRow(event: event)
-                        .contentShape(Rectangle())
-                        .onTapGesture { sheetMode = .edit(event) }
-                        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
-                            Button(role: .destructive) {
-                                try? store.removeEvent(id: event.id, fromAssetID: asset.id)
-                            } label: {
-                                Label("Delete", systemImage: "trash")
-                            }
-                        }
-                        .contextMenu {
-                            Button {
-                                try? store.addEvent(title: event.title, date: Date(), notes: event.notes, toAssetID: asset.id)
-                            } label: {
-                                Label("Duplicate", systemImage: "plus.square.on.square")
-                            }
-                            Button {
-                                sheetMode = .duplicate(event)
-                            } label: {
-                                Label("Duplicate…", systemImage: "square.and.pencil")
-                            }
-                        }
+                ForEach(displayed) { event in
+                    EventItemRow(asset: asset, event: event, sheetMode: $sheetMode)
+                }
+                if hasMore {
+                    NavigationLink {
+                        EventListView(asset: asset, sheetMode: $sheetMode)
+                    } label: {
+                        Text("Show All").foregroundStyle(.secondary)
+                    }
                 }
             }
         }
+    }
+}
+
+struct EventListView: View {
+    let asset: Asset
+    @Binding var sheetMode: EventSheetMode?
+
+    private var sorted: [Event] { asset.events.recurringFirstDateDescending() }
+
+    var body: some View {
+        List {
+            ForEach(sorted) { event in
+                EventItemRow(asset: asset, event: event, sheetMode: $sheetMode)
+            }
+        }
+        .navigationTitle("Events")
+        .navigationBarTitleDisplayMode(.inline)
+    }
+}
+
+private struct EventItemRow: View {
+    @Environment(AssetStore.self) private var store
+    let asset: Asset
+    let event: Event
+    @Binding var sheetMode: EventSheetMode?
+
+    var body: some View {
+        EventRow(event: event)
+            .contentShape(Rectangle())
+            .onTapGesture { sheetMode = .edit(event) }
+            .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                Button(role: .destructive) {
+                    try? store.removeEvent(id: event.id, fromAssetID: asset.id)
+                } label: {
+                    Label("Delete", systemImage: "trash")
+                }
+            }
+            .contextMenu {
+                Button {
+                    try? store.addEvent(title: event.title, date: Date(), notes: event.notes, toAssetID: asset.id)
+                } label: {
+                    Label("Duplicate", systemImage: "plus.square.on.square")
+                }
+                Button {
+                    sheetMode = .duplicate(event)
+                } label: {
+                    Label("Duplicate…", systemImage: "square.and.pencil")
+                }
+            }
     }
 }
 
@@ -290,43 +365,95 @@ enum TransactionSheetMode: Identifiable {
 }
 
 struct TransactionsSection: View {
-    @Environment(AssetStore.self) private var store
     let asset: Asset
     @Binding var sheetMode: TransactionSheetMode?
 
-    private var sorted: [Transaction] { asset.transactions.sorted { $0.date > $1.date } }
+    /// Non-recurring items shown inline before collapsing behind the "…" row;
+    /// recurring items are never collapsed.
+    static let nonRecurringLimit = 10
+
+    private var sorted: [Transaction] { asset.transactions.recurringFirstDateDescending() }
+
+    private var displayed: [Transaction] {
+        var remaining = Self.nonRecurringLimit
+        return sorted.filter { txn in
+            guard txn.recurrence == nil else { return true }
+            guard remaining > 0 else { return false }
+            remaining -= 1
+            return true
+        }
+    }
+
+    private var hasMore: Bool {
+        sorted.filter { $0.recurrence == nil }.count > Self.nonRecurringLimit
+    }
 
     var body: some View {
         Section("Transactions") {
             if asset.transactions.isEmpty {
                 Text("None").foregroundStyle(.secondary)
             } else {
-                ForEach(sorted) { txn in
-                    TransactionRow(transaction: txn)
-                        .contentShape(Rectangle())
-                        .onTapGesture { sheetMode = .edit(txn) }
-                        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
-                            Button(role: .destructive) {
-                                try? store.removeTransaction(id: txn.id, fromAssetID: asset.id)
-                            } label: {
-                                Label("Delete", systemImage: "trash")
-                            }
-                        }
-                        .contextMenu {
-                            Button {
-                                try? store.addTransaction(details: txn.details, amount: txn.amount, date: Date(), kind: txn.kind, payeeContactID: txn.payeeContactID, notes: txn.notes, toAssetID: asset.id)
-                            } label: {
-                                Label("Duplicate", systemImage: "plus.square.on.square")
-                            }
-                            Button {
-                                sheetMode = .duplicate(txn)
-                            } label: {
-                                Label("Duplicate…", systemImage: "square.and.pencil")
-                            }
-                        }
+                ForEach(displayed) { txn in
+                    TransactionItemRow(asset: asset, transaction: txn, sheetMode: $sheetMode)
+                }
+                if hasMore {
+                    NavigationLink {
+                        TransactionListView(asset: asset, sheetMode: $sheetMode)
+                    } label: {
+                        Text("Show All").foregroundStyle(.secondary)
+                    }
                 }
             }
         }
+    }
+}
+
+struct TransactionListView: View {
+    let asset: Asset
+    @Binding var sheetMode: TransactionSheetMode?
+
+    private var sorted: [Transaction] { asset.transactions.recurringFirstDateDescending() }
+
+    var body: some View {
+        List {
+            ForEach(sorted) { txn in
+                TransactionItemRow(asset: asset, transaction: txn, sheetMode: $sheetMode)
+            }
+        }
+        .navigationTitle("Transactions")
+        .navigationBarTitleDisplayMode(.inline)
+    }
+}
+
+private struct TransactionItemRow: View {
+    @Environment(AssetStore.self) private var store
+    let asset: Asset
+    let transaction: Transaction
+    @Binding var sheetMode: TransactionSheetMode?
+
+    var body: some View {
+        TransactionRow(transaction: transaction)
+            .contentShape(Rectangle())
+            .onTapGesture { sheetMode = .edit(transaction) }
+            .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                Button(role: .destructive) {
+                    try? store.removeTransaction(id: transaction.id, fromAssetID: asset.id)
+                } label: {
+                    Label("Delete", systemImage: "trash")
+                }
+            }
+            .contextMenu {
+                Button {
+                    try? store.addTransaction(details: transaction.details, amount: transaction.amount, date: Date(), kind: transaction.kind, payeeContactID: transaction.payeeContactID, notes: transaction.notes, toAssetID: asset.id)
+                } label: {
+                    Label("Duplicate", systemImage: "plus.square.on.square")
+                }
+                Button {
+                    sheetMode = .duplicate(transaction)
+                } label: {
+                    Label("Duplicate…", systemImage: "square.and.pencil")
+                }
+            }
     }
 }
 

@@ -48,6 +48,52 @@ extension AssetStore {
         return seeded
     }
 
+    /// Seeds sample events on the "1 main" house: 2 recurring + 12 non-recurring —
+    /// enough to exercise the capped detail list and its "…" overflow row.
+    /// Idempotent (skips if the asset already has events).
+    @discardableResult
+    func seedSampleEvents() -> [Event] {
+        guard let house = allAssets.first(where: { $0.name == "1 main" }),
+              house.events.isEmpty else { return [] }
+        let calendar = Calendar.current
+        var seeded: [Event] = []
+        func add(_ title: String, monthsAgo: Int, recurrence: RecurrenceInterval? = nil) {
+            let date = calendar.date(byAdding: .month, value: -monthsAgo, to: Date()) ?? Date()
+            if let event = try? addEvent(title: title, date: date, recurrence: recurrence, toAssetID: house.id) {
+                seeded.append(event)
+            }
+        }
+        add("Furnace filter replacement", monthsAgo: 1, recurrence: .monthly)
+        add("Property tax payment", monthsAgo: 2, recurrence: .annually)
+        for i in 1...12 {
+            add("Sample event \(i)", monthsAgo: i)
+        }
+        return seeded
+    }
+
+    /// Seeds sample transactions on the "Fridge" appliance: 2 recurring +
+    /// 12 non-recurring — enough to exercise the capped detail list and its "…"
+    /// overflow row. Idempotent (skips if the asset already has transactions).
+    @discardableResult
+    func seedSampleTransactions() -> [Transaction] {
+        guard let fridge = allAssets.first(where: { $0.name == "Fridge" }),
+              fridge.transactions.isEmpty else { return [] }
+        let calendar = Calendar.current
+        var seeded: [Transaction] = []
+        func add(_ details: String, amount: Decimal, monthsAgo: Int, recurrence: RecurrenceInterval? = nil) {
+            let date = calendar.date(byAdding: .month, value: -monthsAgo, to: Date()) ?? Date()
+            if let txn = try? addTransaction(details: details, amount: amount, date: date, kind: .expense, recurrence: recurrence, toAssetID: fridge.id) {
+                seeded.append(txn)
+            }
+        }
+        add("Water filter subscription", amount: 35, monthsAgo: 1, recurrence: .quarterly)
+        add("Extended warranty premium", amount: 120, monthsAgo: 2, recurrence: .annually)
+        for i in 1...12 {
+            add("Sample transaction \(i)", amount: Decimal(i * 10), monthsAgo: i)
+        }
+        return seeded
+    }
+
     /// Registers built-in asset categories. Idempotent.
     @discardableResult
     func seedBuiltInCategories() -> [AssetCategory] {
