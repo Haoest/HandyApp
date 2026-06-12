@@ -2,6 +2,16 @@ import SwiftUI
 import Contacts
 import PhotosUI
 
+/// Jump targets for the section index on the trailing edge of the detail form.
+private enum DetailAnchor: String, CaseIterable {
+    case category = "Category"
+    case custom = "Custom"
+    case photos = "Photos"
+    case events = "Events"
+    case transactions = "Transactions"
+    case relationship = "Relationship"
+}
+
 struct AssetDetailView: View {
     @Environment(AssetStore.self) private var store
     @Environment(\.dismiss) private var dismiss
@@ -36,47 +46,77 @@ struct AssetDetailView: View {
 
     private var childCount: Int { asset.children.count }
 
+    /// The category anchor only makes sense when its section is rendered.
+    private var anchors: [DetailAnchor] {
+        DetailAnchor.allCases.filter { $0 != .category || !sortedBase.isEmpty }
+    }
+
+    private func jumpMenu(_ proxy: ScrollViewProxy) -> some View {
+        Menu {
+            ForEach(anchors, id: \.self) { anchor in
+                Button(anchor.rawValue) {
+                    withAnimation { proxy.scrollTo(anchor, anchor: .top) }
+                }
+            }
+        } label: {
+            Image(systemName: "list.bullet")
+        }
+    }
+
     var body: some View {
-        Form {
-            Section("Name") {
-                NameDetailField(asset: asset)
-            }
-            if !sortedBase.isEmpty {
-                Section(asset.category.name) {
-                    ForEach(sortedBase) { prop in
-                        PropertyDetailRow(assetID: asset.id, property: prop)
-                    }
+        ScrollViewReader { proxy in
+            Form {
+                Section("Name") {
+                    NameDetailField(asset: asset)
                 }
-            }
-            Section {
-                if sortedCustom.isEmpty {
-                    Text("None").foregroundStyle(.secondary)
-                } else {
-                    ForEach(sortedCustom) { prop in
-                        PropertyDetailRow(assetID: asset.id, property: prop, onEditLabel: { customPropertyToEdit = prop })
-                            .swipeActions(edge: .trailing, allowsFullSwipe: false) {
-                                Button(role: .destructive) {
-                                    try? store.removeCustomProperty(id: prop.id, fromAssetID: asset.id)
-                                } label: {
-                                    Label("Delete", systemImage: "trash")
+                if !sortedBase.isEmpty {
+                    Section(asset.category.name) {
+                        ForEach(sortedBase) { prop in
+                            PropertyDetailRow(assetID: asset.id, property: prop)
+                        }
+                    }
+                    .id(DetailAnchor.category)
+                }
+                Section {
+                    if sortedCustom.isEmpty {
+                        Text("None").foregroundStyle(.secondary)
+                    } else {
+                        ForEach(sortedCustom) { prop in
+                            PropertyDetailRow(assetID: asset.id, property: prop, onEditLabel: { customPropertyToEdit = prop })
+                                .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                                    Button(role: .destructive) {
+                                        try? store.removeCustomProperty(id: prop.id, fromAssetID: asset.id)
+                                    } label: {
+                                        Label("Delete", systemImage: "trash")
+                                    }
                                 }
-                            }
+                        }
+                    }
+                } header: {
+                    HStack {
+                        Text("Custom Field")
+                        Spacer()
+                        Button { addPropertyPresented = true } label: {
+                            Image(systemName: "plus")
+                        }
                     }
                 }
-            } header: {
-                HStack {
-                    Text("Custom Field")
-                    Spacer()
-                    Button { addPropertyPresented = true } label: {
-                        Image(systemName: "plus")
-                    }
+                .id(DetailAnchor.custom)
+                PhotosSection(asset: asset)
+                    .id(DetailAnchor.photos)
+                EventsSection(asset: asset, sheetMode: $eventSheetMode)
+                    .id(DetailAnchor.events)
+                TransactionsSection(asset: asset, sheetMode: $transactionSheetMode)
+                    .id(DetailAnchor.transactions)
+                Section("Relationship") {
+                    BelongsToRow(asset: asset)
                 }
+                .id(DetailAnchor.relationship)
             }
-            PhotosSection(asset: asset)
-            EventsSection(asset: asset, sheetMode: $eventSheetMode)
-            TransactionsSection(asset: asset, sheetMode: $transactionSheetMode)
-            Section("Relationship") {
-                BelongsToRow(asset: asset)
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    jumpMenu(proxy)
+                }
             }
         }
         .navigationTitle(asset.name)
