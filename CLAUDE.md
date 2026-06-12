@@ -38,3 +38,5 @@ An `Asset` is a named physical object. It belongs to one `AssetCategory`, which 
 - application version
 - change add icon on asset listing screen and detail screen to differentiate them
 - beautify screens
+- auto parse photo for transaction?
+- list event/transaction

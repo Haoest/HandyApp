@@ -165,7 +165,7 @@ struct EventsSection: View {
                         }
                         .contextMenu {
                             Button {
-                                try? store.addEvent(title: event.title, date: Date(), notes: event.notes, recurrence: event.recurrence, toAssetID: asset.id)
+                                try? store.addEvent(title: event.title, date: Date(), notes: event.notes, toAssetID: asset.id)
                             } label: {
                                 Label("Duplicate", systemImage: "plus.square.on.square")
                             }
@@ -227,8 +227,10 @@ struct EventEditView: View {
         _title = State(initialValue: source?.title ?? "")
         _date = State(initialValue: existing?.date ?? Date())
         _notes = State(initialValue: source?.notes ?? "")
-        _isRecurring = State(initialValue: source?.recurrence != nil)
-        _interval = State(initialValue: source?.recurrence ?? .monthly)
+        // Recurrence intentionally doesn't carry over from a duplicate prefill —
+        // a copy starts non-recurring so duplication can't silently double reminders.
+        _isRecurring = State(initialValue: existing?.recurrence != nil)
+        _interval = State(initialValue: existing?.recurrence ?? .monthly)
     }
 
     var body: some View {
@@ -312,7 +314,7 @@ struct TransactionsSection: View {
                         }
                         .contextMenu {
                             Button {
-                                try? store.addTransaction(details: txn.details, amount: txn.amount, date: Date(), kind: txn.kind, payeeContactID: txn.payeeContactID, notes: txn.notes, recurrence: txn.recurrence, toAssetID: asset.id)
+                                try? store.addTransaction(details: txn.details, amount: txn.amount, date: Date(), kind: txn.kind, payeeContactID: txn.payeeContactID, notes: txn.notes, toAssetID: asset.id)
                             } label: {
                                 Label("Duplicate", systemImage: "plus.square.on.square")
                             }
@@ -410,8 +412,10 @@ struct TransactionEditView: View {
         _kind = State(initialValue: source?.kind ?? .expense)
         _payeeContactID = State(initialValue: source?.payeeContactID)
         _notes = State(initialValue: source?.notes ?? "")
-        _isRecurring = State(initialValue: source?.recurrence != nil)
-        _interval = State(initialValue: source?.recurrence ?? .monthly)
+        // Recurrence intentionally doesn't carry over from a duplicate prefill —
+        // a copy starts non-recurring so duplication can't silently double reminders.
+        _isRecurring = State(initialValue: existing?.recurrence != nil)
+        _interval = State(initialValue: existing?.recurrence ?? .monthly)
         let resolvedName: String
         if let id = source?.payeeContactID {
             resolvedName = ContactResolver.shared.displayName(for: id) ?? ""
