@@ -28,40 +28,61 @@ struct AssetTab: View {
             .sorted { $0.name.localizedCompare($1.name) == .orderedAscending }
     }
 
+    /// Distinct categories offered as jump anchors, name-sorted: every category
+    /// holding an asset in "All" view, only top-level assets' categories in "Tree".
+    private var anchorCategories: [AssetCategory] {
+        switch viewMode {
+        case .all:
+            return groupedAssets.map(\.category)
+        case .tree:
+            var seen = Set<UUID>()
+            return rootAssets.map(\.category)
+                .filter { seen.insert($0.id).inserted }
+                .sorted { $0.name.localizedCompare($1.name) == .orderedAscending }
+        }
+    }
+
     var body: some View {
         @Bindable var router = router
         NavigationStack {
-            VStack(spacing: 0) {
-                if !store.allAssets.isEmpty {
-                    Picker("View", selection: $viewMode) {
-                        ForEach(AssetListMode.allCases, id: \.self) { mode in
-                            Text(mode.label).tag(mode)
+            ScrollViewReader { proxy in
+                VStack(spacing: 0) {
+                    if !store.allAssets.isEmpty {
+                        Picker("View", selection: $viewMode) {
+                            ForEach(AssetListMode.allCases, id: \.self) { mode in
+                                Text(mode.label).tag(mode)
+                            }
+                        }
+                        .pickerStyle(.segmented)
+                        .padding(.horizontal)
+                        .padding(.vertical, 8)
+                    }
+                    Group {
+                        if store.allAssets.isEmpty {
+                            ContentUnavailableView(
+                                "No Assets",
+                                systemImage: "shippingbox",
+                                description: Text("Tap + to add your first asset.")
+                            )
+                        } else {
+                            switch viewMode {
+                            case .all: allList(proxy)
+                            case .tree: treeList
+                            }
                         }
                     }
-                    .pickerStyle(.segmented)
-                    .padding(.horizontal)
-                    .padding(.vertical, 8)
                 }
-                Group {
-                    if store.allAssets.isEmpty {
-                        ContentUnavailableView(
-                            "No Assets",
-                            systemImage: "shippingbox",
-                            description: Text("Tap + to add your first asset.")
-                        )
-                    } else {
-                        switch viewMode {
-                        case .all: allList
-                        case .tree: treeList
+                .navigationTitle("Assets")
+                .toolbar {
+                    ToolbarItem(placement: .topBarTrailing) {
+                        Button { newAssetPresented = true } label: {
+                            Image(systemName: "plus")
                         }
                     }
-                }
-            }
-            .navigationTitle("Assets")
-            .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button { newAssetPresented = true } label: {
-                        Image(systemName: "plus")
+                    if !anchorCategories.isEmpty {
+                        ToolbarItem(placement: .topBarTrailing) {
+                            jumpMenu(proxy)
+                        }
                     }
                 }
             }
@@ -86,28 +107,47 @@ struct AssetTab: View {
         }
     }
 
-    private var allList: some View {
-        ScrollViewReader { proxy in
-            List {
-                ForEach(groupedAssets, id: \.category.id) { group in
-                    Section(header: categoryHeader(group.category)) {
-                        ForEach(group.assets) { asset in
-                            NavigationLink(destination: AssetDetailView(asset: asset)) {
-                                AssetRow(asset: asset)
+    private func jumpMenu(_ proxy: ScrollViewProxy) -> some View {
+        Menu {
+            ForEach(anchorCategories, id: \.id) { category in
+                Button(category.name) {
+                    withAnimation {
+                        switch viewMode {
+                        case .all:
+                            proxy.scrollTo(category.id, anchor: .top)
+                        case .tree:
+                            if let target = rootAssets.first(where: { $0.category.id == category.id }) {
+                                proxy.scrollTo(target.id, anchor: .top)
                             }
                         }
                     }
-                    .id(group.category.id)
                 }
             }
-            .onAppear {
-                guard let id = router.focusedCategoryID else { return }
-                DispatchQueue.main.async { flashFocus(id, proxy: proxy) }
+        } label: {
+            Image(systemName: "list.bullet")
+        }
+    }
+
+    private func allList(_ proxy: ScrollViewProxy) -> some View {
+        List {
+            ForEach(groupedAssets, id: \.category.id) { group in
+                Section(header: categoryHeader(group.category)) {
+                    ForEach(group.assets) { asset in
+                        NavigationLink(destination: AssetDetailView(asset: asset)) {
+                            AssetRow(asset: asset)
+                        }
+                    }
+                }
+                .id(group.category.id)
             }
-            .onChange(of: router.focusedCategoryID) { _, id in
-                guard let id else { return }
-                flashFocus(id, proxy: proxy)
-            }
+        }
+        .onAppear {
+            guard let id = router.focusedCategoryID else { return }
+            DispatchQueue.main.async { flashFocus(id, proxy: proxy) }
+        }
+        .onChange(of: router.focusedCategoryID) { _, id in
+            guard let id else { return }
+            flashFocus(id, proxy: proxy)
         }
     }
 
@@ -143,6 +183,7 @@ struct AssetTab: View {
         List {
             ForEach(rootAssets) { asset in
                 AssetTreeRow(asset: asset, depth: 0, expanded: $expanded)
+                    .id(asset.id)
             }
         }
     }

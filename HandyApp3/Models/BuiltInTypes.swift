@@ -48,6 +48,28 @@ extension AssetStore {
         return seeded
     }
 
+    /// Seeds an "HVAC" asset under the "1 main" house, with an uncategorized
+    /// "air filter" (Notes: filter size) nested under it. Idempotent (skips if an
+    /// "HVAC" asset already exists).
+    @discardableResult
+    func seedSampleHVAC() -> [Asset] {
+        guard let house = allAssets.first(where: { $0.name == "1 main" }),
+              !allAssets.contains(where: { $0.name == "HVAC" }),
+              let hvacCat = categories.values.first(where: { $0.name == SystemCategory.hvac.rawValue }),
+              let hvac = try? createAsset(name: "HVAC", categoryID: hvacCat.id) else { return [] }
+        try? moveAsset(assetID: hvac.id, toParentID: house.id)
+        var seeded = [hvac]
+        if let noCat = categories.values.first(where: { $0.name == SystemCategory.noCategory.rawValue }),
+           let filter = try? createAsset(name: "air filter", categoryID: noCat.id) {
+            try? moveAsset(assetID: filter.id, toParentID: hvac.id)
+            if let notesDef = filter.baseProperties.first(where: { $0.definition.name == "Notes" })?.definition {
+                try? setPropertyValue(.text("16x25x1"), forDefinitionID: notesDef.id, onAssetID: filter.id)
+            }
+            seeded.append(filter)
+        }
+        return seeded
+    }
+
     /// Seeds sample events on the "1 main" house: 2 recurring + 12 non-recurring —
     /// enough to exercise the capped detail list and its "…" overflow row.
     /// Idempotent (skips if the asset already has events).

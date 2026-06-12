@@ -10,6 +10,7 @@ struct HandyApp3App: App {
         s.seedBuiltInCategories()
         s.seedBuiltInTypes()
         s.seedBuiltInAssets()
+        s.seedSampleHVAC()
         s.seedSampleEvents()
         s.seedSampleTransactions()
         s.notificationScheduler = NotificationScheduler()
