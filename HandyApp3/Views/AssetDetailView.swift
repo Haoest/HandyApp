@@ -12,7 +12,136 @@ private enum DetailAnchor: String, CaseIterable {
     case relationship = "Relationship"
 }
 
+/// Pages between sibling assets with a horizontal swipe, sliding the detail screen.
+/// The sibling order is supplied by the listing screen so it honours its view mode
+/// (All vs Tree). Per product spec the gesture is inverted from the usual convention:
+/// swipe left → previous item, swipe right → next item.
 struct AssetDetailView: View {
+    @Environment(AssetStore.self) private var store
+    let orderedIDs: [UUID]
+    @State private var currentID: UUID
+    /// Edge the incoming screen slides in from; flipped per swipe direction.
+    /// The outgoing screen slides out the opposite edge, so the pair reads as a scroll.
+    @State private var slideEdge: Edge = .trailing
+    /// Live horizontal offset used only for the rubber-band bounce at the ends of the
+    /// sequence (when there is no asset to page to in the swipe's direction).
+    @State private var dragOffset: CGFloat = 0
+
+    init(asset: Asset, orderedIDs: [UUID] = []) {
+        self.orderedIDs = orderedIDs
+        _currentID = State(initialValue: asset.id)
+    }
+
+    /// Position of the current asset in the paging sequence. When the current asset is
+    /// not itself in the sequence — e.g. a child viewed in Tree mode, where the sequence
+    /// is top-level assets — we anchor to its top-most ancestor that is in the sequence,
+    /// so paging moves to the adjacent root asset.
+    private var anchorIndex: Int? {
+        if let i = orderedIDs.firstIndex(of: currentID) { return i }
+        var cursor = store.assets[currentID]
+        while let asset = cursor {
+            if let i = orderedIDs.firstIndex(of: asset.id) { return i }
+            cursor = asset.parentID.flatMap { store.assets[$0] }
+        }
+        return nil
+    }
+    private var hasPrevious: Bool { (anchorIndex ?? 0) > 0 }
+    private var hasNext: Bool {
+        guard let i = anchorIndex else { return false }
+        return i < orderedIDs.count - 1
+    }
+
+    var body: some View {
+        GeometryReader { geo in
+            ZStack {
+                if let asset = store.assets[currentID], !asset.isDeleted {
+                    AssetDetailContent(asset: asset)
+                        .id(currentID)
+                        .transition(slideTransition)
+                } else {
+                    ContentUnavailableView(
+                        "Asset Not Found",
+                        systemImage: "shippingbox",
+                        description: Text("This asset no longer exists.")
+                    )
+                }
+            }
+            .frame(width: geo.size.width, height: geo.size.height)
+            .offset(x: dragOffset)
+            // simultaneousGesture so the Form keeps scrolling and tapping; we only claim
+            // the gesture for paging once a drag is clearly horizontal and long enough.
+            .simultaneousGesture(pagingGesture(width: geo.size.width))
+        }
+    }
+
+    /// New screen enters from `slideEdge`; old screen exits the opposite edge so the
+    /// two move together in one direction (a scroll) rather than overlapping.
+    private var slideTransition: AnyTransition {
+        .asymmetric(
+            insertion: .move(edge: slideEdge),
+            removal: .move(edge: slideEdge == .leading ? .trailing : .leading)
+        )
+    }
+
+    private func pagingGesture(width: CGFloat) -> some Gesture {
+        DragGesture(minimumDistance: 30)
+            .onChanged { value in
+                let dx = value.translation.width
+                let dy = value.translation.height
+                // Only drag-follow when the swipe is clearly horizontal AND there is
+                // nothing to page to that way — otherwise leave the Form to scroll and
+                // let onEnded commit the page.
+                guard abs(dx) > abs(dy) * 1.5, isAtBoundary(forSwipe: dx) else {
+                    if dragOffset != 0 { dragOffset = 0 }
+                    return
+                }
+                dragOffset = rubberBand(dx, limit: width / 2)
+            }
+            .onEnded { value in
+                // A non-zero offset means we were rubber-banding at an end: spring back.
+                if dragOffset != 0 {
+                    withAnimation(.spring(response: 0.35, dampingFraction: 0.6)) { dragOffset = 0 }
+                    return
+                }
+                let dx = value.translation.width
+                let dy = value.translation.height
+                guard abs(dx) > abs(dy) * 1.5, abs(dx) > 60 else { return }
+                if dx < 0 { goToNext() } else { goToPrevious() }
+            }
+    }
+
+    /// True when a swipe in `dx`'s direction has no asset to page to (swipe left → next,
+    /// swipe right → previous).
+    private func isAtBoundary(forSwipe dx: CGFloat) -> Bool {
+        (dx < 0 && !hasNext) || (dx > 0 && !hasPrevious)
+    }
+
+    /// iOS-style resistive offset: follows the finger with diminishing returns, settling
+    /// toward `limit` (half the screen) no matter how far the drag goes.
+    private func rubberBand(_ offset: CGFloat, limit: CGFloat) -> CGFloat {
+        guard limit > 0 else { return 0 }
+        let sign: CGFloat = offset < 0 ? -1 : 1
+        let distance = abs(offset)
+        let resisted = (1 - 1 / (distance / limit * 0.55 + 1)) * limit
+        return sign * resisted
+    }
+
+    /// Swipe right → previous item; screens scroll left-to-right (new enters from the left).
+    private func goToPrevious() {
+        guard hasPrevious, let i = anchorIndex else { return }
+        slideEdge = .leading
+        withAnimation(.easeInOut(duration: 0.28)) { currentID = orderedIDs[i - 1] }
+    }
+
+    /// Swipe left → next item; screens scroll right-to-left (new enters from the right).
+    private func goToNext() {
+        guard hasNext, let i = anchorIndex else { return }
+        slideEdge = .trailing
+        withAnimation(.easeInOut(duration: 0.28)) { currentID = orderedIDs[i + 1] }
+    }
+}
+
+private struct AssetDetailContent: View {
     @Environment(AssetStore.self) private var store
     @Environment(\.dismiss) private var dismiss
     let asset: Asset

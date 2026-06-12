@@ -28,6 +28,19 @@ struct AssetTab: View {
             .sorted { $0.name.localizedCompare($1.name) == .orderedAscending }
     }
 
+    /// Flat asset order matching what the current view mode renders, used to page
+    /// between assets via swipe on the detail screen. "All" mirrors the grouped,
+    /// name-sorted sections; "Tree" pages only through top-level (parentless) assets,
+    /// so drilling into a child leaves the detail screen unpageable.
+    private var orderedAssetIDs: [UUID] {
+        switch viewMode {
+        case .all:
+            return groupedAssets.flatMap { $0.assets.map(\.id) }
+        case .tree:
+            return rootAssets.map(\.id)
+        }
+    }
+
     /// Distinct categories offered as jump anchors, name-sorted: every category
     /// holding an asset in "All" view, only top-level assets' categories in "Tree".
     private var anchorCategories: [AssetCategory] {
@@ -95,7 +108,7 @@ struct AssetTab: View {
             }
             .navigationDestination(item: $router.pendingAssetID) { id in
                 if let asset = store.assets[id], !asset.isDeleted {
-                    AssetDetailView(asset: asset)
+                    AssetDetailView(asset: asset, orderedIDs: orderedAssetIDs)
                 } else {
                     ContentUnavailableView(
                         "Asset Not Found",
@@ -133,7 +146,7 @@ struct AssetTab: View {
             ForEach(groupedAssets, id: \.category.id) { group in
                 Section(header: categoryHeader(group.category)) {
                     ForEach(group.assets) { asset in
-                        NavigationLink(destination: AssetDetailView(asset: asset)) {
+                        NavigationLink(destination: AssetDetailView(asset: asset, orderedIDs: orderedAssetIDs)) {
                             AssetRow(asset: asset)
                         }
                     }
@@ -182,7 +195,7 @@ struct AssetTab: View {
     private var treeList: some View {
         List {
             ForEach(rootAssets) { asset in
-                AssetTreeRow(asset: asset, depth: 0, expanded: $expanded)
+                AssetTreeRow(asset: asset, depth: 0, expanded: $expanded, orderedIDs: orderedAssetIDs)
                     .id(asset.id)
             }
         }
@@ -208,6 +221,7 @@ private struct AssetTreeRow: View {
     let asset: Asset
     let depth: Int
     @Binding var expanded: Set<UUID>
+    let orderedIDs: [UUID]
     @State private var showDetail = false
 
     private var children: [Asset] {
@@ -250,12 +264,12 @@ private struct AssetTreeRow: View {
             }
             .listRowInsets(EdgeInsets(top: 6, leading: 16 + CGFloat(depth) * 20, bottom: 6, trailing: 16))
             .navigationDestination(isPresented: $showDetail) {
-                AssetDetailView(asset: asset)
+                AssetDetailView(asset: asset, orderedIDs: orderedIDs)
             }
 
             if isExpanded {
                 ForEach(children) { child in
-                    AssetTreeRow(asset: child, depth: depth + 1, expanded: $expanded)
+                    AssetTreeRow(asset: child, depth: depth + 1, expanded: $expanded, orderedIDs: orderedIDs)
                 }
             }
         }
