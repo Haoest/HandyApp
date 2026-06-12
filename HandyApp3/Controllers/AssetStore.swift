@@ -45,6 +45,9 @@ final class AssetStore {
     private(set) var compositeTypes: [UUID: CompositeTypeDefinition] = [:]
     private(set) var comboListDefinitions: [UUID: ComboListDefinition] = [:]
 
+    /// Append-only, chronological record of asset/event/transaction creations.
+    private(set) var activityLog: [ActivityLogEntry] = []
+
     /// When set, event/transaction mutations (and asset deletions) trigger a full
     /// notification resync. Nil in tests keeps the store notification-free.
     var notificationScheduler: NotificationScheduler?
@@ -147,6 +150,7 @@ final class AssetStore {
         }
         let asset = Asset(name: name, category: cat, baseProperties: baseProperties)
         assets[asset.id] = asset
+        logCreation(of: asset.id, kind: .asset)
         return asset
     }
 
@@ -507,6 +511,7 @@ final class AssetStore {
         let event = Event(title: title, date: date, notes: notes, recurrence: recurrence)
         asset.events.append(event)
         asset.modifiedDate = Date()
+        logCreation(of: event.id, kind: .event, owningAssetID: assetID)
         notificationScheduler?.requestResync(assets: allAssets)
         return event
     }
@@ -536,6 +541,7 @@ final class AssetStore {
         let txn = Transaction(details: details, amount: amount, date: date, kind: kind, payeeContactID: payeeContactID, notes: notes, recurrence: recurrence)
         asset.transactions.append(txn)
         asset.modifiedDate = Date()
+        logCreation(of: txn.id, kind: .transaction, owningAssetID: assetID)
         notificationScheduler?.requestResync(assets: allAssets)
         return txn
     }
@@ -563,6 +569,10 @@ final class AssetStore {
     }
 
     // MARK: - Private helpers
+
+    private func logCreation(of recordID: UUID, kind: LoggedRecordKind, owningAssetID: UUID? = nil) {
+        activityLog.append(ActivityLogEntry(recordID: recordID, kind: kind, owningAssetID: owningAssetID))
+    }
 
     private func handleComboListAutoAdd(stored: StoredValue, type: PropertyType) {
         guard case .comboList(let list) = type,

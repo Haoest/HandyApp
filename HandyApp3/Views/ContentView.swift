@@ -27,17 +27,6 @@ struct ContentView: View {
     }
 }
 
-// MARK: - Home tab
-
-struct HomeTab: View {
-    var body: some View {
-        NavigationStack {
-            Text("Home")
-                .navigationTitle("Home")
-        }
-    }
-}
-
 // MARK: - Activity tab
 
 struct ActivityTab: View {
