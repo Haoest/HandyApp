@@ -132,14 +132,25 @@ final class NotificationScheduler: NSObject, UNUserNotificationCenterDelegate {
         }
     }
 
+    // Both delegate methods use the completion-handler form, finishing on the main
+    // queue. The async variants are a trap here: their generated thunk invokes the
+    // system completion handler on a concurrency background thread, and UIKit's
+    // snapshot/state-restoration work in that completion asserts main-thread-only
+    // (SIGABRT on notification tap).
+
     /// iOS suppresses banners while the app is frontmost by default; show them anyway.
-    func userNotificationCenter(_ center: UNUserNotificationCenter, willPresent notification: UNNotification) async -> UNNotificationPresentationOptions {
-        [.banner, .sound]
+    func userNotificationCenter(_ center: UNUserNotificationCenter, willPresent notification: UNNotification, withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void) {
+        DispatchQueue.main.async {
+            completionHandler([.banner, .sound])
+        }
     }
 
-    func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse) async {
-        guard let idString = response.notification.request.content.userInfo["assetID"] as? String,
-              let assetID = UUID(uuidString: idString) else { return }
-        await MainActor.run { onOpenAsset?(assetID) }
+    func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse, withCompletionHandler completionHandler: @escaping () -> Void) {
+        let assetID = (response.notification.request.content.userInfo["assetID"] as? String)
+            .flatMap(UUID.init(uuidString:))
+        DispatchQueue.main.async {
+            if let assetID { self.onOpenAsset?(assetID) }
+            completionHandler()
+        }
     }
 }
