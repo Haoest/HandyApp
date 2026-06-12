@@ -167,14 +167,15 @@ struct EventsSection: View {
     let asset: Asset
     @Binding var sheetMode: EventSheetMode?
 
-    /// Non-recurring items shown inline before collapsing behind the "…" row;
-    /// recurring items are never collapsed.
-    static let nonRecurringLimit = 10
+    /// Non-recurring items shown inline before collapsing behind the "Show All"
+    /// row; recurring items are never collapsed. User-tunable in Preferences.
+    @AppStorage(AppPreference.eventLimitKey)
+    private var nonRecurringLimit = AppPreference.nonRecurringLimitDefault
 
     private var sorted: [Event] { asset.events.recurringFirstDateDescending() }
 
     private var displayed: [Event] {
-        var remaining = Self.nonRecurringLimit
+        var remaining = nonRecurringLimit
         return sorted.filter { event in
             guard event.recurrence == nil else { return true }
             guard remaining > 0 else { return false }
@@ -184,7 +185,7 @@ struct EventsSection: View {
     }
 
     private var hasMore: Bool {
-        sorted.filter { $0.recurrence == nil }.count > Self.nonRecurringLimit
+        sorted.filter { $0.recurrence == nil }.count > nonRecurringLimit
     }
 
     var body: some View {
@@ -368,14 +369,15 @@ struct TransactionsSection: View {
     let asset: Asset
     @Binding var sheetMode: TransactionSheetMode?
 
-    /// Non-recurring items shown inline before collapsing behind the "…" row;
-    /// recurring items are never collapsed.
-    static let nonRecurringLimit = 10
+    /// Non-recurring items shown inline before collapsing behind the "Show All"
+    /// row; recurring items are never collapsed. User-tunable in Preferences.
+    @AppStorage(AppPreference.transactionLimitKey)
+    private var nonRecurringLimit = AppPreference.nonRecurringLimitDefault
 
     private var sorted: [Transaction] { asset.transactions.recurringFirstDateDescending() }
 
     private var displayed: [Transaction] {
-        var remaining = Self.nonRecurringLimit
+        var remaining = nonRecurringLimit
         return sorted.filter { txn in
             guard txn.recurrence == nil else { return true }
             guard remaining > 0 else { return false }
@@ -385,7 +387,7 @@ struct TransactionsSection: View {
     }
 
     private var hasMore: Bool {
-        sorted.filter { $0.recurrence == nil }.count > Self.nonRecurringLimit
+        sorted.filter { $0.recurrence == nil }.count > nonRecurringLimit
     }
 
     var body: some View {

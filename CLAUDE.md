@@ -40,3 +40,4 @@ An `Asset` is a named physical object. It belongs to one `AssetCategory`, which 
 - beautify screens
 - auto parse photo for transaction?
 - list event/transaction
+- preference screen (eg how many event/transaction to show)
