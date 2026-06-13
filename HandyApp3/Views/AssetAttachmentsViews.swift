@@ -28,7 +28,10 @@ enum ImageScaling {
 struct PhotosSection: View {
     @Environment(AssetStore.self) private var store
     let asset: Asset
-    @State private var selectedPhoto: Photo?
+    // Selection is owned by the parent Form (not this Section) so re-evaluating the
+    // section's body during presentation can't cancel the first present — same reason
+    // the event/transaction sheets live at the Form level.
+    @Binding var selectedPhoto: Photo?
 
     private var sorted: [Photo] { asset.photos.sorted { $0.addedDate > $1.addedDate } }
 
@@ -47,9 +50,6 @@ struct PhotosSection: View {
                 }
                 .pagingExcludedRow(id: "photos")
             }
-        }
-        .sheet(item: $selectedPhoto) { photo in
-            PhotoViewerSheet(asset: asset, photo: photo)
         }
     }
 
