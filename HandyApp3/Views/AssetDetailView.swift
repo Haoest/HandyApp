@@ -223,6 +223,11 @@ private struct AssetDetailContent: View {
     @State private var eventSheetMode: EventSheetMode?
     @State private var transactionSheetMode: TransactionSheetMode?
 
+    // Photo viewer selection. Presented from the Form (not PhotosSection) for the same
+    // reason: a section-level sheet gets torn down when the section body re-evaluates
+    // during the first present, dismissing the viewer immediately.
+    @State private var selectedPhoto: Photo?
+
     private var sortedBase: [AssetProperty] {
         asset.baseProperties.sorted { $0.sortOrder < $1.sortOrder }
     }
@@ -293,7 +298,7 @@ private struct AssetDetailContent: View {
                     }
                 }
                 .id(DetailAnchor.custom)
-                PhotosSection(asset: asset)
+                PhotosSection(asset: asset, selectedPhoto: $selectedPhoto)
                     .id(DetailAnchor.photos)
                 EventsSection(asset: asset, sheetMode: $eventSheetMode)
                     .id(DetailAnchor.events)
@@ -404,6 +409,9 @@ private struct AssetDetailContent: View {
                     try? store.addTransaction(details: details, amount: amount, date: date, kind: kind, payeeContactID: payeeID, notes: notes, recurrence: recurrence, toAssetID: asset.id)
                 }
             }
+        }
+        .sheet(item: $selectedPhoto) { photo in
+            PhotoViewerSheet(asset: asset, photo: photo)
         }
         .sheet(item: $customPropertyToEdit) { prop in
             PropertyEditView(existing: prop) { definition, value in
