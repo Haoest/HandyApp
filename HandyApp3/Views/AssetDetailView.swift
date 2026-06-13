@@ -12,6 +12,51 @@ private enum DetailAnchor: String, CaseIterable {
     case relationship = "Relationship"
 }
 
+/// Tracks the on-screen (global) frames of content rows so the asset-paging gesture can
+/// stand down for drags that start on them: paging is meant to fire only on the form's
+/// blank areas (section gaps, headers, empty placeholders), while a swipe that lands on
+/// an element — a property, the photo carousel, an event/transaction row — belongs to
+/// that element (its own swipe-to-delete, scroll, or nothing) and must not page. Rows
+/// write their frames here directly rather than via a `PreferenceKey`, because
+/// `List`/`Form` cells don't reliably propagate preferences up to the screen that hosts
+/// the paging gesture.
+@Observable
+final class SwipeableRowRegistry {
+    var frames: [String: CGRect] = [:]
+
+    /// True when `point` (in global coordinates) lies inside any registered row.
+    func contains(_ point: CGPoint) -> Bool {
+        frames.values.contains { $0.contains(point) }
+    }
+}
+
+private struct PagingExcludedRow: ViewModifier {
+    @Environment(SwipeableRowRegistry.self) private var registry
+    let id: String
+
+    func body(content: Content) -> some View {
+        content.background(
+            GeometryReader { geo in
+                Color.clear
+                    .onAppear { registry.frames[id] = geo.frame(in: .global) }
+                    .onChange(of: geo.frame(in: .global)) { _, frame in
+                        registry.frames[id] = frame
+                    }
+                    .onDisappear { registry.frames[id] = nil }
+            }
+        )
+    }
+}
+
+extension View {
+    /// Marks a content row that should consume its own swipes instead of paging the asset.
+    /// The detail screen reads these frames and suppresses paging for drags that start
+    /// inside them, so paging is left to the form's blank areas.
+    func pagingExcludedRow(id: String) -> some View {
+        modifier(PagingExcludedRow(id: id))
+    }
+}
+
 /// Pages between sibling assets with a horizontal swipe, sliding the detail screen.
 /// The sibling order is supplied by the listing screen so it honours its view mode
 /// (All vs Tree). Per product spec the gesture is inverted from the usual convention:
@@ -26,6 +71,9 @@ struct AssetDetailView: View {
     /// Live horizontal offset used only for the rubber-band bounce at the ends of the
     /// sequence (when there is no asset to page to in the swipe's direction).
     @State private var dragOffset: CGFloat = 0
+    /// Frames of the form's content rows; a drag starting inside one of these is left to
+    /// that element (its own swipe-to-delete, scroll, or nothing), not used for paging.
+    @State private var swipeableRows = SwipeableRowRegistry()
 
     init(asset: Asset, orderedIDs: [UUID] = []) {
         self.orderedIDs = orderedIDs
@@ -68,6 +116,7 @@ struct AssetDetailView: View {
             }
             .frame(width: geo.size.width, height: geo.size.height)
             .offset(x: dragOffset)
+            .environment(swipeableRows)
             // simultaneousGesture so the Form keeps scrolling and tapping; we only claim
             // the gesture for paging once a drag is clearly horizontal and long enough.
             .simultaneousGesture(pagingGesture(width: geo.size.width))
@@ -84,8 +133,11 @@ struct AssetDetailView: View {
     }
 
     private func pagingGesture(width: CGFloat) -> some Gesture {
-        DragGesture(minimumDistance: 30)
+        DragGesture(minimumDistance: 30, coordinateSpace: .global)
             .onChanged { value in
+                // A drag that begins on a content row belongs to that element (its own
+                // swipe-to-delete, scroll, or nothing) — only the form's blank areas page.
+                guard !startsOnSwipeableRow(value) else { return }
                 let dx = value.translation.width
                 let dy = value.translation.height
                 // Only drag-follow when the swipe is clearly horizontal AND there is
@@ -98,6 +150,7 @@ struct AssetDetailView: View {
                 dragOffset = rubberBand(dx, limit: width / 2)
             }
             .onEnded { value in
+                guard !startsOnSwipeableRow(value) else { return }
                 // A non-zero offset means we were rubber-banding at an end: spring back.
                 if dragOffset != 0 {
                     withAnimation(.spring(response: 0.35, dampingFraction: 0.6)) { dragOffset = 0 }
@@ -108,6 +161,12 @@ struct AssetDetailView: View {
                 guard abs(dx) > abs(dy) * 1.5, abs(dx) > 60 else { return }
                 if dx < 0 { goToNext() } else { goToPrevious() }
             }
+    }
+
+    /// True when the drag began inside a content row, in which case paging must stand
+    /// down and let that element consume (or ignore) the gesture.
+    private func startsOnSwipeableRow(_ value: DragGesture.Value) -> Bool {
+        swipeableRows.contains(value.startLocation)
     }
 
     /// True when a swipe in `dx`'s direction has no asset to page to (swipe left → next,
@@ -197,11 +256,13 @@ private struct AssetDetailContent: View {
             Form {
                 Section("Name") {
                     NameDetailField(asset: asset)
+                        .pagingExcludedRow(id: "name")
                 }
                 if !sortedBase.isEmpty {
                     Section(asset.category.name) {
                         ForEach(sortedBase) { prop in
                             PropertyDetailRow(assetID: asset.id, property: prop)
+                                .pagingExcludedRow(id: prop.id.uuidString)
                         }
                     }
                     .id(DetailAnchor.category)
@@ -219,6 +280,7 @@ private struct AssetDetailContent: View {
                                         Label("Delete", systemImage: "trash")
                                     }
                                 }
+                                .pagingExcludedRow(id: prop.id.uuidString)
                         }
                     }
                 } header: {
@@ -239,6 +301,7 @@ private struct AssetDetailContent: View {
                     .id(DetailAnchor.transactions)
                 Section("Relationship") {
                     BelongsToRow(asset: asset)
+                        .pagingExcludedRow(id: "relationship")
                 }
                 .id(DetailAnchor.relationship)
             }

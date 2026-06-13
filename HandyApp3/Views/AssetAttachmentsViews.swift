@@ -45,6 +45,7 @@ struct PhotosSection: View {
                     }
                     .padding(.vertical, 4)
                 }
+                .pagingExcludedRow(id: "photos")
             }
         }
         .sheet(item: $selectedPhoto) { photo in
@@ -195,6 +196,7 @@ struct EventsSection: View {
             } else {
                 ForEach(displayed) { event in
                     EventItemRow(asset: asset, event: event, sheetMode: $sheetMode)
+                        .pagingExcludedRow(id: event.id.uuidString)
                 }
                 if hasMore {
                     NavigationLink {
@@ -397,6 +399,7 @@ struct TransactionsSection: View {
             } else {
                 ForEach(displayed) { txn in
                     TransactionItemRow(asset: asset, transaction: txn, sheetMode: $sheetMode)
+                        .pagingExcludedRow(id: txn.id.uuidString)
                 }
                 if hasMore {
                     NavigationLink {

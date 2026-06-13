@@ -36,11 +36,11 @@ An `Asset` is a named physical object. It belongs to one `AssetCategory`, which 
 - work on real persistence, leave app with in-memory persistence for now
 - enable icloud backup
 - application version
-- change add icon on asset listing screen and detail screen to differentiate them
+- ~~change add icon on asset listing screen and detail screen to differentiate them~~
 - beautify screens
 - auto parse photo for transaction?
-- list event/transaction
+- ~~list event/transaction~~
 - preference screen (eg how many event/transaction to show)
-- add logging
+- ~~add logging~~
 - add tools (communication, data export)
 - summarize home screen
