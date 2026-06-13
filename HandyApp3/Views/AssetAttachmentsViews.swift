@@ -75,6 +75,9 @@ struct PhotoViewerSheet: View {
     let asset: Asset
     let photo: Photo
     @State private var caption: String
+    @State private var isScanning = false
+    @State private var scannedPrefill: Transaction?
+    @State private var showNoTotalAlert = false
 
     init(asset: Asset, photo: Photo) {
         self.asset = asset
@@ -109,6 +112,14 @@ struct PhotoViewerSheet: View {
                         dismiss()
                     }
                 }
+                ToolbarItem(placement: .primaryAction) {
+                    Button {
+                        scanReceipt()
+                    } label: {
+                        Image(systemName: "doc.text.viewfinder")
+                    }
+                    .disabled(isScanning)
+                }
                 ToolbarItem(placement: .destructiveAction) {
                     Button(role: .destructive) {
                         try? store.removePhoto(id: photo.id, fromAssetID: asset.id)
@@ -117,6 +128,39 @@ struct PhotoViewerSheet: View {
                         Image(systemName: "trash")
                     }
                 }
+            }
+            .overlay {
+                if isScanning {
+                    ProgressView("Scanning…")
+                        .padding(24)
+                        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12))
+                }
+            }
+            .alert("Couldn't find a receipt total", isPresented: $showNoTotalAlert) {
+                Button("Enter Manually") {
+                    scannedPrefill = Transaction(details: "", amount: 0, date: Date(), kind: .expense)
+                }
+                Button("Cancel", role: .cancel) { }
+            } message: {
+                Text("Open the transaction editor to enter the details yourself.")
+            }
+            .sheet(item: $scannedPrefill) { prefill in
+                TransactionEditView(prefill: prefill) { details, amount, date, kind, payeeID, notes, recurrence in
+                    try? store.addTransaction(details: details, amount: amount, date: date, kind: kind, payeeContactID: payeeID, notes: notes, recurrence: recurrence, toAssetID: asset.id)
+                }
+            }
+        }
+    }
+
+    private func scanReceipt() {
+        isScanning = true
+        Task {
+            let parsed = await ReceiptScanner.scan(photo.imageData)
+            isScanning = false
+            if let parsed, let total = parsed.total {
+                scannedPrefill = Transaction(details: parsed.details, amount: total, date: Date(), kind: parsed.kind, notes: parsed.notesText)
+            } else {
+                showNoTotalAlert = true
             }
         }
     }
