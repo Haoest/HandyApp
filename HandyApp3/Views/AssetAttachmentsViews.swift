@@ -76,6 +76,8 @@ struct PhotoViewerSheet: View {
     let photo: Photo
     @State private var caption: String
     @State private var isScanning = false
+    @State private var analysis: ReceiptAnalysis?
+    @State private var pendingPrefill: Transaction?
     @State private var scannedPrefill: Transaction?
     @State private var showNoTotalAlert = false
 
@@ -136,13 +138,26 @@ struct PhotoViewerSheet: View {
                         .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12))
                 }
             }
-            .alert("Couldn't find a receipt total", isPresented: $showNoTotalAlert) {
+            .alert("Couldn't find a receipt", isPresented: $showNoTotalAlert) {
                 Button("Enter Manually") {
                     scannedPrefill = Transaction(details: "", amount: 0, date: Date(), kind: .expense)
                 }
                 Button("Cancel", role: .cancel) { }
             } message: {
                 Text("Open the transaction editor to enter the details yourself.")
+            }
+            // Present the editor only after the selection sheet has fully
+            // dismissed, so the two sheets don't fight at the same level.
+            .sheet(item: $analysis, onDismiss: {
+                if let pendingPrefill {
+                    scannedPrefill = pendingPrefill
+                    self.pendingPrefill = nil
+                }
+            }) { analysis in
+                ReceiptBlockSelectionView(analysis: analysis) { tokens in
+                    let parsed = ReceiptParser.parse(selectedTokens: tokens, allTokens: analysis.allTokens)
+                    pendingPrefill = Transaction(details: parsed.details, amount: parsed.total ?? 0, date: Date(), kind: parsed.kind, notes: parsed.notesText)
+                }
             }
             .sheet(item: $scannedPrefill) { prefill in
                 TransactionEditView(prefill: prefill) { details, amount, date, kind, payeeID, notes, recurrence in
@@ -155,10 +170,10 @@ struct PhotoViewerSheet: View {
     private func scanReceipt() {
         isScanning = true
         Task {
-            let parsed = await ReceiptScanner.scan(photo.imageData)
+            let result = await ReceiptScanner.analyze(photo.imageData)
             isScanning = false
-            if let parsed, let total = parsed.total {
-                scannedPrefill = Transaction(details: parsed.details, amount: total, date: Date(), kind: parsed.kind, notes: parsed.notesText)
+            if let result, !result.blocks.isEmpty {
+                analysis = result
             } else {
                 showNoTotalAlert = true
             }

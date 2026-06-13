@@ -1,38 +1,101 @@
 import Foundation
 import UIKit
 import Vision
+import CoreImage
 
-/// Best-effort structured result of scanning a receipt/check photo.
-/// Everything here is a guess the user reviews and edits before saving.
-struct ParsedReceipt {
-    /// Transaction description (the editor requires a non-empty value to save).
-    var details: String
-    /// Item lines (description + price), one per element.
-    var lineItems: [String]
-    /// Detected total, if any. `nil` means "couldn't find a total".
-    var total: Decimal?
-    var kind: TransactionKind
-
-    /// What flows into the transaction's notes field.
-    var notesText: String { lineItems.joined(separator: "\n") }
+/// Result of analyzing a receipt photo: the cropped/deskewed image to show, the
+/// visual text blocks the user can pick from, and every OCR token (kept so
+/// merchant/kind can be read from the whole receipt even when the user only
+/// selects the items block).
+struct ReceiptAnalysis: Identifiable {
+    let id = UUID()
+    let image: UIImage
+    let blocks: [TextBlock]
+    let allTokens: [OCRToken]
 }
 
-// MARK: - OCR wrapper (thin, untested)
+// MARK: - Analyzer (thin I/O wrapper, untested)
 
-/// Runs Apple Vision on-device text recognition over an in-memory image and
-/// hands the ordered lines to `ReceiptParser`. No networking, no permissions.
+/// Runs Apple Vision on-device document detection + text recognition over an
+/// in-memory image. No networking, no permissions.
 enum ReceiptScanner {
-    static func scan(_ imageData: Data) async -> ParsedReceipt? {
-        guard let image = UIImage(data: imageData), let cgImage = image.cgImage else {
+
+    /// Reused across scans — allocating a `CIContext` per call is expensive.
+    private static let ciContext = CIContext()
+
+    static func analyze(_ imageData: Data) async -> ReceiptAnalysis? {
+        guard let image = UIImage(data: imageData) else { return nil }
+
+        // Stage 1 — detect & crop the receipt; fall back to the whole image.
+        let normalized = normalizedUp(image)
+        guard let cgImage = normalized.cgImage else { return nil }
+        let cropped = croppedReceipt(from: cgImage) ?? cgImage
+
+        // Stage 2 — OCR the cropped image, keeping bounding boxes.
+        let tokens: [OCRToken] = await recognizeTokens(in: cropped)
+        guard !tokens.isEmpty else { return nil }
+
+        let blocks = ReceiptParser.detectBlocks(from: tokens)
+        return ReceiptAnalysis(image: UIImage(cgImage: cropped), blocks: blocks, allTokens: tokens)
+    }
+
+    // MARK: Stage 1
+
+    /// Redraw with `.up` orientation so EXIF rotation can't corrupt corner
+    /// mapping or box coordinates downstream.
+    private static func normalizedUp(_ image: UIImage) -> UIImage {
+        guard image.imageOrientation != .up else { return image }
+        let renderer = UIGraphicsImageRenderer(size: image.size)
+        return renderer.image { _ in image.draw(in: CGRect(origin: .zero, size: image.size)) }
+    }
+
+    /// Perspective-correct + crop the dominant document rectangle. Returns `nil`
+    /// when no confident rectangle is found or the render fails.
+    private static func croppedReceipt(from cgImage: CGImage) -> CGImage? {
+        let request = VNDetectDocumentSegmentationRequest()
+        let handler = VNImageRequestHandler(cgImage: cgImage, options: [:])
+        do {
+            try handler.perform([request])
+        } catch {
+            return nil
+        }
+        guard let observation = request.results?.first as? VNRectangleObservation,
+              observation.confidence > 0.5 else {
             return nil
         }
 
-        let lines: [String] = await withCheckedContinuation { continuation in
+        // Vision and CIImage both use a bottom-left, normalized origin.
+        let ciImage = CIImage(cgImage: cgImage)
+        let extent = ciImage.extent
+        func point(_ p: CGPoint) -> CGPoint {
+            CGPoint(x: extent.origin.x + p.x * extent.width,
+                    y: extent.origin.y + p.y * extent.height)
+        }
+        let corrected = ciImage.applyingFilter("CIPerspectiveCorrection", parameters: [
+            "inputTopLeft": CIVector(cgPoint: point(observation.topLeft)),
+            "inputTopRight": CIVector(cgPoint: point(observation.topRight)),
+            "inputBottomLeft": CIVector(cgPoint: point(observation.bottomLeft)),
+            "inputBottomRight": CIVector(cgPoint: point(observation.bottomRight))
+        ])
+        return ciContext.createCGImage(corrected, from: corrected.extent)
+    }
+
+    // MARK: Stage 2
+
+    private static func recognizeTokens(in cgImage: CGImage) async -> [OCRToken] {
+        await withCheckedContinuation { continuation in
             let request = VNRecognizeTextRequest { request, _ in
                 let observations = request.results as? [VNRecognizedTextObservation] ?? []
-                // Top→bottom so "last total wins" heuristics are reliable.
-                let ordered = observations.sorted { $0.boundingBox.midY > $1.boundingBox.midY }
-                continuation.resume(returning: ordered.compactMap { $0.topCandidates(1).first?.string })
+                let tokens: [OCRToken] = observations.compactMap { observation in
+                    guard let text = observation.topCandidates(1).first?.string, !text.isEmpty else {
+                        return nil
+                    }
+                    // Vision's box is bottom-left normalized; flip y to top-left.
+                    let b = observation.boundingBox
+                    let box = CGRect(x: b.minX, y: 1 - b.maxY, width: b.width, height: b.height)
+                    return OCRToken(text: text, box: box)
+                }
+                continuation.resume(returning: tokens)
             }
             request.recognitionLevel = .accurate
             // Keep digits/prices verbatim — language correction mangles amounts.
@@ -45,115 +108,5 @@ enum ReceiptScanner {
                 continuation.resume(returning: [])
             }
         }
-
-        return ReceiptParser.parse(lines: lines)
-    }
-}
-
-// MARK: - Parser (pure heuristics, unit-tested)
-
-enum ReceiptParser {
-    static func parse(lines rawLines: [String]) -> ParsedReceipt {
-        let lines = rawLines
-            .map { $0.trimmingCharacters(in: .whitespaces) }
-            .filter { !$0.isEmpty }
-
-        return ParsedReceipt(
-            details: detectMerchant(in: lines),
-            lineItems: detectLineItems(in: lines),
-            total: detectTotal(in: lines),
-            kind: detectKind(in: lines)
-        )
-    }
-
-    // MARK: Amount extraction
-
-    /// `$1,234.56`, `12.34`, `1234`, `12` — optional `$`, optional thousands
-    /// separators, 0–2 decimals.
-    private static let amountPattern = #"\$?\s*(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d{1,2})?"#
-
-    private static let amountRegex = try! NSRegularExpression(pattern: amountPattern)
-    private static let trailingAmountRegex = try! NSRegularExpression(pattern: amountPattern + #"\s*$"#)
-
-    private static func decimal(from raw: String) -> Decimal? {
-        let cleaned = raw
-            .replacingOccurrences(of: "$", with: "")
-            .replacingOccurrences(of: ",", with: "")
-            .trimmingCharacters(in: .whitespaces)
-        return Decimal(string: cleaned)
-    }
-
-    private static func allAmounts(in line: String) -> [Decimal] {
-        let ns = line as NSString
-        let range = NSRange(location: 0, length: ns.length)
-        return amountRegex.matches(in: line, range: range).compactMap {
-            decimal(from: ns.substring(with: $0.range))
-        }
-    }
-
-    /// The amount a line ends with, e.g. the price column. `nil` if the line
-    /// doesn't end in a number.
-    private static func trailingAmount(in line: String) -> Decimal? {
-        let ns = line as NSString
-        let range = NSRange(location: 0, length: ns.length)
-        guard let match = trailingAmountRegex.firstMatch(in: line, range: range) else { return nil }
-        return decimal(from: ns.substring(with: match.range))
-    }
-
-    // MARK: Total
-
-    /// Most specific keywords first; the last matching line wins.
-    private static let totalKeywords = ["grand total", "total due", "balance due", "amount due", "total"]
-
-    private static func detectTotal(in lines: [String]) -> Decimal? {
-        for keyword in totalKeywords {
-            let matches = lines.filter {
-                let lower = $0.lowercased()
-                return lower.contains(keyword) && !lower.contains("subtotal")
-            }
-            if let last = matches.last, let amount = allAmounts(in: last).last {
-                return amount
-            }
-        }
-        // No keyword anywhere: best guess is the largest amount on the receipt.
-        return lines.flatMap { allAmounts(in: $0) }.max()
-    }
-
-    // MARK: Line items
-
-    private static let nonItemKeywords = [
-        "subtotal", "total", "tax", "change", "cash", "tip",
-        "pay to the order", "balance", "amount due"
-    ]
-
-    private static func detectLineItems(in lines: [String]) -> [String] {
-        lines.filter { line in
-            guard trailingAmount(in: line) != nil else { return false }
-            guard line.contains(where: { $0.isLetter }) else { return false }
-            let lower = line.lowercased()
-            return !nonItemKeywords.contains { lower.contains($0) }
-        }
-    }
-
-    // MARK: Merchant (description)
-
-    private static func detectMerchant(in lines: [String]) -> String {
-        // First line that reads like text rather than a priced row.
-        for line in lines where line.contains(where: { $0.isLetter }) && trailingAmount(in: line) == nil {
-            return line
-        }
-        return "Receipt"
-    }
-
-    // MARK: Expense vs income
-
-    private static let incomePhrases = ["pay to the order of", "payroll", "deposit"]
-
-    private static func detectKind(in lines: [String]) -> TransactionKind {
-        let joined = lines.joined(separator: " ").lowercased()
-        if incomePhrases.contains(where: { joined.contains($0) }) { return .income }
-        // Standalone "check" (avoid matching "checkout", "checker", …).
-        if joined.range(of: #"\bcheck\b"#, options: .regularExpression) != nil { return .income }
-        return .expense
     }
 }
