@@ -13,6 +13,7 @@ struct HandyApp3App: App {
         s.seedSampleHVAC()
         s.seedSampleEvents()
         s.seedSampleTransactions()
+        s.seedSamplePhotos()
         s.notificationScheduler = NotificationScheduler()
         return s
     }()

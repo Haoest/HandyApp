@@ -1,4 +1,5 @@
 import Foundation
+import UIKit
 
 /// Namespace for built-in type factories.
 /// Composite *value* types (W × L, W × L × H) live in `SystemTypes/` as extensions on this enum.
@@ -112,6 +113,30 @@ extension AssetStore {
         add("Extended warranty premium", amount: 120, monthsAgo: 2, recurrence: .annually)
         for i in 1...12 {
             add("Sample transaction \(i)", amount: Decimal(i * 10), monthsAgo: i)
+        }
+        return seeded
+    }
+
+    /// Seeds the bundled SeedFiles photos onto the "1 main" house, scaled the same way
+    /// user-added photos are. Idempotent (skips if the house already has photos).
+    @discardableResult
+    func seedSamplePhotos() -> [Photo] {
+        guard let house = allAssets.first(where: { $0.name == "1 main" }),
+              house.photos.isEmpty else { return [] }
+        // SeedFiles images are flattened into the bundle root at build time, so enumerate
+        // by extension and seed in a stable order rather than hard-coding file names.
+        let urls = ["jpg", "jpeg", "png"]
+            .flatMap { Bundle.main.urls(forResourcesWithExtension: $0, subdirectory: nil) ?? [] }
+            .sorted { $0.lastPathComponent < $1.lastPathComponent }
+        var seeded: [Photo] = []
+        for url in urls {
+            guard let data = try? Data(contentsOf: url),
+                  let image = UIImage(data: data),
+                  let imageData = ImageScaling.imageData(from: image),
+                  let thumbData = ImageScaling.thumbnailData(from: image),
+                  let photo = try? addPhoto(imageData: imageData, thumbnailData: thumbData, toAssetID: house.id)
+            else { continue }
+            seeded.append(photo)
         }
         return seeded
     }
