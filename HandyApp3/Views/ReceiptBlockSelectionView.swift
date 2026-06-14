@@ -66,12 +66,15 @@ struct ReceiptBlockSelectionView: View {
                                   lineWidth: isSelected ? 2 : 1)
             )
             .frame(width: rect.width, height: rect.height)
-            .offset(x: rect.minX, y: rect.minY)
             .contentShape(Rectangle())
             .onTapGesture {
                 if isSelected { selectedBlockIDs.remove(block.id) }
                 else { selectedBlockIDs.insert(block.id) }
             }
+            // `.position` (center-based) moves both the rendering AND the hit-test frame;
+            // `.offset` would move only the rendering, leaving the tap target at the
+            // overlay's un-offset layout origin (the ZStack's top-leading corner).
+            .position(x: rect.midX, y: rect.midY)
     }
 
     /// The letterboxed rect the `.scaledToFit()` image actually occupies within
