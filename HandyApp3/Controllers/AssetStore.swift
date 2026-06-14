@@ -488,6 +488,7 @@ final class AssetStore {
         let photo = Photo(imageData: imageData, thumbnailData: thumbnailData, caption: caption)
         asset.photos.append(photo)
         asset.modifiedDate = Date()
+        logCreation(of: photo.id, kind: .photo, owningAssetID: assetID)
         return photo
     }
 

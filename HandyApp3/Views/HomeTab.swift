@@ -100,6 +100,16 @@ struct HomeTab: View {
                 + plain(" with amount ")
                 + linked(amount, to: zip2(asset, txn).flatMap { recordURL("transaction", $0.id, $1.id) })
                 + plain(" at \(time)")
+
+        case .photo:
+            let asset = entry.owningAssetID.flatMap(liveAsset)
+            let photo = asset?.photos.first { $0.id == entry.recordID }
+            let time = entry.timestamp.formatted(date: .omitted, time: .shortened)
+            let caption = photo?.caption.trimmingCharacters(in: .whitespaces) ?? ""
+            let label = caption.isEmpty ? "Photo" : "Photo “\(caption)”"
+            return plain("\(label) added to ")
+                + linked(asset?.name ?? "(deleted)", to: asset.flatMap { assetURL($0.id) })
+                + plain(" at \(time)")
         }
     }
 

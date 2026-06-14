@@ -2,7 +2,7 @@ import Foundation
 
 /// What kind of record an ActivityLogEntry refers to.
 enum LoggedRecordKind: String {
-    case asset, event, transaction
+    case asset, event, transaction, photo
 }
 
 /// An immutable record of a domain-record creation. Entries hold only IDs;
