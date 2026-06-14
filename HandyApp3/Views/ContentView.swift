@@ -32,8 +32,18 @@ struct ContentView: View {
 struct ActivityTab: View {
     var body: some View {
         NavigationStack {
-            Text("Activity")
-                .navigationTitle("Activity")
+            ZStack {
+                // Dark backdrop so the colored dust reads vividly.
+                RadialGradient(
+                    colors: [Color(red: 0.10, green: 0.11, blue: 0.18), .black],
+                    center: .center, startRadius: 0, endRadius: 600
+                )
+                .ignoresSafeArea()
+                DustBallView()
+            }
+            .navigationTitle("Activity")
+            .toolbarColorScheme(.dark, for: .navigationBar)
+            .toolbarBackground(.hidden, for: .navigationBar)
         }
     }
 }
