@@ -32,7 +32,7 @@ An `Asset` is a named physical object. It belongs to one `AssetCategory`, which 
 
 ## Open work
 
-- flesh out photo properties to allow selection, viewing, thumbnail
+
 - work on real persistence, leave app with in-memory persistence for now
 - enable icloud backup
 - ~~application version~~
@@ -43,4 +43,4 @@ An `Asset` is a named physical object. It belongs to one `AssetCategory`, which 
 - preference screen (eg how many event/transaction to show)
 - ~~add logging~~
 - add tools (communication, data export)
-- summarize home screen
+- ~~summarize home screen~~

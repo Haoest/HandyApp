@@ -1,8 +1,9 @@
 import SwiftUI
 import PhotosUI
 
-/// Jump targets for the section index on the trailing edge of the detail form.
-private enum DetailAnchor: String, CaseIterable {
+/// Jump targets for the section index on the trailing edge of the detail form, and
+/// for deep links from the activity log that open straight to a section.
+enum DetailAnchor: String, CaseIterable {
     case category = "Category"
     case custom = "Custom"
     case photos = "Photos"
@@ -29,8 +30,16 @@ struct AssetDetailView: View {
     /// that element (its own swipe-to-delete, scroll, or nothing), not used for paging.
     @State private var swipeableRows = SwipeableRowRegistry()
 
-    init(asset: Asset, orderedIDs: [UUID] = []) {
+    /// Section to scroll to when first shown — set by deep links from the activity log
+    /// (e.g. "Photo added to …" jumps to the Photos section). Applies only to the
+    /// initially-shown asset, not to siblings reached by paging.
+    let initialAnchor: DetailAnchor?
+    private let initialAssetID: UUID
+
+    init(asset: Asset, orderedIDs: [UUID] = [], initialAnchor: DetailAnchor? = nil) {
         self.orderedIDs = orderedIDs
+        self.initialAnchor = initialAnchor
+        self.initialAssetID = asset.id
         _currentID = State(initialValue: asset.id)
     }
 
@@ -57,7 +66,7 @@ struct AssetDetailView: View {
         GeometryReader { geo in
             ZStack {
                 if let asset = store.assets[currentID], !asset.isDeleted {
-                    AssetDetailContent(asset: asset)
+                    AssetDetailContent(asset: asset, scrollTo: currentID == initialAssetID ? initialAnchor : nil)
                         .id(currentID)
                         .transition(slideTransition)
                 } else {
@@ -158,6 +167,8 @@ private struct AssetDetailContent: View {
     @Environment(AssetStore.self) private var store
     @Environment(\.dismiss) private var dismiss
     let asset: Asset
+    /// Section to scroll to once the form lays out (deep link from the activity log).
+    var scrollTo: DetailAnchor? = nil
     @State private var deleteConfirmationPresented = false
     @State private var addPropertyPresented = false
     @State private var customPropertyToEdit: AssetProperty?
@@ -267,6 +278,14 @@ private struct AssetDetailContent: View {
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     jumpMenu(proxy)
+                }
+            }
+            .onAppear {
+                guard let scrollTo else { return }
+                // Defer until the Form has laid its sections out, otherwise the
+                // anchor isn't registered with the proxy yet.
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                    withAnimation { proxy.scrollTo(scrollTo, anchor: .top) }
                 }
             }
         }

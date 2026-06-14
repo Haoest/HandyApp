@@ -1,20 +1,20 @@
 import SwiftUI
 
-/// Home screen: the creation history from `AssetStore.activityLog`, grouped by day,
-/// rendered as sentences with inline hot links. Links use a private `handylog://`
-/// URL scheme intercepted by an OpenURLAction, so a single Text can hold several
-/// tap targets that wrap naturally. Names are resolved live from the store; records
-/// that no longer resolve (deleted) degrade to plain, unlinked text.
+/// Home screen: the creation history from `AssetStore.activityLog`, surfaced as the
+/// 3 most-recent active days, grouped by item type, with 3+ same-type entries on one
+/// asset collapsed into a counted summary line (see `HomeActivityDigest`). Rendered as
+/// sentences with inline hot links via a private `handylog://` URL scheme intercepted
+/// by an OpenURLAction, so a single Text can hold several tap targets that wrap
+/// naturally. Names are resolved live from the store; records that no longer resolve
+/// (deleted) degrade to plain, unlinked text.
 struct HomeTab: View {
     @Environment(AssetStore.self) private var store
-    @State private var pushedAssetID: UUID?
+    @State private var pushedAsset: PushedAsset?
     @State private var eventToEdit: ResolvedEvent?
     @State private var transactionToEdit: ResolvedTransaction?
 
-    private var dayGroups: [(day: Date, entries: [ActivityLogEntry])] {
-        Dictionary(grouping: store.activityLog) { Calendar.current.startOfDay(for: $0.timestamp) }
-            .map { (day: $0.key, entries: $0.value.sorted { $0.timestamp > $1.timestamp }) }
-            .sorted { $0.day > $1.day }
+    private var days: [HomeDay] {
+        HomeActivityDigest.build(from: store.activityLog)
     }
 
     var body: some View {
@@ -28,10 +28,10 @@ struct HomeTab: View {
                     )
                 } else {
                     List {
-                        ForEach(dayGroups, id: \.day) { group in
+                        ForEach(days, id: \.day) { group in
                             Section(Self.dayFormatter.string(from: group.day)) {
-                                ForEach(group.entries) { entry in
-                                    Text(sentence(for: entry))
+                                ForEach(group.rows) { row in
+                                    Text(line(for: row))
                                         .padding(.vertical, 2)
                                 }
                             }
@@ -41,9 +41,9 @@ struct HomeTab: View {
                 }
             }
             .navigationTitle("Home")
-            .navigationDestination(item: $pushedAssetID) { id in
-                if let asset = store.assets[id], !asset.isDeleted {
-                    AssetDetailView(asset: asset)
+            .navigationDestination(item: $pushedAsset) { pushed in
+                if let asset = store.assets[pushed.id], !asset.isDeleted {
+                    AssetDetailView(asset: asset, initialAnchor: pushed.section)
                 } else {
                     ContentUnavailableView(
                         "Asset Not Found",
@@ -67,6 +67,43 @@ struct HomeTab: View {
 
     // MARK: - Sentence building
 
+    private func line(for row: HomeRow) -> AttributedString {
+        switch row {
+        case .single(let entry):
+            return sentence(for: entry)
+        case .summary(let kind, let assetID, let count, _):
+            return summarySentence(kind: kind, assetID: assetID, count: count)
+        }
+    }
+
+    /// Collapsed line for 3+ same-type entries on one asset, e.g.
+    /// "4 transactions added to [Fridge]".
+    private func summarySentence(kind: LoggedRecordKind, assetID: UUID, count: Int) -> AttributedString {
+        let asset = liveAsset(assetID)
+        return plain("\(count) \(typeNoun(kind, count: count)) added to ")
+            + linked(asset?.name ?? "(deleted)", to: asset.flatMap { assetURL($0.id, section: anchor(for: kind)) })
+    }
+
+    /// The detail-screen section a log entry of this kind should jump to. Asset
+    /// creation has no section (opens at the top).
+    private func anchor(for kind: LoggedRecordKind) -> DetailAnchor? {
+        switch kind {
+        case .photo: return .photos
+        case .event: return .events
+        case .transaction: return .transactions
+        case .asset: return nil
+        }
+    }
+
+    private func typeNoun(_ kind: LoggedRecordKind, count: Int) -> String {
+        switch kind {
+        case .photo: return count == 1 ? "photo" : "photos"
+        case .event: return count == 1 ? "event" : "events"
+        case .transaction: return count == 1 ? "transaction" : "transactions"
+        case .asset: return count == 1 ? "asset" : "assets"
+        }
+    }
+
     private func sentence(for entry: ActivityLogEntry) -> AttributedString {
         switch entry.kind {
         case .asset:
@@ -83,13 +120,13 @@ struct HomeTab: View {
             return plain("Event ")
                 + linked(event?.title ?? "(deleted)", to: zip2(asset, event).flatMap { recordURL("event", $0.id, $1.id) })
                 + plain(" logged to ")
-                + linked(asset?.name ?? "(deleted)", to: asset.flatMap { assetURL($0.id) })
+                + linked(asset?.name ?? "(deleted)", to: asset.flatMap { assetURL($0.id, section: .events) })
                 + plain(" at \(time)")
 
         case .transaction:
             let asset = entry.owningAssetID.flatMap(liveAsset)
             let txn = asset?.transactions.first { $0.id == entry.recordID }
-            let assetPart = linked(asset?.name ?? "(deleted)", to: asset.flatMap { assetURL($0.id) })
+            let assetPart = linked(asset?.name ?? "(deleted)", to: asset.flatMap { assetURL($0.id, section: .transactions) })
             let time = entry.timestamp.formatted(date: .omitted, time: .shortened)
             guard let txn else {
                 return plain("Transaction logged to ") + assetPart + plain(" (deleted) at \(time)")
@@ -108,7 +145,7 @@ struct HomeTab: View {
             let caption = photo?.caption.trimmingCharacters(in: .whitespaces) ?? ""
             let label = caption.isEmpty ? "Photo" : "Photo “\(caption)”"
             return plain("\(label) added to ")
-                + linked(asset?.name ?? "(deleted)", to: asset.flatMap { assetURL($0.id) })
+                + linked(asset?.name ?? "(deleted)", to: asset.flatMap { assetURL($0.id, section: .photos) })
                 + plain(" at \(time)")
         }
     }
@@ -133,8 +170,11 @@ struct HomeTab: View {
         return part
     }
 
-    private func assetURL(_ id: UUID) -> URL? {
-        URL(string: "handylog://asset/\(id.uuidString)")
+    private func assetURL(_ id: UUID, section: DetailAnchor? = nil) -> URL? {
+        if let section {
+            return URL(string: "handylog://asset/\(id.uuidString)/\(section.rawValue)")
+        }
+        return URL(string: "handylog://asset/\(id.uuidString)")
     }
 
     private func recordURL(_ kind: String, _ assetID: UUID, _ recordID: UUID) -> URL? {
@@ -154,7 +194,11 @@ struct HomeTab: View {
         let ids = url.pathComponents.filter { $0 != "/" }.compactMap(UUID.init(uuidString:))
         switch url.host() {
         case "asset":
-            if let assetID = ids.first { pushedAssetID = assetID }
+            if let assetID = ids.first {
+                // Trailing non-UUID path component (if any) names the target section.
+                let section = url.pathComponents.last.flatMap { DetailAnchor(rawValue: $0) }
+                pushedAsset = PushedAsset(id: assetID, section: section)
+            }
         case "event":
             if ids.count == 2, let asset = liveAsset(ids[0]),
                let event = asset.events.first(where: { $0.id == ids[1] }) {
@@ -178,6 +222,12 @@ struct HomeTab: View {
         formatter.doesRelativeDateFormatting = true
         return formatter
     }()
+}
+
+/// Navigation target for an asset link, optionally carrying the section to scroll to.
+private struct PushedAsset: Identifiable, Hashable {
+    let id: UUID
+    let section: DetailAnchor?
 }
 
 /// Sheet items pairing a record with its owning asset id, needed by the store's
