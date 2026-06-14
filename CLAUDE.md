@@ -5,7 +5,7 @@ iOS/SwiftUI app for tracking physical assets the user owns (a house, a car, appl
 ## Project / build
 
 - Xcode project format `objectVersion = 77` (Xcode 16+), using **file-system-synchronized groups** — files added to the folders on disk are picked up automatically; no need to register them in the `.pbxproj`.
-- iOS deployment target **18.2**; Swift language version **5.0**; universal (`TARGETED_DEVICE_FAMILY = 1,2`, iPhone + iPad); `MARKETING_VERSION = 1.0`.
+- iOS deployment target **18.2**; Swift language version **5.0**; universal (`TARGETED_DEVICE_FAMILY = 1,2`, iPhone + iPad); `MARKETING_VERSION = 0.9`.
 - SwiftUI throughout, with the Observation framework (`@Observable` / `@Environment(Type.self)`) for shared state — `AssetStore` and `AppRouter` are injected this way.
 
 ## Layout
@@ -35,7 +35,7 @@ An `Asset` is a named physical object. It belongs to one `AssetCategory`, which 
 - flesh out photo properties to allow selection, viewing, thumbnail
 - work on real persistence, leave app with in-memory persistence for now
 - enable icloud backup
-- application version
+- ~~application version~~
 - ~~change add icon on asset listing screen and detail screen to differentiate them~~
 - beautify screens
 - auto parse photo for transaction?
