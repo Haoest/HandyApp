@@ -52,6 +52,10 @@ final class AssetStore {
     /// notification resync. Nil in tests keeps the store notification-free.
     var notificationScheduler: NotificationScheduler?
 
+    /// User-chosen app backdrop. Held here (in-memory for now) so the whole app reacts
+    /// to changes; does not yet survive relaunch.
+    var backgroundTheme: BackgroundTheme = .mist
+
     // MARK: - Derived collections
 
     var allAssets: [Asset] { assets.values.filter { !$0.isDeleted } }

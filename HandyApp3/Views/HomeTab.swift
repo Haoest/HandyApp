@@ -17,30 +17,22 @@ struct HomeTab: View {
         HomeActivityDigest.build(from: store.activityLog)
     }
 
+    private var palette: ThemePalette { store.backgroundTheme.palette }
+
     var body: some View {
         NavigationStack {
-            Group {
-                if store.activityLog.isEmpty {
-                    ContentUnavailableView(
-                        "No Activity",
-                        systemImage: "waveform",
-                        description: Text("Created assets, events, and transactions will show up here.")
-                    )
-                } else {
-                    List {
-                        ForEach(days, id: \.day) { group in
-                            Section(Self.dayFormatter.string(from: group.day)) {
-                                ForEach(group.rows) { row in
-                                    Text(line(for: row))
-                                        .padding(.vertical, 2)
-                                }
-                            }
-                        }
-                    }
+            ZStack {
+                AppBackground()
+                feed
                     .environment(\.openURL, OpenURLAction { handleLink($0) })
-                }
+                    // Background is always the light mist gradient, so pin the scheme
+                    // light — otherwise the empty state / nav title would flip to light
+                    // text in system dark mode and lose contrast.
+                    .environment(\.colorScheme, .light)
             }
             .navigationTitle("Home")
+            .toolbarColorScheme(.light, for: .navigationBar)
+            .toolbarBackground(.hidden, for: .navigationBar)
             .navigationDestination(item: $pushedAsset) { pushed in
                 if let asset = store.assets[pushed.id], !asset.isDeleted {
                     AssetDetailView(asset: asset, initialAnchor: pushed.section)
@@ -61,6 +53,45 @@ struct HomeTab: View {
                 TransactionEditView(existing: resolved.transaction) { details, amount, date, kind, payeeID, notes, recurrence in
                     try? store.updateTransaction(id: resolved.transaction.id, onAssetID: resolved.assetID, details: details, amount: amount, date: date, kind: kind, payeeContactID: payeeID, notes: notes, recurrence: recurrence)
                 }
+            }
+        }
+    }
+
+    // MARK: - Feed
+
+    @ViewBuilder
+    private var feed: some View {
+        if store.activityLog.isEmpty {
+            ContentUnavailableView(
+                "No Activity",
+                systemImage: "waveform",
+                description: Text("Created assets, events, and transactions will show up here.")
+            )
+        } else {
+            ScrollView {
+                LazyVStack(alignment: .leading, spacing: 28) {
+                    ForEach(days, id: \.day) { group in
+                        VStack(alignment: .leading, spacing: 10) {
+                            Text(Self.dayFormatter.string(from: group.day))
+                                .font(.footnote.weight(.semibold))
+                                .textCase(.uppercase)
+                                .tracking(0.6)
+                                .foregroundStyle(palette.onBackgroundSecondary)
+                            VStack(alignment: .leading, spacing: 14) {
+                                ForEach(group.rows) { row in
+                                    Text(line(for: row))
+                                        .font(.callout)
+                                        .foregroundStyle(palette.onBackground)
+                                        .fixedSize(horizontal: false, vertical: true)
+                                }
+                            }
+                        }
+                    }
+                }
+                .padding(.horizontal, 22)
+                .padding(.top, 8)
+                .padding(.bottom, 32)
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
         }
     }
@@ -163,9 +194,9 @@ struct HomeTab: View {
         var part = AttributedString(text)
         if let url {
             part.link = url
-            part.foregroundColor = .accentColor
+            part.foregroundColor = palette.link
         } else {
-            part.foregroundColor = .secondary
+            part.foregroundColor = palette.deletedText
         }
         return part
     }

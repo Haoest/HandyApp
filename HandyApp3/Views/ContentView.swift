@@ -51,20 +51,41 @@ enum AppPreference {
 }
 
 struct PreferenceTab: View {
+    @Environment(AssetStore.self) private var store
     @AppStorage(AppPreference.eventLimitKey)
     private var eventLimit = AppPreference.nonRecurringLimitDefault
     @AppStorage(AppPreference.transactionLimitKey)
     private var transactionLimit = AppPreference.nonRecurringLimitDefault
 
     var body: some View {
-        NavigationStack {
-            Form {
-                Section("Asset Detail") {
-                    LimitSlider(title: "Events to show", value: $eventLimit)
-                    LimitSlider(title: "Transactions to show", value: $transactionLimit)
+        @Bindable var store = store
+        return NavigationStack {
+            ZStack {
+                AppBackground()
+                Form {
+                    Section("Appearance") {
+                        Picker("Background", selection: $store.backgroundTheme) {
+                            ForEach(BackgroundTheme.allCases) { theme in
+                                Text(theme.displayName).tag(theme)
+                            }
+                        }
+                        .pickerStyle(.segmented)
+                    }
+                    .listRowBackground(Color.white.opacity(0.5))
+                    Section("Asset Detail") {
+                        LimitSlider(title: "Events to show", value: $eventLimit)
+                        LimitSlider(title: "Transactions to show", value: $transactionLimit)
+                    }
+                    .listRowBackground(Color.white.opacity(0.5))
                 }
+                .scrollContentBackground(.hidden)
+                // Background is always a light gradient — pin the scheme light so the
+                // form's labels stay dark for contrast even in system dark mode.
+                .environment(\.colorScheme, .light)
             }
             .navigationTitle("Preferences")
+            .toolbarColorScheme(.light, for: .navigationBar)
+            .toolbarBackground(.hidden, for: .navigationBar)
         }
     }
 }
