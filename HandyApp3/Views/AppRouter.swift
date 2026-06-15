@@ -2,7 +2,7 @@ import SwiftUI
 
 /// Identifies the top-level tabs so one tab can steer the selection of another.
 enum AppTab: Hashable {
-    case home, assets, categories, activity, preferences
+    case home, assets, categories, tools, preferences
 }
 
 /// Lightweight cross-tab navigation state. Lets one tab drive another — e.g. the

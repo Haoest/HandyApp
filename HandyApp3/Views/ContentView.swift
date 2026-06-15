@@ -18,8 +18,8 @@ struct ContentView: View {
                 .tabItem { Image(systemName: "folder") }
                 .tag(AppTab.categories)
             ActivityTab()
-                .tabItem { Image(systemName: "waveform") }
-                .tag(AppTab.activity)
+                .tabItem { Image(systemName: "wrench.and.screwdriver") }
+                .tag(AppTab.tools)
             PreferenceTab()
                 .tabItem { Image(systemName: "gearshape") }
                 .tag(AppTab.preferences)
@@ -41,7 +41,7 @@ struct ActivityTab: View {
                 .ignoresSafeArea()
                 DustBallView()
             }
-            .navigationTitle("Activity")
+            .navigationTitle("Tools")
             .toolbarColorScheme(.dark, for: .navigationBar)
             .toolbarBackground(.hidden, for: .navigationBar)
         }
