@@ -274,6 +274,17 @@ private struct AssetDetailContent: View {
                         .pagingExcludedRow(id: "relationship")
                 }
                 .id(DetailAnchor.relationship)
+                Section {
+                    Button(role: .destructive) {
+                        deleteConfirmationPresented = true
+                    } label: {
+                        HStack {
+                            Spacer()
+                            Text("Delete Asset")
+                            Spacer()
+                        }
+                    }
+                }
             }
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
@@ -310,11 +321,6 @@ private struct AssetDetailContent: View {
                     }
                 } label: {
                     Image(systemName: "plus")
-                }
-            }
-            ToolbarItem(placement: .bottomBar) {
-                Button("Delete Asset", role: .destructive) {
-                    deleteConfirmationPresented = true
                 }
             }
         }
