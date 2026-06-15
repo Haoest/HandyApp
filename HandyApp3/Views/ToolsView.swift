@@ -6,18 +6,28 @@ import Contacts
 struct ToolsTab: View {
     var body: some View {
         NavigationStack {
-            List {
-                NavigationLink(destination: DeletedAssetsView()) {
-                    Label("Deleted Assets", systemImage: "trash.slash")
+            ZStack {
+                AppBackground()
+                List {
+                    NavigationLink(destination: DeletedAssetsView()) {
+                        Label("Deleted Assets", systemImage: "trash.slash")
+                    }
+                    .listRowBackground(Color.white.opacity(0.5))
+                    NavigationLink(destination: DeletedCategoriesView()) {
+                        Label("Deleted Categories", systemImage: "folder.badge.minus")
+                    }
+                    .listRowBackground(Color.white.opacity(0.5))
+                    NavigationLink(destination: BulkCommunicationView()) {
+                        Label("Bulk Communication", systemImage: "bubble.left.and.bubble.right")
+                    }
+                    .listRowBackground(Color.white.opacity(0.5))
                 }
-                NavigationLink(destination: DeletedCategoriesView()) {
-                    Label("Deleted Categories", systemImage: "folder.badge.minus")
-                }
-                NavigationLink(destination: BulkCommunicationView()) {
-                    Label("Bulk Communication", systemImage: "bubble.left.and.bubble.right")
-                }
+                .scrollContentBackground(.hidden)
+                .environment(\.colorScheme, .light)
             }
             .navigationTitle("Tools")
+            .toolbarColorScheme(.light, for: .navigationBar)
+            .toolbarBackground(.hidden, for: .navigationBar)
         }
     }
 }

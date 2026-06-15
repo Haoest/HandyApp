@@ -59,33 +59,39 @@ struct AssetTab: View {
         @Bindable var router = router
         NavigationStack {
             ScrollViewReader { proxy in
-                VStack(spacing: 0) {
-                    if !store.allAssets.isEmpty {
-                        Picker("View", selection: $viewMode) {
-                            ForEach(AssetListMode.allCases, id: \.self) { mode in
-                                Text(mode.label).tag(mode)
+                ZStack {
+                    AppBackground()
+                    VStack(spacing: 0) {
+                        if !store.allAssets.isEmpty {
+                            Picker("View", selection: $viewMode) {
+                                ForEach(AssetListMode.allCases, id: \.self) { mode in
+                                    Text(mode.label).tag(mode)
+                                }
+                            }
+                            .pickerStyle(.segmented)
+                            .padding(.horizontal)
+                            .padding(.vertical, 8)
+                        }
+                        Group {
+                            if store.allAssets.isEmpty {
+                                ContentUnavailableView(
+                                    "No Assets",
+                                    systemImage: "shippingbox",
+                                    description: Text("Tap + to add your first asset.")
+                                )
+                            } else {
+                                switch viewMode {
+                                case .all: allList(proxy)
+                                case .tree: treeList
+                                }
                             }
                         }
-                        .pickerStyle(.segmented)
-                        .padding(.horizontal)
-                        .padding(.vertical, 8)
                     }
-                    Group {
-                        if store.allAssets.isEmpty {
-                            ContentUnavailableView(
-                                "No Assets",
-                                systemImage: "shippingbox",
-                                description: Text("Tap + to add your first asset.")
-                            )
-                        } else {
-                            switch viewMode {
-                            case .all: allList(proxy)
-                            case .tree: treeList
-                            }
-                        }
-                    }
+                    .environment(\.colorScheme, .light)
                 }
                 .navigationTitle("Assets")
+                .toolbarColorScheme(.light, for: .navigationBar)
+                .toolbarBackground(.hidden, for: .navigationBar)
                 .toolbar {
                     ToolbarItem(placement: .topBarTrailing) {
                         Button { newAssetPresented = true } label: {
@@ -151,9 +157,11 @@ struct AssetTab: View {
                         }
                     }
                 }
+                .listRowBackground(Color.white.opacity(0.5))
                 .id(group.category.id)
             }
         }
+        .scrollContentBackground(.hidden)
         .onAppear {
             guard let id = router.focusedCategoryID else { return }
             DispatchQueue.main.async { flashFocus(id, proxy: proxy) }
@@ -197,8 +205,10 @@ struct AssetTab: View {
             ForEach(rootAssets) { asset in
                 AssetTreeRow(asset: asset, depth: 0, expanded: $expanded, orderedIDs: orderedAssetIDs)
                     .id(asset.id)
+                    .listRowBackground(Color.white.opacity(0.5))
             }
         }
+        .scrollContentBackground(.hidden)
     }
 }
 

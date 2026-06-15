@@ -21,44 +21,52 @@ struct CategoryTab: View {
 
     var body: some View {
         NavigationStack(path: $navigationPath) {
-            Group {
-                if store.allCategories.isEmpty {
-                    ContentUnavailableView(
-                        "No Categories",
-                        systemImage: "folder",
-                        description: Text("Tap + to create your first category.")
-                    )
-                } else {
-                    List(sortedCategories) { category in
-                        CategoryRow(
-                            category: category,
-                            isExpanded: expandedCategoryID == category.id,
-                            onToggle: {
-                                withAnimation(.easeInOut(duration: 0.2)) {
-                                    expandedCategoryID = expandedCategoryID == category.id ? nil : category.id
-                                }
-                            },
-                            onNewAsset: {
-                                let count = (try? store.assets(ofCategoryID: category.id))?.count ?? 0
-                                let defaultName = "\(category.name) \(count + 1)"
-                                if let asset = try? store.createAsset(name: defaultName, categoryID: category.id) {
-                                    assetToEdit = asset
-                                }
-                            },
-                            onViewAssets: {
-                                router.focusedCategoryID = category.id
-                                router.selectedTab = .assets
-                            },
-                            onViewDefs: { navigationPath = .init(); navigationPath.append(CategoryDest.propertyDefs(category.id)) },
-                            onDuplicate: { categoryToDuplicate = category },
-                            onChangeIcon: { newIcon in
-                                try? store.updateCategoryIcon(id: category.id, iconName: newIcon)
-                            }
+            ZStack {
+                AppBackground()
+                Group {
+                    if store.allCategories.isEmpty {
+                        ContentUnavailableView(
+                            "No Categories",
+                            systemImage: "folder",
+                            description: Text("Tap + to create your first category.")
                         )
+                    } else {
+                        List(sortedCategories) { category in
+                            CategoryRow(
+                                category: category,
+                                isExpanded: expandedCategoryID == category.id,
+                                onToggle: {
+                                    withAnimation(.easeInOut(duration: 0.2)) {
+                                        expandedCategoryID = expandedCategoryID == category.id ? nil : category.id
+                                    }
+                                },
+                                onNewAsset: {
+                                    let count = (try? store.assets(ofCategoryID: category.id))?.count ?? 0
+                                    let defaultName = "\(category.name) \(count + 1)"
+                                    if let asset = try? store.createAsset(name: defaultName, categoryID: category.id) {
+                                        assetToEdit = asset
+                                    }
+                                },
+                                onViewAssets: {
+                                    router.focusedCategoryID = category.id
+                                    router.selectedTab = .assets
+                                },
+                                onViewDefs: { navigationPath = .init(); navigationPath.append(CategoryDest.propertyDefs(category.id)) },
+                                onDuplicate: { categoryToDuplicate = category },
+                                onChangeIcon: { newIcon in
+                                    try? store.updateCategoryIcon(id: category.id, iconName: newIcon)
+                                }
+                            )
+                            .listRowBackground(Color.white.opacity(0.5))
+                        }
+                        .scrollContentBackground(.hidden)
                     }
                 }
+                .environment(\.colorScheme, .light)
             }
             .navigationTitle("Categories")
+            .toolbarColorScheme(.light, for: .navigationBar)
+            .toolbarBackground(.hidden, for: .navigationBar)
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button { newCategoryPresented = true } label: {
