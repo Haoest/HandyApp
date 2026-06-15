@@ -60,6 +60,8 @@ final class AssetStore {
 
     var allAssets: [Asset] { assets.values.filter { !$0.isDeleted } }
     var allCategories: [AssetCategory] { categories.values.filter { !$0.isDeleted } }
+    var deletedAssets: [Asset] { assets.values.filter { $0.isDeleted } }
+    var deletedCategories: [AssetCategory] { categories.values.filter { $0.isDeleted } }
     var allCompositeTypes: [CompositeTypeDefinition] { Array(compositeTypes.values) }
     var allComboListDefinitions: [ComboListDefinition] { Array(comboListDefinitions.values) }
 
@@ -192,6 +194,18 @@ final class AssetStore {
         asset.isDeleted = true
         asset.modifiedDate = Date()
         notificationScheduler?.requestResync(assets: allAssets)
+    }
+
+    func restoreAsset(id: UUID) throws {
+        guard let asset = assets[id] else { throw AssetStoreError.assetNotFound(id) }
+        asset.isDeleted = false
+        asset.modifiedDate = Date()
+        notificationScheduler?.requestResync(assets: allAssets)
+    }
+
+    func restoreCategory(id: UUID) throws {
+        guard let cat = categories[id] else { throw AssetStoreError.categoryNotFound(id) }
+        cat.isDeleted = false
     }
 
     /// All assets belonging to the given category.

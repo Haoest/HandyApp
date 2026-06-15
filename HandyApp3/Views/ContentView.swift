@@ -17,33 +17,12 @@ struct ContentView: View {
             CategoryTab()
                 .tabItem { Image(systemName: "folder") }
                 .tag(AppTab.categories)
-            ActivityTab()
+            ToolsTab()
                 .tabItem { Image(systemName: "wrench.and.screwdriver") }
                 .tag(AppTab.tools)
             PreferenceTab()
                 .tabItem { Image(systemName: "gearshape") }
                 .tag(AppTab.preferences)
-        }
-    }
-}
-
-// MARK: - Activity tab
-
-struct ActivityTab: View {
-    var body: some View {
-        NavigationStack {
-            ZStack {
-                // Dark backdrop so the colored dust reads vividly.
-                RadialGradient(
-                    colors: [Color(red: 0.10, green: 0.11, blue: 0.18), .black],
-                    center: .center, startRadius: 0, endRadius: 600
-                )
-                .ignoresSafeArea()
-                DustBallView()
-            }
-            .navigationTitle("Tools")
-            .toolbarColorScheme(.dark, for: .navigationBar)
-            .toolbarBackground(.hidden, for: .navigationBar)
         }
     }
 }

@@ -1,0 +1,501 @@
+diff --git a/HandyApp3/Controllers/AssetStore.swift b/HandyApp3/Controllers/AssetStore.swift
+index 787fba3..2ea6fdd 100644
+--- a/HandyApp3/Controllers/AssetStore.swift
++++ b/HandyApp3/Controllers/AssetStore.swift
+@@ -62,6 +62,8 @@ final class AssetStore {
+     var allCategories: [AssetCategory] { categories.values.filter { !$0.isDeleted } }
+     var allCompositeTypes: [CompositeTypeDefinition] { Array(compositeTypes.values) }
+     var allComboListDefinitions: [ComboListDefinition] { Array(comboListDefinitions.values) }
++    var deletedAssets: [Asset] { assets.values.filter { $0.isDeleted } }
++    var deletedCategories: [AssetCategory] { categories.values.filter { $0.isDeleted } }
+ 
+     // MARK: - AssetCategory CRUD
+ 
+@@ -194,6 +196,18 @@ final class AssetStore {
+         notificationScheduler?.requestResync(assets: allAssets)
+     }
+ 
++    func restoreAsset(id: UUID) throws {
++        guard let asset = assets[id] else { throw AssetStoreError.assetNotFound(id) }
++        asset.isDeleted = false
++        asset.modifiedDate = Date()
++        notificationScheduler?.requestResync(assets: allAssets)
++    }
++
++    func restoreCategory(id: UUID) throws {
++        guard let cat = categories[id] else { throw AssetStoreError.categoryNotFound(id) }
++        cat.isDeleted = false
++    }
++
+     /// All assets belonging to the given category.
+     func assets(ofCategoryID categoryID: UUID) throws -> [Asset] {
+         guard categories[categoryID] != nil else { throw AssetStoreError.categoryNotFound(categoryID) }
+diff --git a/HandyApp3/Views/AppRouter.swift b/HandyApp3/Views/AppRouter.swift
+index c8ff49f..4608e65 100644
+--- a/HandyApp3/Views/AppRouter.swift
++++ b/HandyApp3/Views/AppRouter.swift
+@@ -2,7 +2,7 @@ import SwiftUI
+ 
+ /// Identifies the top-level tabs so one tab can steer the selection of another.
+ enum AppTab: Hashable {
+-    case home, assets, categories, activity, preferences
++    case home, assets, categories, tools, preferences
+ }
+ 
+ /// Lightweight cross-tab navigation state. Lets one tab drive another — e.g. the
+diff --git a/HandyApp3/Views/ContentView.swift b/HandyApp3/Views/ContentView.swift
+index 89ed3c3..4a5afc1 100644
+--- a/HandyApp3/Views/ContentView.swift
++++ b/HandyApp3/Views/ContentView.swift
+@@ -17,9 +17,9 @@ struct ContentView: View {
+             CategoryTab()
+                 .tabItem { Image(systemName: "folder") }
+                 .tag(AppTab.categories)
+-            ActivityTab()
+-                .tabItem { Image(systemName: "waveform") }
+-                .tag(AppTab.activity)
++            ToolsTab()
++                .tabItem { Image(systemName: "wrench.and.screwdriver") }
++                .tag(AppTab.tools)
+             PreferenceTab()
+                 .tabItem { Image(systemName: "gearshape") }
+                 .tag(AppTab.preferences)
+@@ -27,27 +27,6 @@ struct ContentView: View {
+     }
+ }
+ 
+-// MARK: - Activity tab
+-
+-struct ActivityTab: View {
+-    var body: some View {
+-        NavigationStack {
+-            ZStack {
+-                // Dark backdrop so the colored dust reads vividly.
+-                RadialGradient(
+-                    colors: [Color(red: 0.10, green: 0.11, blue: 0.18), .black],
+-                    center: .center, startRadius: 0, endRadius: 600
+-                )
+-                .ignoresSafeArea()
+-                DustBallView()
+-            }
+-            .navigationTitle("Activity")
+-            .toolbarColorScheme(.dark, for: .navigationBar)
+-            .toolbarBackground(.hidden, for: .navigationBar)
+-        }
+-    }
+-}
+-
+ // MARK: - Preference tab
+ 
+ /// UserDefaults keys for user preferences.
+diff --git a/HandyApp3/Views/DustBallView.swift b/HandyApp3/Views/DustBallView.swift
+deleted file mode 100644
+index c051e9d..0000000
+--- a/HandyApp3/Views/DustBallView.swift
++++ /dev/null
+@@ -1,153 +0,0 @@
+-import SwiftUI
+-
+-/// An intro flourish: thousands of multi-colored dust motes start scattered far out as a
+-/// 3D cloud, swirl inward over `duration` seconds (the whole cloud tumbling as they
+-/// spiral), then settle and freeze into the letter **H**.
+-///
+-/// Each mote owns a final position on the "H" glyph. It flies from a scaled-out, depth-
+-/// puffed position down to that target while its swirl unwinds; the cloud tumbles during
+-/// the flight but resolves front-on and upright at the end so the H reads cleanly.
+-struct DustBallView: View {
+-    private let particles: [DustMote]
+-    private let duration: Double = 5
+-
+-    @State private var start = Date()
+-    @State private var frozen = false
+-    @State private var runID = UUID()
+-
+-    init(count: Int = 2200) {
+-        var rng = SystemRandomNumberGenerator()
+-        particles = (0..<count).map { _ in
+-            DustMote(
+-                target: sampleH(&rng),
+-                startScale: Double.random(in: 2.2...4.2, using: &rng),
+-                swirl: Double.random(in: 2.0...7.0, using: &rng) * (Bool.random(using: &rng) ? 1 : -1),
+-                cloudZ: Double.random(in: -1...1, using: &rng),
+-                size: Double.random(in: 0.7...1.9, using: &rng),
+-                hue: Double.random(in: 0...1, using: &rng)
+-            )
+-        }
+-    }
+-
+-    var body: some View {
+-        Group {
+-            if frozen {
+-                Canvas { ctx, size in draw(ctx, size, t: 1) }
+-            } else {
+-                TimelineView(.animation) { timeline in
+-                    Canvas { ctx, size in
+-                        let elapsed = timeline.date.timeIntervalSince(start)
+-                        draw(ctx, size, t: min(max(elapsed / duration, 0), 1))
+-                    }
+-                }
+-            }
+-        }
+-        .onAppear { restart() }
+-    }
+-
+-    /// Replays the animation from the start (e.g. each time the Activity tab opens).
+-    private func restart() {
+-        let id = UUID()
+-        runID = id
+-        start = Date()
+-        frozen = false
+-        DispatchQueue.main.asyncAfter(deadline: .now() + duration) {
+-            if runID == id { frozen = true }
+-        }
+-    }
+-
+-    private func draw(_ ctx: GraphicsContext, _ size: CGSize, t: Double) {
+-        let ease = 1 - pow(1 - t, 3)                 // ease-out: fast inrush, gentle settle
+-        let center = CGPoint(x: size.width / 2, y: size.height / 2)
+-        let scale = min(size.width, size.height) * 0.5
+-        let cameraDistance = 6.0
+-        let focal = 4.0
+-        let yaw = 4 * .pi * t                         // two full turns → ends front-facing
+-        let tilt = 0.4 * (1 - ease)                   // tumble that flattens out at the end
+-
+-        struct Projected { let point: CGPoint; let radius: Double; let depth: Double; let color: Color }
+-        var projected: [Projected] = []
+-        projected.reserveCapacity(particles.count)
+-
+-        for mote in particles {
+-            let moteScale = mote.startScale + (1 - mote.startScale) * ease
+-            let swirl = mote.swirl * (1 - ease)       // unwinds to 0 → lands on target
+-            var v = mote.target * moteScale
+-            v.z += mote.cloudZ * 1.5 * (1 - ease)     // 3D puff during flight, gone at end
+-            v = rotateY(v, swirl)
+-            v = rotateY(v, yaw)
+-            v = rotateX(v, tilt)
+-
+-            let perspective = focal / (cameraDistance - v.z)
+-            let point = CGPoint(x: center.x + v.x * perspective * scale,
+-                                y: center.y - v.y * perspective * scale)
+-            let depthFade = 0.55 + 0.45 * min(max((v.z + 1) / 2, 0), 1)
+-            let alpha = 0.25 + 0.75 * ease            // dust solidifies as it gathers
+-            let color = Color(hue: mote.hue, saturation: 0.7, brightness: 0.95 * depthFade)
+-                .opacity(alpha)
+-            projected.append(Projected(point: point,
+-                                       radius: mote.size * perspective * 1.6,
+-                                       depth: v.z,
+-                                       color: color))
+-        }
+-
+-        // Painter's algorithm: far motes first so near ones overlay them.
+-        projected.sort { $0.depth < $1.depth }
+-        for p in projected {
+-            let rect = CGRect(x: p.point.x - p.radius, y: p.point.y - p.radius,
+-                              width: p.radius * 2, height: p.radius * 2)
+-            ctx.fill(Path(ellipseIn: rect), with: .color(p.color))
+-        }
+-    }
+-}
+-
+-private struct DustMote {
+-    let target: SIMD3<Double>   // final position forming the letter H
+-    let startScale: Double      // initial outward scale (final scale is 1)
+-    let swirl: Double           // extra angle (radians) that unwinds to 0 during the flight
+-    let cloudZ: Double          // extra depth during flight, collapsing to 0 at the end
+-    let size: Double            // base point-size multiplier
+-    let hue: Double
+-}
+-
+-// MARK: - Math helpers
+-
+-private func rotateY(_ v: SIMD3<Double>, _ a: Double) -> SIMD3<Double> {
+-    let c = cos(a), s = sin(a)
+-    return SIMD3(v.x * c + v.z * s, v.y, -v.x * s + v.z * c)
+-}
+-
+-private func rotateX(_ v: SIMD3<Double>, _ a: Double) -> SIMD3<Double> {
+-    let c = cos(a), s = sin(a)
+-    return SIMD3(v.x, v.y * c - v.z * s, v.y * s + v.z * c)
+-}
+-
+-/// A uniform-by-area sample of the letter "H" glyph, centered at the origin. Height spans
+-/// y ∈ [-1, 1]; two vertical bars plus a crossbar, with a touch of z thickness.
+-private func sampleH(_ rng: inout SystemRandomNumberGenerator) -> SIMD3<Double> {
+-    let barWidth = 0.28
+-    let leftMin = -0.7, leftMax = -0.7 + barWidth          // left bar x range
+-    let rightMin = 0.7 - barWidth, rightMax = 0.7          // right bar x range
+-    let crossHalf = 0.18                                   // crossbar half-height
+-
+-    let areaBar = barWidth * 2.0
+-    let areaCross = (rightMin - leftMax) * (crossHalf * 2)
+-    let total = areaBar * 2 + areaCross
+-
+-    var x = 0.0, y = 0.0
+-    let pick = Double.random(in: 0...total, using: &rng)
+-    if pick < areaBar {
+-        x = Double.random(in: leftMin...leftMax, using: &rng)
+-        y = Double.random(in: -1...1, using: &rng)
+-    } else if pick < areaBar * 2 {
+-        x = Double.random(in: rightMin...rightMax, using: &rng)
+-        y = Double.random(in: -1...1, using: &rng)
+-    } else {
+-        x = Double.random(in: leftMax...rightMin, using: &rng)
+-        y = Double.random(in: -crossHalf...crossHalf, using: &rng)
+-    }
+-
+-    let glyphScale = 1.15
+-    let z = Double.random(in: -0.05...0.05, using: &rng)
+-    return SIMD3(x * glyphScale, y * glyphScale, z)
+-}
+diff --git a/HandyApp3/Views/ToolsView.swift b/HandyApp3/Views/ToolsView.swift
+new file mode 100644
+index 0000000..8fc3bc0
+--- /dev/null
++++ b/HandyApp3/Views/ToolsView.swift
+@@ -0,0 +1,246 @@
++import SwiftUI
++import Contacts
++import UIKit
++
++// MARK: - ToolsTab
++
++struct ToolsTab: View {
++    var body: some View {
++        NavigationStack {
++            List {
++                NavigationLink(destination: DeletedAssetsView()) {
++                    Label("Deleted Assets", systemImage: "trash.slash")
++                }
++                NavigationLink(destination: DeletedCategoriesView()) {
++                    Label("Deleted Categories", systemImage: "folder.badge.minus")
++                }
++                NavigationLink(destination: BulkCommunicationView()) {
++                    Label("Bulk Communication", systemImage: "bubble.left.and.bubble.right")
++                }
++            }
++            .navigationTitle("Tools")
++        }
++    }
++}
++
++// MARK: - DeletedAssetsView
++
++struct DeletedAssetsView: View {
++    @Environment(AssetStore.self) private var store
++
++    var body: some View {
++        let deleted = store.deletedAssets.sorted { $0.name < $1.name }
++        Group {
++            if deleted.isEmpty {
++                ContentUnavailableView("No Deleted Assets", systemImage: "trash.slash")
++            } else {
++                List(deleted) { asset in
++                    VStack(alignment: .leading, spacing: 2) {
++                        Text(asset.name)
++                        Text(asset.category.name)
++                            .font(.caption)
++                            .foregroundStyle(.secondary)
++                    }
++                    .swipeActions(edge: .trailing) {
++                        Button("Restore") {
++                            try? store.restoreAsset(id: asset.id)
++                        }
++                        .tint(.blue)
++                    }
++                }
++            }
++        }
++        .navigationTitle("Deleted Assets")
++    }
++}
++
++// MARK: - DeletedCategoriesView
++
++struct DeletedCategoriesView: View {
++    @Environment(AssetStore.self) private var store
++
++    var body: some View {
++        let deleted = store.deletedCategories.sorted { $0.name < $1.name }
++        Group {
++            if deleted.isEmpty {
++                ContentUnavailableView("No Deleted Categories", systemImage: "folder.badge.minus")
++            } else {
++                List(deleted) { cat in
++                    Label(cat.name, systemImage: cat.iconName)
++                        .swipeActions(edge: .trailing) {
++                            Button("Restore") {
++                                try? store.restoreCategory(id: cat.id)
++                            }
++                            .tint(.blue)
++                        }
++                }
++            }
++        }
++        .navigationTitle("Deleted Categories")
++    }
++}
++
++// MARK: - BulkCommunicationView
++
++private struct ContactRow: Identifiable {
++    let id: UUID
++    let asset: Asset
++    let propertyName: String
++    let contact: CNContact
++    let availableMethods: [ContactMethod]
++}
++
++private enum ContactMethod: String, CaseIterable, Identifiable {
++    case sms, email, whatsapp
++    var id: String { rawValue }
++    var label: String {
++        switch self {
++        case .sms: return "SMS"
++        case .email: return "Email"
++        case .whatsapp: return "WhatsApp"
++        }
++    }
++}
++
++struct BulkCommunicationView: View {
++    @Environment(AssetStore.self) private var store
++    @State private var rows: [ContactRow] = []
++    @State private var isLoading = true
++    @State private var messageText: String = ""
++    @State private var selectedMethods: [UUID: ContactMethod] = [:]
++
++    private var canSend: Bool {
++        !messageText.trimmingCharacters(in: .whitespaces).isEmpty && !selectedMethods.isEmpty
++    }
++
++    var body: some View {
++        Group {
++            if isLoading {
++                ProgressView()
++            } else if rows.isEmpty {
++                ContentUnavailableView(
++                    "No Contacts Found",
++                    systemImage: "person.slash",
++                    description: Text("No top-level assets have a linked contact.")
++                )
++            } else {
++                Form {
++                    Section("Message") {
++                        TextField("Message…", text: $messageText, axis: .vertical)
++                            .lineLimit(3...6)
++                    }
++                    ForEach(uniqueAssets()) { asset in
++                        Section(asset.name) {
++                            ForEach(rows.filter { $0.asset.id == asset.id }) { row in
++                                contactRowView(row)
++                            }
++                        }
++                    }
++                }
++            }
++        }
++        .navigationTitle("Bulk Communication")
++        .toolbar {
++            ToolbarItem(placement: .confirmationAction) {
++                Button("Send All") { sendAll() }
++                    .disabled(!canSend)
++            }
++        }
++        .task { await loadRows() }
++    }
++
++    @ViewBuilder
++    private func contactRowView(_ row: ContactRow) -> some View {
++        VStack(alignment: .leading, spacing: 6) {
++            VStack(alignment: .leading, spacing: 2) {
++                Text(contactDisplayName(row.contact))
++                Text(row.propertyName)
++                    .font(.caption)
++                    .foregroundStyle(.secondary)
++            }
++            Picker("", selection: methodBinding(for: row.id, in: row.availableMethods)) {
++                Text("None").tag(Optional<ContactMethod>.none)
++                ForEach(row.availableMethods) { method in
++                    Text(method.label).tag(Optional(method))
++                }
++            }
++            .pickerStyle(.segmented)
++        }
++        .padding(.vertical, 4)
++    }
++
++    private func methodBinding(for rowID: UUID, in available: [ContactMethod]) -> Binding<ContactMethod?> {
++        Binding(
++            get: { selectedMethods[rowID] },
++            set: { selectedMethods[rowID] = $0 }
++        )
++    }
++
++    private func uniqueAssets() -> [Asset] {
++        var seen = Set<UUID>()
++        return rows.compactMap { row -> Asset? in
++            guard seen.insert(row.asset.id).inserted else { return nil }
++            return row.asset
++        }
++    }
++
++    private func contactDisplayName(_ contact: CNContact) -> String {
++        let full = [contact.givenName, contact.familyName].filter { !$0.isEmpty }.joined(separator: " ")
++        return full.isEmpty ? contact.organizationName : full
++    }
++
++    private func availableMethods(for contact: CNContact) -> [ContactMethod] {
++        var methods: [ContactMethod] = []
++        if !contact.phoneNumbers.isEmpty { methods.append(.sms) }
++        if !contact.emailAddresses.isEmpty { methods.append(.email) }
++        let hasWhatsApp = contact.instantMessageAddresses.contains {
++            $0.value.service.lowercased() == "whatsapp"
++        }
++        if hasWhatsApp && !contact.phoneNumbers.isEmpty { methods.append(.whatsapp) }
++        return methods
++    }
++
++    private func loadRows() async {
++        var built: [ContactRow] = []
++        for asset in store.allAssets.filter(\.isRoot).sorted(by: { $0.name < $1.name }) {
++            for prop in asset.baseProperties + asset.customProperties {
++                guard case .basic(.contact) = prop.definition.type,
++                      case .contact(let identifier) = prop.value,
++                      let contact = try? ContactResolver.shared.contact(for: identifier)
++                else { continue }
++                let methods = availableMethods(for: contact)
++                guard !methods.isEmpty else { continue }
++                built.append(ContactRow(
++                    id: UUID(),
++                    asset: asset,
++                    propertyName: prop.definition.name,
++                    contact: contact,
++                    availableMethods: methods
++                ))
++            }
++        }
++        rows = built
++        isLoading = false
++    }
++
++    private func sendAll() {
++        let encoded = messageText.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
++        for row in rows {
++            guard let method = selectedMethods[row.id] else { continue }
++            let urlString: String
++            switch method {
++            case .sms:
++                let phone = row.contact.phoneNumbers.first?.value.stringValue.filter { $0.isNumber || $0 == "+" } ?? ""
++                urlString = "sms:\(phone)?&body=\(encoded)"
++            case .email:
++                let email = row.contact.emailAddresses.first.map { $0.value as String } ?? ""
++                urlString = "mailto:\(email)?body=\(encoded)"
++            case .whatsapp:
++                let phone = row.contact.phoneNumbers.first?.value.stringValue.filter { $0.isNumber || $0 == "+" } ?? ""
++                urlString = "whatsapp://send?phone=\(phone)&text=\(encoded)"
++            }
++            guard let url = URL(string: urlString) else { continue }
++            UIApplication.shared.open(url)
++        }
++    }
++}
