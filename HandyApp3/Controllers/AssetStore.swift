@@ -59,7 +59,7 @@ final class AssetStore {
     // MARK: - Derived collections
 
     var allAssets: [Asset] { assets.values.filter { !$0.isDeleted } }
-    var allCategories: [AssetCategory] { Array(categories.values) }
+    var allCategories: [AssetCategory] { categories.values.filter { !$0.isDeleted } }
     var allCompositeTypes: [CompositeTypeDefinition] { Array(compositeTypes.values) }
     var allComboListDefinitions: [ComboListDefinition] { Array(comboListDefinitions.values) }
 
@@ -89,6 +89,11 @@ final class AssetStore {
     func deleteCategory(id: UUID) throws {
         guard categories[id] != nil else { throw AssetStoreError.categoryNotFound(id) }
         categories.removeValue(forKey: id)
+    }
+
+    func softDeleteCategory(id: UUID) throws {
+        guard let cat = categories[id] else { throw AssetStoreError.categoryNotFound(id) }
+        cat.isDeleted = true
     }
 
     /// Appends a new property template to an existing category.

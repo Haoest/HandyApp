@@ -44,4 +44,4 @@ An `Asset` is a named physical object. It belongs to one `AssetCategory`, which 
 - ~~add logging~~
 - add tools (communication, data export)
 - ~~summarize home screen~~
-- delete category
+- ~~delete category~~

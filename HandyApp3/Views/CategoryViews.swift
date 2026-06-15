@@ -270,10 +270,12 @@ struct IconPickerView: View {
 
 struct CategoryPropertyDefsView: View {
     @Environment(AssetStore.self) private var store
+    @Environment(\.dismiss) private var dismiss
     let category: AssetCategory
     @State private var iconPickerPresented = false
     @State private var addPropertyPresented = false
     @State private var propertyToEdit: AssetProperty?
+    @State private var deleteConfirmationPresented = false
 
     var body: some View {
         Form {
@@ -313,6 +315,18 @@ struct CategoryPropertyDefsView: View {
                 Text("These values are copied into new assets created from this category.")
                     .font(.caption)
             }
+
+            Section {
+                Button(role: .destructive) {
+                    deleteConfirmationPresented = true
+                } label: {
+                    HStack {
+                        Spacer()
+                        Text("Delete Category")
+                        Spacer()
+                    }
+                }
+            }
         }
         .navigationTitle(category.name)
         .navigationBarTitleDisplayMode(.inline)
@@ -344,6 +358,19 @@ struct CategoryPropertyDefsView: View {
                     try? store.removeTemplatePropertyValue(forPropertyID: prop.id, inCategoryID: category.id)
                 }
             }
+        }
+        .confirmationDialog(
+            "Delete \"\(category.name)\"?",
+            isPresented: $deleteConfirmationPresented,
+            titleVisibility: .visible
+        ) {
+            Button("Delete Category", role: .destructive) {
+                try? store.softDeleteCategory(id: category.id)
+                dismiss()
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("The category will be removed. Existing assets will not be affected.")
         }
     }
 }
