@@ -54,7 +54,7 @@ struct PhotosSection: View {
 
     @ViewBuilder
     private func thumbnailCell(_ photo: Photo) -> some View {
-        let img = UIImage(data: photo.thumbnailData) ?? UIImage()
+        let img = photo.thumbnailData.flatMap { UIImage(data: $0) } ?? UIImage()
         Button { selectedPhoto = photo } label: {
             Image(uiImage: img)
                 .resizable()
@@ -63,6 +63,11 @@ struct PhotosSection: View {
                 .clipShape(RoundedRectangle(cornerRadius: 8))
         }
         .buttonStyle(.plain)
+        .onAppear {
+            if photo.thumbnailData == nil {
+                photo.thumbnailData = PhotoStorage.loadThumb(id: photo.id)
+            }
+        }
     }
 }
 
@@ -90,7 +95,8 @@ struct PhotoViewerSheet: View {
         NavigationStack {
             ScrollView {
                 VStack(spacing: 16) {
-                    if let img = UIImage(data: photo.imageData) {
+                    if let data = photo.imageData ?? PhotoStorage.loadFull(id: photo.id),
+                       let img = UIImage(data: data) {
                         Image(uiImage: img)
                             .resizable()
                             .scaledToFit()
@@ -167,9 +173,13 @@ struct PhotoViewerSheet: View {
     }
 
     private func scanReceipt() {
+        guard let imageData = photo.imageData ?? PhotoStorage.loadFull(id: photo.id) else {
+            showNoTotalAlert = true
+            return
+        }
         isScanning = true
         Task {
-            let result = await ReceiptScanner.analyze(photo.imageData)
+            let result = await ReceiptScanner.analyze(imageData)
             isScanning = false
             if let result, !result.blocks.isEmpty {
                 analysis = result

@@ -6,14 +6,22 @@ struct HandyApp3App: App {
     @State private var router = AppRouter()
     @State private var store: AssetStore = {
         let s = AssetStore()
+        // File I/O runs on background thread internally; blocks main briefly (store.json is tiny)
+        let wasLoaded = s.load()
+        // Built-in seeds are idempotent — always run to pick up new types added in app updates
         s.seedBuiltInComboLists()
         s.seedBuiltInCategories()
         s.seedBuiltInTypes()
-        s.seedBuiltInAssets()
-        s.seedSampleHVAC()
-        s.seedSampleEvents()
-        s.seedSampleTransactions()
-        s.seedSamplePhotos()
+        if !wasLoaded {
+            s.seedBuiltInAssets()
+            s.seedSampleHVAC()
+            s.seedSampleEvents()
+            s.seedSampleTransactions()
+            s.seedSamplePhotos()
+        } else {
+            s.purgeHardDeleted()
+        }
+        DispatchQueue.global(qos: .background).async { s.save() }
         s.notificationScheduler = NotificationScheduler()
         return s
     }()
@@ -29,11 +37,14 @@ struct HandyApp3App: App {
                         router.pendingAssetID = assetID
                     }
                     try? await ContactResolver.shared.requestAccess()
+                    store.startCloudMonitor()
                 }
         }
         .onChange(of: scenePhase) { _, phase in
-            guard phase == .active else { return }
-            store.notificationScheduler?.requestResync(assets: store.allAssets)
+            if phase == .inactive || phase == .background {
+                DispatchQueue.global(qos: .background).async { store.save() }
+            }
+            if phase == .active { store.notificationScheduler?.requestResync(assets: store.allAssets) }
         }
     }
 }

@@ -52,9 +52,17 @@ final class AssetStore {
     /// notification resync. Nil in tests keeps the store notification-free.
     var notificationScheduler: NotificationScheduler?
 
-    /// User-chosen app backdrop. Held here (in-memory for now) so the whole app reacts
-    /// to changes; does not yet survive relaunch.
-    var backgroundTheme: BackgroundTheme = .mist
+    var backgroundTheme: BackgroundTheme = .mist {
+        didSet { markDirty() }
+    }
+
+    /// Retained iCloud metadata query for remote-change monitoring. Set by startCloudMonitor().
+    @ObservationIgnored
+    var cloudQuery: NSMetadataQuery?
+
+    /// Pending debounced save task. Cancelled and replaced on each mutation.
+    @ObservationIgnored
+    private var saveTask: Task<Void, Never>?
 
     // MARK: - Derived collections
 
@@ -75,27 +83,33 @@ final class AssetStore {
         }
         let cat = AssetCategory(name: trimmed, iconName: iconName, propertyTemplates: propertyTemplates)
         categories[cat.id] = cat
+        markDirty()
         return cat
     }
 
     func updateCategory(id: UUID, name: String) throws {
         guard let cat = categories[id] else { throw AssetStoreError.categoryNotFound(id) }
         cat.name = name
+        markDirty()
     }
 
     func updateCategoryIcon(id: UUID, iconName: String) throws {
         guard let cat = categories[id] else { throw AssetStoreError.categoryNotFound(id) }
         cat.iconName = iconName
+        markDirty()
     }
 
     func deleteCategory(id: UUID) throws {
         guard categories[id] != nil else { throw AssetStoreError.categoryNotFound(id) }
         categories.removeValue(forKey: id)
+        markDirty()
     }
 
     func softDeleteCategory(id: UUID) throws {
         guard let cat = categories[id] else { throw AssetStoreError.categoryNotFound(id) }
         cat.isDeleted = true
+        cat.deletedAt = Date()
+        markDirty()
     }
 
     /// Appends a new property template to an existing category.
@@ -103,6 +117,7 @@ final class AssetStore {
     func addTemplateProperty(_ property: AssetProperty, toCategoryID categoryID: UUID) throws -> AssetProperty {
         guard let cat = categories[categoryID] else { throw AssetStoreError.categoryNotFound(categoryID) }
         cat.propertyTemplates.append(property)
+        markDirty()
         return property
     }
 
@@ -113,6 +128,7 @@ final class AssetStore {
         }
         try validate(stored: stored, against: prop.definition.type, definitionName: prop.definition.name)
         prop.value = stored
+        markDirty()
     }
 
     func removeTemplatePropertyValue(forPropertyID propID: UUID, inCategoryID categoryID: UUID) throws {
@@ -121,6 +137,7 @@ final class AssetStore {
             throw AssetStoreError.propertyNotFound(propID)
         }
         prop.value = nil
+        markDirty()
     }
 
     /// Removes a template property from a category. Does not affect existing assets.
@@ -130,6 +147,7 @@ final class AssetStore {
             throw AssetStoreError.propertyNotFound(propID)
         }
         cat.propertyTemplates.removeAll { $0.id == propID }
+        markDirty()
     }
 
     func updateTemplateProperty(
@@ -147,6 +165,7 @@ final class AssetStore {
             prop.definition.type = type
             prop.value = nil
         }
+        markDirty()
     }
 
     // MARK: - Asset CRUD
@@ -162,6 +181,7 @@ final class AssetStore {
         let asset = Asset(name: name, category: cat, baseProperties: baseProperties)
         assets[asset.id] = asset
         logCreation(of: asset.id, kind: .asset)
+        markDirty()
         return asset
     }
 
@@ -169,6 +189,7 @@ final class AssetStore {
         guard let asset = assets[id] else { throw AssetStoreError.assetNotFound(id) }
         asset.name = name
         asset.modifiedDate = Date()
+        markDirty()
     }
 
     func deleteAsset(id: UUID) throws {
@@ -181,6 +202,7 @@ final class AssetStore {
         }
         assets.removeValue(forKey: id)
         notificationScheduler?.requestResync(assets: allAssets)
+        markDirty()
     }
 
     /// Marks the asset as deleted without removing it from the store.
@@ -192,20 +214,26 @@ final class AssetStore {
             asset._removeChild(child)
         }
         asset.isDeleted = true
+        asset.deletedAt = Date()
         asset.modifiedDate = Date()
         notificationScheduler?.requestResync(assets: allAssets)
+        markDirty()
     }
 
     func restoreAsset(id: UUID) throws {
         guard let asset = assets[id] else { throw AssetStoreError.assetNotFound(id) }
         asset.isDeleted = false
+        asset.deletedAt = nil
         asset.modifiedDate = Date()
         notificationScheduler?.requestResync(assets: allAssets)
+        markDirty()
     }
 
     func restoreCategory(id: UUID) throws {
         guard let cat = categories[id] else { throw AssetStoreError.categoryNotFound(id) }
         cat.isDeleted = false
+        cat.deletedAt = nil
+        markDirty()
     }
 
     /// All assets belonging to the given category.
@@ -230,6 +258,7 @@ final class AssetStore {
             handleComboListAutoAdd(stored: stored, type: prop.definition.type)
             prop.value = stored
             asset.modifiedDate = Date()
+            markDirty()
             return prop
         }
         if let prop = asset.customProperties.first(where: { $0.definition.id == definitionID }) {
@@ -237,6 +266,7 @@ final class AssetStore {
             handleComboListAutoAdd(stored: stored, type: prop.definition.type)
             prop.value = stored
             asset.modifiedDate = Date()
+            markDirty()
             return prop
         }
         throw AssetStoreError.definitionNotFound(definitionID)
@@ -248,11 +278,13 @@ final class AssetStore {
         if let prop = asset.baseProperties.first(where: { $0.definition.id == definitionID }) {
             prop.value = nil
             asset.modifiedDate = Date()
+            markDirty()
             return
         }
         if let prop = asset.customProperties.first(where: { $0.definition.id == definitionID }) {
             prop.value = nil
             asset.modifiedDate = Date()
+            markDirty()
             return
         }
         throw AssetStoreError.definitionNotFound(definitionID)
@@ -274,6 +306,7 @@ final class AssetStore {
         let prop = AssetProperty(definition: definition, value: value)
         asset.customProperties.append(prop)
         asset.modifiedDate = Date()
+        markDirty()
         return prop
     }
 
@@ -291,6 +324,7 @@ final class AssetStore {
         try validate(stored: stored, against: prop.definition.type, definitionName: prop.definition.name)
         prop.value = stored
         asset.modifiedDate = Date()
+        markDirty()
         return prop
     }
 
@@ -314,6 +348,7 @@ final class AssetStore {
             prop.value = nil
         }
         asset.modifiedDate = Date()
+        markDirty()
     }
 
     /// Removes a custom property and its value from an asset.
@@ -324,6 +359,7 @@ final class AssetStore {
         }
         asset.customProperties.removeAll { $0.id == propID }
         asset.modifiedDate = Date()
+        markDirty()
     }
 
     // MARK: - ComboListDefinition CRUD
@@ -337,17 +373,20 @@ final class AssetStore {
     ) -> ComboListDefinition {
         let cl = ComboListDefinition(name: name, systemOptions: systemOptions, userOptions: userOptions, isUserExtensible: isUserExtensible)
         comboListDefinitions[cl.id] = cl
+        markDirty()
         return cl
     }
 
     func updateComboList(id: UUID, name: String) throws {
         guard let cl = comboListDefinitions[id] else { throw AssetStoreError.comboListNotFound(id) }
         cl.name = name
+        markDirty()
     }
 
     func deleteComboList(id: UUID) throws {
         guard comboListDefinitions[id] != nil else { throw AssetStoreError.comboListNotFound(id) }
         comboListDefinitions.removeValue(forKey: id)
+        markDirty()
     }
 
     func addUserOption(_ option: String, toComboListID id: UUID) throws {
@@ -355,6 +394,7 @@ final class AssetStore {
         guard cl.isUserExtensible else { throw AssetStoreError.comboListNotExtensible(id) }
         guard !cl.allOptions.contains(option) else { return }
         cl.userOptions.append(option)
+        markDirty()
     }
 
     func removeUserOption(_ option: String, fromComboListID id: UUID) throws {
@@ -364,6 +404,7 @@ final class AssetStore {
             throw AssetStoreError.cannotModifySystemOption(listID: id, option: option)
         }
         cl.userOptions.removeAll { $0 == option }
+        markDirty()
     }
 
     // MARK: - CompositeTypeDefinition CRUD
@@ -376,23 +417,27 @@ final class AssetStore {
     ) -> CompositeTypeDefinition {
         let ct = CompositeTypeDefinition(name: name, fields: fields, labelHint: labelHint)
         compositeTypes[ct.id] = ct
+        markDirty()
         return ct
     }
 
     func updateCompositeType(id: UUID, name: String) throws {
         guard let ct = compositeTypes[id] else { throw AssetStoreError.compositeTypeNotFound(id) }
         ct.name = name
+        markDirty()
     }
 
     func deleteCompositeType(id: UUID) throws {
         guard compositeTypes[id] != nil else { throw AssetStoreError.compositeTypeNotFound(id) }
         compositeTypes.removeValue(forKey: id)
+        markDirty()
     }
 
     @discardableResult
     func addField(_ field: PropertyDefinition, toCompositeTypeID typeID: UUID) throws -> PropertyDefinition {
         guard let ct = compositeTypes[typeID] else { throw AssetStoreError.compositeTypeNotFound(typeID) }
         ct.fields.append(field)
+        markDirty()
         return field
     }
 
@@ -402,6 +447,7 @@ final class AssetStore {
             throw AssetStoreError.definitionNotFound(fieldID)
         }
         ct.fields.removeAll { $0.id == fieldID }
+        markDirty()
     }
 
     func updateField(
@@ -418,6 +464,7 @@ final class AssetStore {
         if let name       { ct.fields[idx].name       = name       }
         if let type       { ct.fields[idx].type       = type       }
         if let isRequired { ct.fields[idx].isRequired = isRequired }
+        markDirty()
     }
 
     // MARK: - Validation helpers
@@ -482,11 +529,13 @@ final class AssetStore {
             throw AssetStoreError.hierarchyCycle(childID: childID, ancestorID: parentID)
         }
         newParent._addChild(child)
+        markDirty()
     }
 
     func removeFromParent(assetID: UUID) throws {
         guard let asset = assets[assetID] else { throw AssetStoreError.assetNotFound(assetID) }
         asset.parent?._removeChild(asset)
+        markDirty()
     }
 
     func moveAsset(assetID: UUID, toParentID newParentID: UUID) throws {
@@ -509,9 +558,11 @@ final class AssetStore {
     func addPhoto(imageData: Data, thumbnailData: Data, caption: String = "", toAssetID assetID: UUID) throws -> Photo {
         guard let asset = assets[assetID] else { throw AssetStoreError.assetNotFound(assetID) }
         let photo = Photo(imageData: imageData, thumbnailData: thumbnailData, caption: caption)
+        PhotoStorage.save(id: photo.id, imageData: imageData, thumbnailData: thumbnailData)
         asset.photos.append(photo)
         asset.modifiedDate = Date()
         logCreation(of: photo.id, kind: .photo, owningAssetID: assetID)
+        markDirty()
         return photo
     }
 
@@ -520,13 +571,16 @@ final class AssetStore {
         guard let photo = asset.photos.first(where: { $0.id == photoID }) else { throw AssetStoreError.photoNotFound(photoID) }
         photo.caption = caption
         asset.modifiedDate = Date()
+        markDirty()
     }
 
     func removePhoto(id photoID: UUID, fromAssetID assetID: UUID) throws {
         guard let asset = assets[assetID] else { throw AssetStoreError.assetNotFound(assetID) }
         guard asset.photos.contains(where: { $0.id == photoID }) else { throw AssetStoreError.photoNotFound(photoID) }
+        PhotoStorage.delete(id: photoID)
         asset.photos.removeAll { $0.id == photoID }
         asset.modifiedDate = Date()
+        markDirty()
     }
 
     @discardableResult
@@ -537,6 +591,7 @@ final class AssetStore {
         asset.modifiedDate = Date()
         logCreation(of: event.id, kind: .event, owningAssetID: assetID)
         notificationScheduler?.requestResync(assets: allAssets)
+        markDirty()
         return event
     }
 
@@ -549,6 +604,7 @@ final class AssetStore {
         event.recurrence = recurrence
         asset.modifiedDate = Date()
         notificationScheduler?.requestResync(assets: allAssets)
+        markDirty()
     }
 
     func removeEvent(id eventID: UUID, fromAssetID assetID: UUID) throws {
@@ -557,6 +613,7 @@ final class AssetStore {
         asset.events.removeAll { $0.id == eventID }
         asset.modifiedDate = Date()
         notificationScheduler?.requestResync(assets: allAssets)
+        markDirty()
     }
 
     @discardableResult
@@ -567,6 +624,7 @@ final class AssetStore {
         asset.modifiedDate = Date()
         logCreation(of: txn.id, kind: .transaction, owningAssetID: assetID)
         notificationScheduler?.requestResync(assets: allAssets)
+        markDirty()
         return txn
     }
 
@@ -582,6 +640,7 @@ final class AssetStore {
         txn.recurrence = recurrence
         asset.modifiedDate = Date()
         notificationScheduler?.requestResync(assets: allAssets)
+        markDirty()
     }
 
     func removeTransaction(id txnID: UUID, fromAssetID assetID: UUID) throws {
@@ -590,6 +649,7 @@ final class AssetStore {
         asset.transactions.removeAll { $0.id == txnID }
         asset.modifiedDate = Date()
         notificationScheduler?.requestResync(assets: allAssets)
+        markDirty()
     }
 
     // MARK: - Private helpers
@@ -604,5 +664,50 @@ final class AssetStore {
               list.isUserExtensible,
               !list.allOptions.contains(value) else { return }
         list.userOptions.append(value)
+    }
+
+    // MARK: - Persistence internals
+    // These must live here to write private(set) storage properties.
+
+    /// Schedules a background save ~2 s after the last mutation. Cancels and replaces
+    /// any pending save, so rapid mutations collapse into one write.
+    func markDirty() {
+        saveTask?.cancel()
+        saveTask = Task.detached(priority: .utility) { [weak self] in
+            try? await Task.sleep(for: .seconds(2))
+            guard !Task.isCancelled, let self else { return }
+            self.save()
+        }
+    }
+
+    /// Replaces in-memory state with the decoded snapshot. Called on the main thread.
+    func _applyLoaded(
+        compositeTypes: [UUID: CompositeTypeDefinition],
+        comboLists: [UUID: ComboListDefinition],
+        categories: [UUID: AssetCategory],
+        assets: [UUID: Asset],
+        activityLog: [ActivityLogEntry],
+        backgroundTheme: BackgroundTheme
+    ) {
+        self.compositeTypes = compositeTypes
+        self.comboListDefinitions = comboLists
+        self.categories = categories
+        self.assets = assets
+        self.activityLog = activityLog
+        self.backgroundTheme = backgroundTheme
+    }
+
+    /// Permanently removes soft-deleted assets/categories whose deletedAt is older than `seconds`.
+    /// Deletes associated photo files before discarding each asset.
+    func purgeHardDeleted(olderThan seconds: TimeInterval = 90 * 86_400) {
+        let cutoff = Date().addingTimeInterval(-seconds)
+        assets = assets.filter { _, a in
+            guard a.isDeleted, (a.deletedAt ?? .distantFuture) < cutoff else { return true }
+            for photo in a.photos { PhotoStorage.delete(id: photo.id) }
+            return false
+        }
+        categories = categories.filter { _, c in
+            !(c.isDeleted && (c.deletedAt ?? .distantFuture) < cutoff)
+        }
     }
 }

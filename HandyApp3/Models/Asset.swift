@@ -27,6 +27,7 @@ final class Asset: Identifiable, Equatable {
     var parentID: UUID?
 
     var isDeleted: Bool = false
+    var deletedAt: Date? = nil
 
     /// Resolved in-memory reference to the parent. Set by AssetStore hierarchy methods.
     weak var parent: Asset?

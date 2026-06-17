@@ -12,6 +12,7 @@ final class AssetCategory: Identifiable, Equatable {
     /// The property templates that get stamped onto new assets of this category.
     var propertyTemplates: [AssetProperty]
     var isDeleted: Bool = false
+    var deletedAt: Date? = nil
 
     init(id: UUID = UUID(), name: String, iconName: String = "square.grid.2x2", propertyTemplates: [AssetProperty] = []) {
         self.id = id

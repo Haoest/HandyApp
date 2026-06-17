@@ -45,4 +45,5 @@ An `Asset` is a named physical object. It belongs to one `AssetCategory`, which 
 - add tools (communication, data export)
 - ~~summarize home screen~~
 - ~~delete category~~
-- application icon
+- ~~application icon~~
+- hard delete soft deleted records by age
