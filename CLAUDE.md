@@ -33,8 +33,8 @@ An `Asset` is a named physical object. It belongs to one `AssetCategory`, which 
 ## Open work
 
 
-- work on real persistence, leave app with in-memory persistence for now
-- enable icloud backup
+- ~~work on real persistence, leave app with in-memory persistence for now~~
+- ~~enable icloud backup~~
 - ~~application version~~
 - ~~change add icon on asset listing screen and detail screen to differentiate them~~
 - beautify screens
@@ -46,4 +46,6 @@ An `Asset` is a named physical object. It belongs to one `AssetCategory`, which 
 - ~~summarize home screen~~
 - ~~delete category~~
 - ~~application icon~~
-- hard delete soft deleted records by age
+- ~~hard delete soft deleted records by age~~
+- deploy to iphone
+- under asset detail screen, list child assets

@@ -19,7 +19,9 @@ struct HandyApp3App: App {
             s.seedSampleTransactions()
             s.seedSamplePhotos()
         } else {
-            s.purgeHardDeleted()
+            let storedDays = UserDefaults.standard.integer(forKey: AppPreference.deletedRetentionDaysKey)
+            let retentionDays = storedDays > 0 ? storedDays : AppPreference.deletedRetentionDaysDefault
+            s.purgeHardDeleted(olderThan: TimeInterval(retentionDays) * 86_400)
         }
         DispatchQueue.global(qos: .background).async { s.save() }
         s.notificationScheduler = NotificationScheduler()

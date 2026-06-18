@@ -37,6 +37,11 @@ enum AppPreference {
     static let transactionLimitKey = "nonRecurringTransactionLimit"
     static let nonRecurringLimitDefault = 12
     static let nonRecurringLimitRange = 6.0...24.0
+
+    /// How many days a soft-deleted asset or category is kept before hard deletion.
+    static let deletedRetentionDaysKey = "deletedRetentionDays"
+    static let deletedRetentionDaysDefault = 14
+    static let deletedRetentionDaysRange = 7.0...30.0
 }
 
 struct PreferenceTab: View {
@@ -45,6 +50,8 @@ struct PreferenceTab: View {
     private var eventLimit = AppPreference.nonRecurringLimitDefault
     @AppStorage(AppPreference.transactionLimitKey)
     private var transactionLimit = AppPreference.nonRecurringLimitDefault
+    @AppStorage(AppPreference.deletedRetentionDaysKey)
+    private var deletedRetentionDays = AppPreference.deletedRetentionDaysDefault
 
     var body: some View {
         @Bindable var store = store
@@ -64,6 +71,10 @@ struct PreferenceTab: View {
                     Section("Asset Detail") {
                         LimitSlider(title: "Events to show", value: $eventLimit)
                         LimitSlider(title: "Transactions to show", value: $transactionLimit)
+                    }
+                    .listRowBackground(Color.white.opacity(0.5))
+                    Section("Data") {
+                        RetentionSlider(days: $deletedRetentionDays)
                     }
                     .listRowBackground(Color.white.opacity(0.5))
                 }
@@ -98,6 +109,30 @@ private struct LimitSlider: View {
                     set: { value = Int($0) }
                 ),
                 in: AppPreference.nonRecurringLimitRange,
+                step: 1
+            )
+        }
+    }
+}
+
+private struct RetentionSlider: View {
+    @Binding var days: Int
+
+    var body: some View {
+        VStack(alignment: .leading) {
+            HStack {
+                Text("Keep deleted items for")
+                Spacer()
+                Text("\(days) days")
+                    .foregroundStyle(.secondary)
+                    .monospacedDigit()
+            }
+            Slider(
+                value: Binding(
+                    get: { Double(days) },
+                    set: { days = Int($0) }
+                ),
+                in: AppPreference.deletedRetentionDaysRange,
                 step: 1
             )
         }
