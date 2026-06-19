@@ -61,6 +61,25 @@ extension AssetStore {
         return true
     }
 
+    func factoryReset() {
+        let photosDir = Self.baseDir.appendingPathComponent("Photos", isDirectory: true)
+        if let files = try? FileManager.default.contentsOfDirectory(at: photosDir, includingPropertiesForKeys: nil) {
+            for file in files { try? FileManager.default.removeItem(at: file) }
+        }
+        try? FileManager.default.removeItem(at: Self.storeURL)
+        _applyLoaded(compositeTypes: [:], comboLists: [:], categories: [:], assets: [:],
+                     activityLog: [], backgroundTheme: .mist)
+        seedBuiltInComboLists()
+        seedBuiltInCategories()
+        seedBuiltInTypes()
+        seedBuiltInAssets()
+        seedSampleHVAC()
+        seedSampleEvents()
+        seedSampleTransactions()
+        seedSamplePhotos()
+        DispatchQueue.global(qos: .background).async { self.save() }
+    }
+
     func exportJSON() -> Data? {
         let encoder = JSONEncoder()
         encoder.dateEncodingStrategy = .iso8601

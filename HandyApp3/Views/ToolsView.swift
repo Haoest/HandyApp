@@ -23,6 +23,9 @@ struct ToolsTab: View {
     @Environment(AssetStore.self) private var store
     @State private var showingExporter = false
     @State private var exportDocument: JSONExportDocument?
+    @State private var showingResetAlert = false
+    @State private var resetConfirmText = ""
+    @State private var showingResetDone = false
 
     private var exportFilename: String {
         let formatter = DateFormatter()
@@ -56,6 +59,13 @@ struct ToolsTab: View {
                         Label("Bulk Communication", systemImage: "bubble.left.and.bubble.right")
                     }
                     .listRowBackground(Color.white.opacity(0.5))
+                    Button(role: .destructive) {
+                        resetConfirmText = ""
+                        showingResetAlert = true
+                    } label: {
+                        Label("Factory Reset", systemImage: "exclamationmark.triangle")
+                    }
+                    .listRowBackground(Color.white.opacity(0.5))
                 }
                 .scrollContentBackground(.hidden)
                 .environment(\.colorScheme, .light)
@@ -63,6 +73,25 @@ struct ToolsTab: View {
             .navigationTitle("Tools")
             .toolbarColorScheme(.light, for: .navigationBar)
             .toolbarBackground(.hidden, for: .navigationBar)
+            .alert("Factory Reset", isPresented: $showingResetAlert) {
+                TextField("Type \"reset\" to confirm", text: $resetConfirmText)
+                    .autocorrectionDisabled()
+                    .textInputAutocapitalization(.never)
+                Button("Reset", role: .destructive) {
+                    if resetConfirmText.lowercased() == "reset" {
+                        store.factoryReset()
+                        showingResetDone = true
+                    }
+                }
+                Button("Cancel", role: .cancel) {}
+            } message: {
+                Text("This will permanently delete all data on this device and in iCloud. Consider exporting your data first. Type \"reset\" to confirm.")
+            }
+            .alert("Reset Complete", isPresented: $showingResetDone) {
+                Button("OK", role: .cancel) {}
+            } message: {
+                Text("All data has been cleared and the app has been restored to its initial state.")
+            }
             .fileExporter(
                 isPresented: $showingExporter,
                 document: exportDocument,

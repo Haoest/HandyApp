@@ -47,5 +47,6 @@ An `Asset` is a named physical object. It belongs to one `AssetCategory`, which 
 - ~~delete category~~
 - ~~application icon~~
 - ~~hard delete soft deleted records by age~~
-- deploy to iphone
+- ~~deploy to iphone~~
 - under asset detail screen, list child assets
+- search
