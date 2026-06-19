@@ -61,6 +61,13 @@ extension AssetStore {
         return true
     }
 
+    func exportJSON() -> Data? {
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        return try? encoder.encode(buildSnapshot())
+    }
+
     /// Encodes the current store state to disk via NSFileCoordinator.
     /// Must be called on a background thread.
     func save() {

@@ -1,14 +1,49 @@
 import SwiftUI
 import Contacts
+import UniformTypeIdentifiers
+
+// MARK: - JSON export document
+
+private struct JSONExportDocument: FileDocument {
+    static var readableContentTypes: [UTType] { [.json] }
+    let data: Data
+    init(data: Data) { self.data = data }
+    init(configuration: ReadConfiguration) throws {
+        guard let d = configuration.file.regularFileContents else { throw CocoaError(.fileReadCorruptFile) }
+        data = d
+    }
+    func fileWrapper(configuration: WriteConfiguration) throws -> FileWrapper {
+        FileWrapper(regularFileWithContents: data)
+    }
+}
 
 // MARK: - Tools tab
 
 struct ToolsTab: View {
+    @Environment(AssetStore.self) private var store
+    @State private var showingExporter = false
+    @State private var exportDocument: JSONExportDocument?
+
+    private var exportFilename: String {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd"
+        return "HandyApp-\(formatter.string(from: Date()))"
+    }
+
     var body: some View {
         NavigationStack {
             ZStack {
                 AppBackground()
                 List {
+                    Button {
+                        if let data = store.exportJSON() {
+                            exportDocument = JSONExportDocument(data: data)
+                            showingExporter = true
+                        }
+                    } label: {
+                        Label("Export Data", systemImage: "square.and.arrow.up")
+                    }
+                    .listRowBackground(Color.white.opacity(0.5))
                     NavigationLink(destination: DeletedAssetsView()) {
                         Label("Deleted Assets", systemImage: "trash.slash")
                     }
@@ -28,6 +63,12 @@ struct ToolsTab: View {
             .navigationTitle("Tools")
             .toolbarColorScheme(.light, for: .navigationBar)
             .toolbarBackground(.hidden, for: .navigationBar)
+            .fileExporter(
+                isPresented: $showingExporter,
+                document: exportDocument,
+                contentType: .json,
+                defaultFilename: exportFilename
+            ) { _ in }
         }
     }
 }
