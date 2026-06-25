@@ -23,6 +23,11 @@ struct ToolsTab: View {
     @Environment(AssetStore.self) private var store
     @State private var showingExporter = false
     @State private var exportDocument: JSONExportDocument?
+    @State private var showingImportConfirm = false
+    @State private var importConfirmText = ""
+    @State private var showingImporter = false
+    @State private var showingImportDone = false
+    @State private var importError: String?
     @State private var showingResetAlert = false
     @State private var resetConfirmText = ""
     @State private var showingResetDone = false
@@ -45,6 +50,13 @@ struct ToolsTab: View {
                         }
                     } label: {
                         Label("Export Data", systemImage: "square.and.arrow.up")
+                    }
+                    .listRowBackground(Color.white.opacity(0.5))
+                    Button {
+                        importConfirmText = ""
+                        showingImportConfirm = true
+                    } label: {
+                        Label("Import Data", systemImage: "square.and.arrow.down")
                     }
                     .listRowBackground(Color.white.opacity(0.5))
                     NavigationLink(destination: DeletedAssetsView()) {
@@ -98,6 +110,53 @@ struct ToolsTab: View {
                 contentType: .json,
                 defaultFilename: exportFilename
             ) { _ in }
+            .alert("Import Data", isPresented: $showingImportConfirm) {
+                TextField("Type \"import\" to confirm", text: $importConfirmText)
+                    .autocorrectionDisabled()
+                    .textInputAutocapitalization(.never)
+                Button("Import", role: .destructive) {
+                    if importConfirmText.lowercased() == "import" {
+                        showingImporter = true
+                    }
+                }
+                Button("Cancel", role: .cancel) {}
+            } message: {
+                Text("All existing data on this device will be permanently deleted and replaced with the contents of the imported file. Type \"import\" to continue.")
+            }
+            .fileImporter(
+                isPresented: $showingImporter,
+                allowedContentTypes: [.json],
+                allowsMultipleSelection: false
+            ) { result in
+                switch result {
+                case .success(let urls):
+                    guard let url = urls.first else { return }
+                    let accessing = url.startAccessingSecurityScopedResource()
+                    defer { if accessing { url.stopAccessingSecurityScopedResource() } }
+                    do {
+                        let data = try Data(contentsOf: url)
+                        try store.importJSON(data: data)
+                        showingImportDone = true
+                    } catch {
+                        importError = error.localizedDescription
+                    }
+                case .failure(let error):
+                    importError = error.localizedDescription
+                }
+            }
+            .alert("Import Complete", isPresented: $showingImportDone) {
+                Button("OK", role: .cancel) {}
+            } message: {
+                Text("Your data has been replaced with the imported file.")
+            }
+            .alert("Import Failed", isPresented: Binding(
+                get: { importError != nil },
+                set: { if !$0 { importError = nil } }
+            )) {
+                Button("OK", role: .cancel) { importError = nil }
+            } message: {
+                Text(importError ?? "")
+            }
         }
     }
 }

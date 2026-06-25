@@ -87,6 +87,22 @@ extension AssetStore {
         return try? encoder.encode(buildSnapshot())
     }
 
+    /// Decodes the given exported JSON, wipes all local data and photos, then replaces the
+    /// store with the imported content. Caller must obtain user confirmation before calling.
+    func importJSON(data: Data) throws {
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        let incoming = try decoder.decode(StoreSnapshotDTO.self, from: data)
+
+        let photosDir = Self.baseDir.appendingPathComponent("Photos", isDirectory: true)
+        if let files = try? FileManager.default.contentsOfDirectory(at: photosDir, includingPropertiesForKeys: nil) {
+            for file in files { try? FileManager.default.removeItem(at: file) }
+        }
+
+        applySnapshot(migrate(incoming))
+        DispatchQueue.global(qos: .background).async { self.save() }
+    }
+
     /// Encodes the current store state to disk via NSFileCoordinator.
     /// Must be called on a background thread.
     func save() {
