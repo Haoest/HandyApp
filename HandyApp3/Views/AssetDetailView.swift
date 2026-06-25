@@ -10,6 +10,7 @@ enum DetailAnchor: String, CaseIterable {
     case events = "Events"
     case transactions = "Transactions"
     case relationship = "Relationship"
+    case contents = "What's Inside"
 }
 
 /// Pages between sibling assets with a horizontal swipe, sliding the detail screen.
@@ -202,11 +203,23 @@ private struct AssetDetailContent: View {
         return asset.customProperties.sorted { $0.sortOrder < $1.sortOrder }
     }
 
-    private var childCount: Int { asset.children.count }
+    private var sortedChildren: [Asset] {
+        asset.children
+            .filter { !$0.isDeleted }
+            .sorted { $0.name.localizedCompare($1.name) == .orderedAscending }
+    }
 
-    /// The category anchor only makes sense when its section is rendered.
+    private var childCount: Int { sortedChildren.count }
+
+    /// Category and Contents anchors only make sense when their sections are rendered.
     private var anchors: [DetailAnchor] {
-        DetailAnchor.allCases.filter { $0 != .category || !sortedBase.isEmpty }
+        DetailAnchor.allCases.filter { anchor in
+            switch anchor {
+            case .category: return !sortedBase.isEmpty
+            case .contents: return childCount > 0
+            default: return true
+            }
+        }
     }
 
     private func jumpMenu(_ proxy: ScrollViewProxy) -> some View {
@@ -274,6 +287,17 @@ private struct AssetDetailContent: View {
                         .pagingExcludedRow(id: "relationship")
                 }
                 .id(DetailAnchor.relationship)
+                if !sortedChildren.isEmpty {
+                    Section("What's Inside") {
+                        ForEach(sortedChildren) { child in
+                            NavigationLink(destination: AssetDetailView(asset: child, orderedIDs: sortedChildren.map(\.id))) {
+                                Label(child.name, systemImage: child.category.iconName)
+                            }
+                            .pagingExcludedRow(id: child.id.uuidString)
+                        }
+                    }
+                    .id(DetailAnchor.contents)
+                }
                 Section {
                     Button(role: .destructive) {
                         deleteConfirmationPresented = true
