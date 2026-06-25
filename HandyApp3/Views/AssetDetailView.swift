@@ -403,14 +403,25 @@ private struct AssetDetailContent: View {
             }
         }
         .confirmationDialog("Delete \"\(asset.name)\"?", isPresented: $deleteConfirmationPresented, titleVisibility: .visible) {
-            Button("Delete", role: .destructive) {
-                try? store.softDeleteAsset(id: asset.id)
-                dismiss()
+            if childCount > 0 {
+                Button("Keep Belongings", role: .destructive) {
+                    try? store.softDeleteAsset(id: asset.id)
+                    dismiss()
+                }
+                Button("Delete Everything Inside", role: .destructive) {
+                    try? store.softDeleteAssetDeep(id: asset.id)
+                    dismiss()
+                }
+            } else {
+                Button("Delete", role: .destructive) {
+                    try? store.softDeleteAsset(id: asset.id)
+                    dismiss()
+                }
             }
             Button("Cancel", role: .cancel) {}
         } message: {
             if childCount > 0 {
-                Text("\(childCount) item\(childCount == 1 ? "" : "s") inside will not be deleted and will lose association.")
+                Text("\(childCount) item\(childCount == 1 ? "" : "s") inside. Keep them as top-level assets, or delete everything.")
             }
         }
     }

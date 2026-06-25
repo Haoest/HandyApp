@@ -206,7 +206,7 @@ final class AssetStore {
     }
 
     /// Marks the asset as deleted without removing it from the store.
-    /// Detaches it from its parent and sets all direct children to top-level.
+    /// Detaches it from its parent; direct children become top-level assets.
     func softDeleteAsset(id: UUID) throws {
         guard let asset = assets[id] else { throw AssetStoreError.assetNotFound(id) }
         asset.parent?._removeChild(asset)
@@ -216,6 +216,24 @@ final class AssetStore {
         asset.isDeleted = true
         asset.deletedAt = Date()
         asset.modifiedDate = Date()
+        notificationScheduler?.requestResync(assets: allAssets)
+        markDirty()
+    }
+
+    /// Soft-deletes the asset and all of its descendants, preserving their parent-child
+    /// relationships until the records are hard-deleted by the retention sweep.
+    func softDeleteAssetDeep(id: UUID) throws {
+        guard let asset = assets[id] else { throw AssetStoreError.assetNotFound(id) }
+        let now = Date()
+        asset.parent?._removeChild(asset)
+        var queue: [Asset] = [asset]
+        while !queue.isEmpty {
+            let current = queue.removeFirst()
+            queue.append(contentsOf: current.children)
+            current.isDeleted = true
+            current.deletedAt = now
+            current.modifiedDate = now
+        }
         notificationScheduler?.requestResync(assets: allAssets)
         markDirty()
     }
