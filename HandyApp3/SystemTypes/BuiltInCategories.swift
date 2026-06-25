@@ -21,6 +21,7 @@ extension BuiltInTypes {
         let applianceIcon = "washer"
         return [
             .residentialHousing: "house",
+            .rentalHome:         "house.and.flag",
             .automobile:         "car",
             .appliance:          applianceIcon,
             .refrigerator:       applianceIcon,
@@ -43,6 +44,14 @@ extension BuiltInTypes {
                 PropertyDefinition(name: "Zip",           type: .basic(.text),    isRequired: false),
                 PropertyDefinition(name: "Purchase date", type: .basic(.date),    isRequired: false),
                 PropertyDefinition(name: "HOA Contact",   type: .basic(.contact), isRequired: false),
+            ],
+            .rentalHome: [
+                PropertyDefinition(name: "Address",       type: .basic(.text),    isRequired: true),
+                PropertyDefinition(name: "City",          type: .basic(.text),    isRequired: false),
+                PropertyDefinition(name: "State",         type: .basic(.text),    isRequired: false),
+                PropertyDefinition(name: "Zip",           type: .basic(.text),    isRequired: false),
+                PropertyDefinition(name: "Purchase date", type: .basic(.date),    isRequired: false),
+                PropertyDefinition(name: "Tenant",        type: .basic(.contact), isRequired: false),
             ],
             .automobile: [
                 PropertyDefinition(name: "Make",          type: .basic(.text),   isRequired: true),
