@@ -42,6 +42,16 @@ enum AppPreference {
     static let deletedRetentionDaysKey = "deletedRetentionDays"
     static let deletedRetentionDaysDefault = 14
     static let deletedRetentionDaysRange = 7.0...30.0
+
+    /// BCP 47 language tag for locale override; empty string = system default.
+    static let languageKey = "preferredLanguage"
+    static let supportedLanguages: [(code: String, label: String)] = [
+        ("",        "System Default"),
+        ("en",      "English"),
+        ("es",      "Español"),
+        ("fr",      "Français"),
+        ("zh-Hans", "简体中文"),
+    ]
 }
 
 struct PreferenceTab: View {
@@ -52,6 +62,8 @@ struct PreferenceTab: View {
     private var transactionLimit = AppPreference.nonRecurringLimitDefault
     @AppStorage(AppPreference.deletedRetentionDaysKey)
     private var deletedRetentionDays = AppPreference.deletedRetentionDaysDefault
+    @AppStorage(AppPreference.languageKey)
+    private var languageCode: String = ""
 
     var body: some View {
         @Bindable var store = store
@@ -77,6 +89,14 @@ struct PreferenceTab: View {
                         RetentionSlider(days: $deletedRetentionDays)
                     }
                     .listRowBackground(Color.white.opacity(0.5))
+                    Section("Language") {
+                        Picker("Language", selection: $languageCode) {
+                            ForEach(AppPreference.supportedLanguages, id: \.code) { lang in
+                                Text(lang.label).tag(lang.code)
+                            }
+                        }
+                    }
+                    .listRowBackground(Color.white.opacity(0.5))
                 }
                 .scrollContentBackground(.hidden)
                 // Background is always a light gradient — pin the scheme light so the
@@ -91,7 +111,7 @@ struct PreferenceTab: View {
 }
 
 private struct LimitSlider: View {
-    let title: String
+    let title: LocalizedStringKey
     @Binding var value: Int
 
     var body: some View {

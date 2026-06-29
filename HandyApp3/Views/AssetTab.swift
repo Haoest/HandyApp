@@ -2,7 +2,7 @@ import SwiftUI
 
 enum AssetListMode: String, CaseIterable {
     case all, tree
-    var label: String { self == .all ? "All" : "Tree" }
+    var label: LocalizedStringKey { self == .all ? "All" : "Tree" }
 }
 
 struct AssetTab: View {

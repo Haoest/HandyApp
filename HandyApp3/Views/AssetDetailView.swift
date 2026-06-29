@@ -13,6 +13,10 @@ enum DetailAnchor: String, CaseIterable {
     case contents = "What's Inside"
 }
 
+extension DetailAnchor {
+    var localizedName: LocalizedStringKey { LocalizedStringKey(rawValue) }
+}
+
 /// Pages between sibling assets with a horizontal swipe, sliding the detail screen.
 /// The sibling order is supplied by the listing screen so it honours its view mode
 /// (All vs Tree). Per product spec the gesture is inverted from the usual convention:
@@ -225,8 +229,8 @@ private struct AssetDetailContent: View {
     private func jumpMenu(_ proxy: ScrollViewProxy) -> some View {
         Menu {
             ForEach(anchors, id: \.self) { anchor in
-                Button(anchor.rawValue) {
-                    withAnimation { proxy.scrollTo(anchor, anchor: .top) }
+                Button { withAnimation { proxy.scrollTo(anchor, anchor: .top) } } label: {
+                    Text(anchor.localizedName)
                 }
             }
         } label: {
@@ -445,7 +449,7 @@ private struct AssetDetailContent: View {
             Button("Cancel", role: .cancel) {}
         } message: {
             if childCount > 0 {
-                Text("\(childCount) item\(childCount == 1 ? "" : "s") inside. Keep them as top-level assets, or delete everything.")
+                Text("\(childCount) items inside. Keep them as top-level assets, or delete everything.")
             }
         }
     }

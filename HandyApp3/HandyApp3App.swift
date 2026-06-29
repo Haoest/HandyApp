@@ -3,6 +3,7 @@ import SwiftUI
 @main
 struct HandyApp3App: App {
     @Environment(\.scenePhase) private var scenePhase
+    @AppStorage(AppPreference.languageKey) private var languageCode: String = ""
     @State private var router = AppRouter()
     @State private var store: AssetStore = {
         let s = AssetStore()
@@ -33,6 +34,7 @@ struct HandyApp3App: App {
             ContentView()
                 .environment(store)
                 .environment(router)
+                .environment(\.locale, languageCode.isEmpty ? .autoupdatingCurrent : Locale(identifier: languageCode))
                 .task {
                     store.notificationScheduler?.onOpenAsset = { assetID in
                         router.selectedTab = .assets
