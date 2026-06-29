@@ -23,12 +23,15 @@ struct HomeTab: View {
         NavigationStack {
             ZStack {
                 AppBackground()
-                feed
-                    .environment(\.openURL, OpenURLAction { handleLink($0) })
-                    // Background is always the light mist gradient, so pin the scheme
-                    // light — otherwise the empty state / nav title would flip to light
-                    // text in system dark mode and lose contrast.
-                    .environment(\.colorScheme, .light)
+                VStack(spacing: 0) {
+                    contactBanner
+                    feed
+                        .environment(\.openURL, OpenURLAction { handleLink($0) })
+                }
+                // Background is always the light mist gradient, so pin the scheme
+                // light — otherwise the empty state / nav title would flip to light
+                // text in system dark mode and lose contrast.
+                .environment(\.colorScheme, .light)
             }
             .navigationTitle("Home")
             .toolbarColorScheme(.light, for: .navigationBar)
@@ -55,6 +58,22 @@ struct HomeTab: View {
                 }
             }
         }
+    }
+
+    // MARK: - Contact banner
+
+    private var contactBanner: some View {
+        Link(destination: URL(string: "mailto:haoest@gmail.com?subject=handyapp3")!) {
+            (Text("For comments or suggestions, email the author at ")
+                .foregroundStyle(palette.onBackgroundSecondary)
+            + Text(verbatim: "haoest@gmail.com")
+                .underline()
+                .foregroundStyle(Color.accentColor))
+            .font(.footnote)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 22)
+        .padding(.vertical, 8)
     }
 
     // MARK: - Feed
