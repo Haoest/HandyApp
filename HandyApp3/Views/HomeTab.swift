@@ -24,9 +24,9 @@ struct HomeTab: View {
             ZStack {
                 AppBackground()
                 VStack(spacing: 0) {
-                    contactBanner
                     feed
                         .environment(\.openURL, OpenURLAction { handleLink($0) })
+                    versionFooter
                 }
                 // Background is always the light mist gradient, so pin the scheme
                 // light — otherwise the empty state / nav title would flip to light
@@ -64,16 +64,29 @@ struct HomeTab: View {
 
     private var contactBanner: some View {
         Link(destination: URL(string: "mailto:haoest@gmail.com?subject=handyapp3")!) {
-            (Text("For comments or suggestions, email the author at ")
+            (Text("Comment, concerns, or questions, ")
                 .foregroundStyle(palette.onBackgroundSecondary)
-            + Text(verbatim: "haoest@gmail.com")
+            + Text(verbatim: "email me")
                 .underline()
                 .foregroundStyle(Color.accentColor))
             .font(.footnote)
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.horizontal, 22)
-        .padding(.vertical, 8)
+        .frame(maxWidth: .infinity, alignment: .center)
+        .padding(.top, 8)
+    }
+
+    // MARK: - Version footer
+
+    private var versionFooter: some View {
+        Text("Application Version: \(Self.appVersion)")
+            .font(.caption2)
+            .foregroundStyle(palette.onBackgroundSecondary)
+            .frame(maxWidth: .infinity, alignment: .center)
+            .padding(.vertical, 6)
+    }
+
+    private static var appVersion: String {
+        Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? ""
     }
 
     // MARK: - Feed
@@ -106,6 +119,7 @@ struct HomeTab: View {
                             }
                         }
                     }
+                    contactBanner
                 }
                 .padding(.horizontal, 22)
                 .padding(.top, 8)
