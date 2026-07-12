@@ -12,9 +12,14 @@ struct HomeTab: View {
     @State private var pushedAsset: PushedAsset?
     @State private var eventToEdit: ResolvedEvent?
     @State private var transactionToEdit: ResolvedTransaction?
+    @State private var visibleDayCount = HomeActivityDigest.pageSize
 
     private var days: [HomeDay] {
-        HomeActivityDigest.build(from: store.activityLog)
+        HomeActivityDigest.build(from: store.activityLog, dayLimit: visibleDayCount)
+    }
+
+    private var hasMoreDays: Bool {
+        HomeActivityDigest.activeDayCount(in: store.activityLog) > visibleDayCount
     }
 
     private var palette: ThemePalette { store.backgroundTheme.palette }
@@ -119,6 +124,9 @@ struct HomeTab: View {
                             }
                         }
                     }
+                    if hasMoreDays {
+                        moreButton
+                    }
                     contactBanner
                 }
                 .padding(.horizontal, 22)
@@ -126,6 +134,16 @@ struct HomeTab: View {
                 .padding(.bottom, 32)
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
+        }
+    }
+
+    private var moreButton: some View {
+        Button {
+            visibleDayCount += HomeActivityDigest.pageSize
+        } label: {
+            Text("More")
+                .font(.callout.weight(.semibold))
+                .foregroundStyle(Color.accentColor)
         }
     }
 

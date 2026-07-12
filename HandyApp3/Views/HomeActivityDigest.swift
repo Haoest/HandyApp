@@ -28,8 +28,8 @@ struct HomeDay {
 /// deterministic so it can be unit-tested without the store or SwiftUI.
 enum HomeActivityDigest {
 
-    /// Number of most-recent active days surfaced on Home.
-    private static let maxDays = 3
+    /// Number of most-recent active days surfaced per page on Home.
+    static let pageSize = 3
 
     /// Threshold at which same-type, same-asset, same-day entries collapse into a
     /// single counted summary line.
@@ -46,12 +46,18 @@ enum HomeActivityDigest {
         }
     }
 
-    static func build(from entries: [ActivityLogEntry], calendar: Calendar = .current) -> [HomeDay] {
+    static func build(from entries: [ActivityLogEntry], dayLimit: Int = pageSize, calendar: Calendar = .current) -> [HomeDay] {
         let byDay = Dictionary(grouping: entries) { calendar.startOfDay(for: $0.timestamp) }
-        let recentDays = byDay.keys.sorted(by: >).prefix(maxDays)
+        let recentDays = byDay.keys.sorted(by: >).prefix(dayLimit)
         return recentDays.map { day in
             HomeDay(day: day, rows: rows(for: byDay[day] ?? []))
         }
+    }
+
+    /// Total number of distinct active days represented in `entries`, used to
+    /// decide whether a "more" page is available beyond the current `dayLimit`.
+    static func activeDayCount(in entries: [ActivityLogEntry], calendar: Calendar = .current) -> Int {
+        Set(entries.map { calendar.startOfDay(for: $0.timestamp) }).count
     }
 
     /// Bucket a single day's entries by `(kind, owningAssetID)`, collapsing 3+
