@@ -16,6 +16,7 @@ struct HandyApp3App: App {
         if !wasLoaded {
             s.seedBuiltInAssets()
             s.seedSampleHVAC()
+            s.seedSampleAutomobile()
         } else {
             let storedDays = UserDefaults.standard.integer(forKey: AppPreference.deletedRetentionDaysKey)
             let retentionDays = storedDays > 0 ? storedDays : AppPreference.deletedRetentionDaysDefault

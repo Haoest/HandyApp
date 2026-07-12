@@ -74,6 +74,7 @@ extension AssetStore {
         seedBuiltInTypes()
         seedBuiltInAssets()
         seedSampleHVAC()
+        seedSampleAutomobile()
         DispatchQueue.global(qos: .background).async { self.save() }
     }
 

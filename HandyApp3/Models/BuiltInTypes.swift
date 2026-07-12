@@ -33,6 +33,7 @@ extension AssetStore {
     func seedBuiltInAssets() -> [Asset] {
         let seeds: [(categoryName: String, assetName: String)] = [
             (SystemCategory.residentialHousing.rawValue, "1 main"),
+            (SystemCategory.automobile.rawValue,         "Testarossa 85"),
         ]
         var seeded: [Asset] = []
         for seed in seeds {
@@ -66,6 +67,30 @@ extension AssetStore {
             seeded.append(filter)
         }
         return seeded
+    }
+
+    /// Fills in the "Testarossa 85" automobile's field values and a "Paint Color"
+    /// custom property. Idempotent (skips if Make is already set).
+    @discardableResult
+    func seedSampleAutomobile() -> Asset? {
+        guard let car = allAssets.first(where: { $0.name == "Testarossa 85" }),
+              car.baseProperties.first(where: { $0.definition.name == "Make" })?.value == nil else { return nil }
+        func setBase(_ name: String, _ value: StoredValue) {
+            if let def = car.baseProperties.first(where: { $0.definition.name == name })?.definition {
+                try? setPropertyValue(value, forDefinitionID: def.id, onAssetID: car.id)
+            }
+        }
+        setBase("Make", .text("Ferrari"))
+        setBase("Model", .text("Testarossa"))
+        setBase("Year", .number(1985))
+        setBase("License Plate", .text("FASTEST"))
+        setBase("Engine Oil", .text("10W-40"))
+        try? addCustomProperty(
+            definition: PropertyDefinition(name: "Paint Color", type: .basic(.text), isRequired: false),
+            value: .text("Rossi Corsa"),
+            toAssetID: car.id
+        )
+        return car
     }
 
     /// Registers built-in asset categories. Idempotent.
