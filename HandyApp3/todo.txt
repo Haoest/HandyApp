@@ -1,0 +1,4 @@
+siri intergration
+quick reporting
+homepage provide "more" to show more log entries
+
