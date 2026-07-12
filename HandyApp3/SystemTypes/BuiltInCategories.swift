@@ -58,6 +58,7 @@ extension BuiltInTypes {
                 PropertyDefinition(name: "Model",         type: .basic(.text),   isRequired: true),
                 PropertyDefinition(name: "Year",          type: .basic(.number), isRequired: false),
                 PropertyDefinition(name: "License Plate", type: .basic(.text),   isRequired: false),
+                PropertyDefinition(name: "VIN",           type: .basic(.text),   isRequired: false),
                 PropertyDefinition(name: "Engine Oil",    type: .basic(.text),   isRequired: false),
                 PropertyDefinition(name: "Oil Filter",    type: .basic(.text),   isRequired: false),
             ],
