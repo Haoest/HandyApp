@@ -74,9 +74,6 @@ extension AssetStore {
         seedBuiltInTypes()
         seedBuiltInAssets()
         seedSampleHVAC()
-        seedSampleEvents()
-        seedSampleTransactions()
-        seedSamplePhotos()
         DispatchQueue.global(qos: .background).async { self.save() }
     }
 

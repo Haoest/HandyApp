@@ -1,5 +1,4 @@
 import Foundation
-import UIKit
 
 /// Namespace for built-in type factories.
 /// Composite *value* types (W × L, W × L × H) live in `SystemTypes/` as extensions on this enum.
@@ -33,8 +32,6 @@ extension AssetStore {
     @discardableResult
     func seedBuiltInAssets() -> [Asset] {
         let seeds: [(categoryName: String, assetName: String)] = [
-            (SystemCategory.appliance.rawValue,          "Fridge"),
-            (SystemCategory.automobile.rawValue,         "2006 toyota"),
             (SystemCategory.residentialHousing.rawValue, "1 main"),
         ]
         var seeded: [Asset] = []
@@ -67,76 +64,6 @@ extension AssetStore {
                 try? setPropertyValue(.text("16x25x1"), forDefinitionID: notesDef.id, onAssetID: filter.id)
             }
             seeded.append(filter)
-        }
-        return seeded
-    }
-
-    /// Seeds sample events on the "1 main" house: 2 recurring + 12 non-recurring —
-    /// enough to exercise the capped detail list and its "…" overflow row.
-    /// Idempotent (skips if the asset already has events).
-    @discardableResult
-    func seedSampleEvents() -> [Event] {
-        guard let house = allAssets.first(where: { $0.name == "1 main" }),
-              house.events.isEmpty else { return [] }
-        let calendar = Calendar.current
-        var seeded: [Event] = []
-        func add(_ title: String, monthsAgo: Int, recurrence: RecurrenceInterval? = nil) {
-            let date = calendar.date(byAdding: .month, value: -monthsAgo, to: Date()) ?? Date()
-            if let event = try? addEvent(title: title, date: date, recurrence: recurrence, toAssetID: house.id) {
-                seeded.append(event)
-            }
-        }
-        add("Furnace filter replacement", monthsAgo: 1, recurrence: .monthly)
-        add("Property tax payment", monthsAgo: 2, recurrence: .annually)
-        for i in 1...12 {
-            add("Sample event \(i)", monthsAgo: i)
-        }
-        return seeded
-    }
-
-    /// Seeds sample transactions on the "Fridge" appliance: 2 recurring +
-    /// 12 non-recurring — enough to exercise the capped detail list and its "…"
-    /// overflow row. Idempotent (skips if the asset already has transactions).
-    @discardableResult
-    func seedSampleTransactions() -> [Transaction] {
-        guard let fridge = allAssets.first(where: { $0.name == "Fridge" }),
-              fridge.transactions.isEmpty else { return [] }
-        let calendar = Calendar.current
-        var seeded: [Transaction] = []
-        func add(_ details: String, amount: Decimal, monthsAgo: Int, recurrence: RecurrenceInterval? = nil) {
-            let date = calendar.date(byAdding: .month, value: -monthsAgo, to: Date()) ?? Date()
-            if let txn = try? addTransaction(details: details, amount: amount, date: date, kind: .expense, recurrence: recurrence, toAssetID: fridge.id) {
-                seeded.append(txn)
-            }
-        }
-        add("Water filter subscription", amount: 35, monthsAgo: 1, recurrence: .quarterly)
-        add("Extended warranty premium", amount: 120, monthsAgo: 2, recurrence: .annually)
-        for i in 1...12 {
-            add("Sample transaction \(i)", amount: Decimal(i * 10), monthsAgo: i)
-        }
-        return seeded
-    }
-
-    /// Seeds the bundled SeedFiles photos onto the "1 main" house, scaled the same way
-    /// user-added photos are. Idempotent (skips if the house already has photos).
-    @discardableResult
-    func seedSamplePhotos() -> [Photo] {
-        guard let house = allAssets.first(where: { $0.name == "1 main" }),
-              house.photos.isEmpty else { return [] }
-        // SeedFiles images are flattened into the bundle root at build time, so enumerate
-        // by extension and seed in a stable order rather than hard-coding file names.
-        let urls = ["jpg", "jpeg", "png"]
-            .flatMap { Bundle.main.urls(forResourcesWithExtension: $0, subdirectory: nil) ?? [] }
-            .sorted { $0.lastPathComponent < $1.lastPathComponent }
-        var seeded: [Photo] = []
-        for url in urls {
-            guard let data = try? Data(contentsOf: url),
-                  let image = UIImage(data: data),
-                  let imageData = ImageScaling.imageData(from: image),
-                  let thumbData = ImageScaling.thumbnailData(from: image),
-                  let photo = try? addPhoto(imageData: imageData, thumbnailData: thumbData, toAssetID: house.id)
-            else { continue }
-            seeded.append(photo)
         }
         return seeded
     }
