@@ -9,6 +9,7 @@ struct AssetTab: View {
     @Environment(AssetStore.self) private var store
     @Environment(AppRouter.self) private var router
     @State private var newAssetPresented = false
+    @State private var paywallPresented = false
     @State private var viewMode: AssetListMode = .all
     @State private var expanded: Set<UUID> = []
 
@@ -94,7 +95,9 @@ struct AssetTab: View {
                 .toolbarBackground(.hidden, for: .navigationBar)
                 .toolbar {
                     ToolbarItem(placement: .topBarTrailing) {
-                        Button { newAssetPresented = true } label: {
+                        Button {
+                            if store.hasAssetCapacity { newAssetPresented = true } else { paywallPresented = true }
+                        } label: {
                             Image(systemName: "plus")
                         }
                     }
@@ -107,6 +110,9 @@ struct AssetTab: View {
             }
             .sheet(isPresented: $newAssetPresented) {
                 NewAssetSheet()
+            }
+            .sheet(isPresented: $paywallPresented) {
+                PaywallView()
             }
             .onAppear { if router.focusedCategoryID != nil { viewMode = .all } }
             .onChange(of: router.focusedCategoryID) { _, id in

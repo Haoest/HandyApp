@@ -1,0 +1,35 @@
+{
+  "identifier" : "0000000000000000",
+  "nonRenewingSubscriptions" : [],
+  "products" : [
+    {
+      "displayPrice" : "4.99",
+      "familyShareable" : false,
+      "internalID" : "0000000000000001",
+      "localizations" : [
+        {
+          "description" : "Unlocks unlimited assets.",
+          "displayName" : "Full Version",
+          "locale" : "en_US"
+        }
+      ],
+      "productID" : "haoest.HandyApp3.fullversion",
+      "referenceName" : "Full Version",
+      "type" : "NonConsumable"
+    }
+  ],
+  "settings" : {
+    "_applicationInternalID" : "0000000000000002",
+    "_developerTeamID" : "0000000000",
+    "_failTransactionsEnabled" : false,
+    "_lastSynchronizedDate" : 0,
+    "_locale" : "en_US",
+    "_storefront" : "USA",
+    "_storeKitErrors" : []
+  },
+  "subscriptionGroups" : [],
+  "version" : {
+    "major" : 3,
+    "minor" : 0
+  }
+}

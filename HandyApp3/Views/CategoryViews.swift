@@ -14,6 +14,7 @@ struct CategoryTab: View {
     @State private var newCategoryPresented = false
     @State private var categoryToDuplicate: AssetCategory?
     @State private var assetToEdit: Asset?
+    @State private var paywallPresented = false
 
     private var sortedCategories: [AssetCategory] {
         store.allCategories.sorted { $0.name.localizedCompare($1.name) == .orderedAscending }
@@ -41,6 +42,7 @@ struct CategoryTab: View {
                                     }
                                 },
                                 onNewAsset: {
+                                    guard store.hasAssetCapacity else { paywallPresented = true; return }
                                     let count = (try? store.assets(ofCategoryID: category.id))?.count ?? 0
                                     let defaultName = "\(category.name) \(count + 1)"
                                     if let asset = try? store.createAsset(name: defaultName, categoryID: category.id) {
@@ -83,6 +85,7 @@ struct CategoryTab: View {
             .sheet(isPresented: $newCategoryPresented) { CategoryNewView() }
             .sheet(item: $categoryToDuplicate) { category in CategoryNewView(duplicating: category) }
             .sheet(item: $assetToEdit) { asset in NavigationStack { AssetEditView(asset: asset) } }
+            .sheet(isPresented: $paywallPresented) { PaywallView() }
         }
     }
 }

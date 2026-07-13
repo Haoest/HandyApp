@@ -5,6 +5,7 @@ struct HandyApp3App: App {
     @Environment(\.scenePhase) private var scenePhase
     @AppStorage(AppPreference.languageKey) private var languageCode: String = ""
     @State private var router = AppRouter()
+    @State private var purchases = PurchaseManager()
     @State private var store: AssetStore = {
         let s = AssetStore()
         // File I/O runs on background thread internally; blocks main briefly (store.json is tiny)
@@ -31,6 +32,7 @@ struct HandyApp3App: App {
             ContentView()
                 .environment(store)
                 .environment(router)
+                .environment(purchases)
                 .environment(\.locale, languageCode.isEmpty ? .autoupdatingCurrent : Locale(identifier: languageCode))
                 .task {
                     store.notificationScheduler?.onOpenAsset = { assetID in
@@ -39,6 +41,8 @@ struct HandyApp3App: App {
                     }
                     try? await ContactResolver.shared.requestAccess()
                     store.startCloudMonitor()
+                    store.assetCreationLimit = purchases.isFullVersion ? nil : PurchaseManager.freeAssetLimit
+                    purchases.start()
                 }
         }
         .onChange(of: scenePhase) { _, phase in
@@ -46,6 +50,9 @@ struct HandyApp3App: App {
                 DispatchQueue.global(qos: .background).async { store.save() }
             }
             if phase == .active { store.notificationScheduler?.requestResync(assets: store.allAssets) }
+        }
+        .onChange(of: purchases.isFullVersion) { _, unlocked in
+            store.assetCreationLimit = unlocked ? nil : PurchaseManager.freeAssetLimit
         }
     }
 }

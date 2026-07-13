@@ -29,6 +29,8 @@ enum AssetStoreError: Error, Equatable {
     case photoNotFound(UUID)
     case eventNotFound(UUID)
     case transactionNotFound(UUID)
+    /// Creating or restoring an asset would exceed the free-tier asset limit.
+    case freeLimitReached(limit: Int)
 }
 
 // MARK: - AssetStore
@@ -52,6 +54,10 @@ final class AssetStore {
     /// notification resync. Nil in tests keeps the store notification-free.
     var notificationScheduler: NotificationScheduler?
 
+    /// Max live assets `createAsset`/`restoreAsset` allow; nil = unlimited.
+    /// Runtime-only — driven by purchase state, never persisted.
+    var assetCreationLimit: Int?
+
     var backgroundTheme: BackgroundTheme = .mist {
         didSet { markDirty() }
     }
@@ -72,6 +78,9 @@ final class AssetStore {
     var deletedCategories: [AssetCategory] { categories.values.filter { $0.isDeleted } }
     var allCompositeTypes: [CompositeTypeDefinition] { Array(compositeTypes.values) }
     var allComboListDefinitions: [ComboListDefinition] { Array(comboListDefinitions.values) }
+
+    /// Whether creating or restoring another asset is currently allowed under `assetCreationLimit`.
+    var hasAssetCapacity: Bool { assetCreationLimit.map { allAssets.count < $0 } ?? true }
 
     // MARK: - AssetCategory CRUD
 
@@ -173,6 +182,9 @@ final class AssetStore {
     /// Creates an Asset, deep-copying the category's property templates into baseProperties.
     @discardableResult
     func createAsset(name: String, categoryID: UUID) throws -> Asset {
+        if let limit = assetCreationLimit, allAssets.count >= limit {
+            throw AssetStoreError.freeLimitReached(limit: limit)
+        }
         guard let cat = categories[categoryID] else { throw AssetStoreError.categoryNotFound(categoryID) }
         let baseProperties = cat.propertyTemplates.enumerated().map { index, template in
             AssetProperty(definition: template.definition, value: template.value,
@@ -240,6 +252,9 @@ final class AssetStore {
 
     func restoreAsset(id: UUID) throws {
         guard let asset = assets[id] else { throw AssetStoreError.assetNotFound(id) }
+        if let limit = assetCreationLimit, allAssets.count >= limit {
+            throw AssetStoreError.freeLimitReached(limit: limit)
+        }
         asset.isDeleted = false
         asset.deletedAt = nil
         asset.modifiedDate = Date()

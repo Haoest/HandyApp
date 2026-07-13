@@ -6,6 +6,10 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		3F454E5F3004924400CF6C20 /* StoreKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 3F454E5E3004924400CF6C20 /* StoreKit.framework */; };
+/* End PBXBuildFile section */
+
 /* Begin PBXContainerItemProxy section */
 		3F26E1E52FA680BD00D97241 /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
@@ -27,6 +31,7 @@
 		3F26E1D22FA680BC00D97241 /* HandyApp3.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = HandyApp3.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		3F26E1E42FA680BD00D97241 /* HandyApp3Tests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = HandyApp3Tests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		3F26E1EE2FA680BD00D97241 /* HandyApp3UITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = HandyApp3UITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		3F454E5E3004924400CF6C20 /* StoreKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = StoreKit.framework; path = System/Library/Frameworks/StoreKit.framework; sourceTree = SDKROOT; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -52,6 +57,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				3F454E5F3004924400CF6C20 /* StoreKit.framework in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -78,6 +84,7 @@
 				3F26E1D42FA680BC00D97241 /* HandyApp3 */,
 				3F26E1E72FA680BD00D97241 /* HandyApp3Tests */,
 				3F26E1F12FA680BD00D97241 /* HandyApp3UITests */,
+				3F454E5D3004924400CF6C20 /* Frameworks */,
 				3F26E1D32FA680BC00D97241 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -90,6 +97,14 @@
 				3F26E1EE2FA680BD00D97241 /* HandyApp3UITests.xctest */,
 			);
 			name = Products;
+			sourceTree = "<group>";
+		};
+		3F454E5D3004924400CF6C20 /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+				3F454E5E3004924400CF6C20 /* StoreKit.framework */,
+			);
+			name = Frameworks;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */

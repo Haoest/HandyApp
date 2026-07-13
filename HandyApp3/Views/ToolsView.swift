@@ -21,6 +21,7 @@ private struct JSONExportDocument: FileDocument {
 
 struct ToolsTab: View {
     @Environment(AssetStore.self) private var store
+    @Environment(PurchaseManager.self) private var purchases
     @State private var showingExporter = false
     @State private var exportDocument: JSONExportDocument?
     @State private var showingImportConfirm = false
@@ -31,6 +32,8 @@ struct ToolsTab: View {
     @State private var showingResetAlert = false
     @State private var resetConfirmText = ""
     @State private var showingResetDone = false
+    @State private var isRestoringPurchases = false
+    @State private var restoreResultMessage: String?
 
     private var exportFilename: String {
         let formatter = DateFormatter()
@@ -70,6 +73,21 @@ struct ToolsTab: View {
                     NavigationLink(destination: BulkCommunicationView()) {
                         Label("Bulk Communication", systemImage: "bubble.left.and.bubble.right")
                     }
+                    .listRowBackground(Color.white.opacity(0.5))
+                    Button {
+                        restorePurchases()
+                    } label: {
+                        if isRestoringPurchases {
+                            HStack {
+                                Label("Restore Purchases", systemImage: "arrow.clockwise")
+                                Spacer()
+                                ProgressView()
+                            }
+                        } else {
+                            Label("Restore Purchases", systemImage: "arrow.clockwise")
+                        }
+                    }
+                    .disabled(isRestoringPurchases)
                     .listRowBackground(Color.white.opacity(0.5))
                     Button(role: .destructive) {
                         resetConfirmText = ""
@@ -157,6 +175,25 @@ struct ToolsTab: View {
             } message: {
                 Text(importError ?? "")
             }
+            .alert("Restore Purchases", isPresented: Binding(
+                get: { restoreResultMessage != nil },
+                set: { if !$0 { restoreResultMessage = nil } }
+            )) {
+                Button("OK", role: .cancel) { restoreResultMessage = nil }
+            } message: {
+                Text(restoreResultMessage ?? "")
+            }
+        }
+    }
+
+    private func restorePurchases() {
+        isRestoringPurchases = true
+        Task {
+            await purchases.restore()
+            isRestoringPurchases = false
+            restoreResultMessage = purchases.isFullVersion
+                ? "Full Version restored."
+                : "No previous purchase was found for this Apple ID."
         }
     }
 }
@@ -165,6 +202,7 @@ struct ToolsTab: View {
 
 struct DeletedAssetsView: View {
     @Environment(AssetStore.self) private var store
+    @State private var paywallPresented = false
 
     private var sorted: [Asset] {
         store.deletedAssets.sorted { $0.name.localizedCompare($1.name) == .orderedAscending }
@@ -184,6 +222,7 @@ struct DeletedAssetsView: View {
                     }
                     .swipeActions(edge: .leading) {
                         Button {
+                            guard store.hasAssetCapacity else { paywallPresented = true; return }
                             try? store.restoreAsset(id: asset.id)
                         } label: {
                             Label("Restore", systemImage: "arrow.uturn.backward")
@@ -195,6 +234,7 @@ struct DeletedAssetsView: View {
         }
         .navigationTitle("Deleted Assets")
         .navigationBarTitleDisplayMode(.inline)
+        .sheet(isPresented: $paywallPresented) { PaywallView() }
     }
 }
 
