@@ -9,6 +9,7 @@ import SwiftUI
 /// (deleted) degrade to plain, unlinked text.
 struct HomeTab: View {
     @Environment(AssetStore.self) private var store
+    @Environment(PurchaseManager.self) private var purchases
     @State private var pushedAsset: PushedAsset?
     @State private var eventToEdit: ResolvedEvent?
     @State private var transactionToEdit: ResolvedTransaction?
@@ -83,7 +84,7 @@ struct HomeTab: View {
     // MARK: - Version footer
 
     private var versionFooter: some View {
-        Text("Application Version: \(Self.appVersion)")
+        Text("Application Version: \(Self.appVersion)\(purchases.isFullVersion ? " (F)" : " (T)")")
             .font(.caption2)
             .foregroundStyle(palette.onBackgroundSecondary)
             .frame(maxWidth: .infinity, alignment: .center)
