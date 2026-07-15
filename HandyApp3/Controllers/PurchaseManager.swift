@@ -14,6 +14,8 @@ enum PurchaseError: Error {
 final class PurchaseManager {
     static let fullVersionID = "haoest.HandyApp3.fullversion"
     static let freeAssetLimit = 5
+    static let freeEventLimit = 5
+    static let freeTransactionLimit = 5
 
     private(set) var isFullVersion = false
     private(set) var product: Product?

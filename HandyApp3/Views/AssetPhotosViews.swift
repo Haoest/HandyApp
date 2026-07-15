@@ -84,6 +84,7 @@ struct PhotoViewerSheet: View {
     @State private var pendingPrefill: Transaction?
     @State private var scannedPrefill: Transaction?
     @State private var showNoTotalAlert = false
+    @State private var paywallPresented = false
 
     init(asset: Asset, photo: Photo) {
         self.asset = asset
@@ -121,7 +122,11 @@ struct PhotoViewerSheet: View {
                 }
                 ToolbarItem(placement: .primaryAction) {
                     Button {
-                        scanReceipt()
+                        if store.hasTransactionCapacity(for: asset) {
+                            scanReceipt()
+                        } else {
+                            paywallPresented = true
+                        }
                     } label: {
                         Image(systemName: "doc.text.viewfinder")
                     }
@@ -145,7 +150,11 @@ struct PhotoViewerSheet: View {
             }
             .alert("Couldn't find a receipt", isPresented: $showNoTotalAlert) {
                 Button("Enter Manually") {
-                    scannedPrefill = Transaction(details: "", amount: 0, date: Date(), kind: .expense)
+                    if store.hasTransactionCapacity(for: asset) {
+                        scannedPrefill = Transaction(details: "", amount: 0, date: Date(), kind: .expense)
+                    } else {
+                        paywallPresented = true
+                    }
                 }
                 Button("Cancel", role: .cancel) { }
             } message: {
@@ -168,6 +177,9 @@ struct PhotoViewerSheet: View {
                 TransactionEditView(prefill: prefill) { details, amount, date, kind, payeeID, notes, recurrence in
                     try? store.addTransaction(details: details, amount: amount, date: date, kind: kind, payeeContactID: payeeID, notes: notes, recurrence: recurrence, toAssetID: asset.id)
                 }
+            }
+            .sheet(isPresented: $paywallPresented) {
+                PaywallView(reason: .transactions)
             }
         }
     }

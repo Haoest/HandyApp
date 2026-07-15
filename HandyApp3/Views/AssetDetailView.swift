@@ -188,6 +188,11 @@ private struct AssetDetailContent: View {
     @State private var addEventPresented = false
     @State private var addTransactionPresented = false
 
+    // Paywall presentation. Lives at the Form level (not inside a section/row)
+    // for the same reason eventSheetMode/transactionSheetMode/selectedPhoto do.
+    @State private var paywallPresented = false
+    @State private var paywallReason: PaywallReason = .assets
+
     // Event/transaction edit & duplicate state. Presented from the Form (not the
     // section) so a row's context menu dismissal can't cancel the first present.
     @State private var eventSheetMode: EventSheetMode?
@@ -282,9 +287,15 @@ private struct AssetDetailContent: View {
                 .id(DetailAnchor.custom)
                 PhotosSection(asset: asset, selectedPhoto: $selectedPhoto)
                     .id(DetailAnchor.photos)
-                EventsSection(asset: asset, sheetMode: $eventSheetMode)
+                EventsSection(asset: asset, sheetMode: $eventSheetMode, onLimitReached: {
+                    paywallReason = .events
+                    paywallPresented = true
+                })
                     .id(DetailAnchor.events)
-                TransactionsSection(asset: asset, sheetMode: $transactionSheetMode)
+                TransactionsSection(asset: asset, sheetMode: $transactionSheetMode, onLimitReached: {
+                    paywallReason = .transactions
+                    paywallPresented = true
+                })
                     .id(DetailAnchor.transactions)
                 Section("Relationship") {
                     BelongsToRow(asset: asset)
@@ -338,12 +349,22 @@ private struct AssetDetailContent: View {
                         Label("Photo", systemImage: "photo")
                     }
                     Button {
-                        addEventPresented = true
+                        if store.hasEventCapacity(for: asset) {
+                            addEventPresented = true
+                        } else {
+                            paywallReason = .events
+                            paywallPresented = true
+                        }
                     } label: {
                         Label("Event", systemImage: "calendar")
                     }
                     Button {
-                        addTransactionPresented = true
+                        if store.hasTransactionCapacity(for: asset) {
+                            addTransactionPresented = true
+                        } else {
+                            paywallReason = .transactions
+                            paywallPresented = true
+                        }
                     } label: {
                         Label("Transaction", systemImage: "dollarsign.circle")
                     }
@@ -387,6 +408,9 @@ private struct AssetDetailContent: View {
             TransactionEditView { details, amount, date, kind, payeeID, notes, recurrence in
                 try? store.addTransaction(details: details, amount: amount, date: date, kind: kind, payeeContactID: payeeID, notes: notes, recurrence: recurrence, toAssetID: asset.id)
             }
+        }
+        .sheet(isPresented: $paywallPresented) {
+            PaywallView(reason: paywallReason)
         }
         .sheet(isPresented: $addPropertyPresented) {
             PropertyEditView { definition, value in

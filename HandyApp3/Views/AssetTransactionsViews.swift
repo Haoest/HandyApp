@@ -27,6 +27,10 @@ enum TransactionSheetMode: Identifiable {
 struct TransactionsSection: View {
     let asset: Asset
     @Binding var sheetMode: TransactionSheetMode?
+    /// Called when a creation action is blocked by the free-tier transaction limit.
+    /// The paywall itself is presented by the owner (see AssetDetailView's
+    /// note on why sheets can't live at the section/row level).
+    let onLimitReached: () -> Void
 
     /// Non-recurring items shown inline before collapsing behind the "Show All"
     /// row; recurring items are never collapsed. User-tunable in Preferences.
@@ -55,12 +59,12 @@ struct TransactionsSection: View {
                 Text("None").foregroundStyle(.secondary)
             } else {
                 ForEach(displayed) { txn in
-                    TransactionItemRow(asset: asset, transaction: txn, sheetMode: $sheetMode)
+                    TransactionItemRow(asset: asset, transaction: txn, sheetMode: $sheetMode, onLimitReached: onLimitReached)
                         .pagingExcludedRow(id: txn.id.uuidString)
                 }
                 if hasMore {
                     NavigationLink {
-                        TransactionListView(asset: asset, sheetMode: $sheetMode)
+                        TransactionListView(asset: asset, sheetMode: $sheetMode, onLimitReached: onLimitReached)
                     } label: {
                         Text("Show All").foregroundStyle(.secondary)
                     }
@@ -73,13 +77,14 @@ struct TransactionsSection: View {
 struct TransactionListView: View {
     let asset: Asset
     @Binding var sheetMode: TransactionSheetMode?
+    let onLimitReached: () -> Void
 
     private var sorted: [Transaction] { asset.transactions.recurringFirstDateDescending() }
 
     var body: some View {
         List {
             ForEach(sorted) { txn in
-                TransactionItemRow(asset: asset, transaction: txn, sheetMode: $sheetMode)
+                TransactionItemRow(asset: asset, transaction: txn, sheetMode: $sheetMode, onLimitReached: onLimitReached)
             }
         }
         .navigationTitle("Transactions")
@@ -92,6 +97,7 @@ private struct TransactionItemRow: View {
     let asset: Asset
     let transaction: Transaction
     @Binding var sheetMode: TransactionSheetMode?
+    let onLimitReached: () -> Void
 
     var body: some View {
         TransactionRow(transaction: transaction)
@@ -106,12 +112,20 @@ private struct TransactionItemRow: View {
             }
             .contextMenu {
                 Button {
-                    try? store.addTransaction(details: transaction.details, amount: transaction.amount, date: Date(), kind: transaction.kind, payeeContactID: transaction.payeeContactID, notes: transaction.notes, toAssetID: asset.id)
+                    if store.hasTransactionCapacity(for: asset) {
+                        try? store.addTransaction(details: transaction.details, amount: transaction.amount, date: Date(), kind: transaction.kind, payeeContactID: transaction.payeeContactID, notes: transaction.notes, toAssetID: asset.id)
+                    } else {
+                        onLimitReached()
+                    }
                 } label: {
                     Label("Duplicate", systemImage: "plus.square.on.square")
                 }
                 Button {
-                    sheetMode = .duplicate(transaction)
+                    if store.hasTransactionCapacity(for: asset) {
+                        sheetMode = .duplicate(transaction)
+                    } else {
+                        onLimitReached()
+                    }
                 } label: {
                     Label("Duplicate…", systemImage: "square.and.pencil")
                 }

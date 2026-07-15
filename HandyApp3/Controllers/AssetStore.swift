@@ -31,6 +31,10 @@ enum AssetStoreError: Error, Equatable {
     case transactionNotFound(UUID)
     /// Creating or restoring an asset would exceed the free-tier asset limit.
     case freeLimitReached(limit: Int)
+    /// Adding an event would exceed the free-tier per-asset event limit.
+    case freeEventLimitReached(limit: Int)
+    /// Adding a transaction would exceed the free-tier per-asset transaction limit.
+    case freeTransactionLimitReached(limit: Int)
 }
 
 // MARK: - AssetStore
@@ -58,6 +62,16 @@ final class AssetStore {
     /// Runtime-only — driven by purchase state, never persisted.
     var assetCreationLimit: Int?
 
+    /// Max events per individual asset `addEvent` allows; nil = unlimited.
+    /// Per-asset (compares one asset's own `events.count`), unlike the global asset limit.
+    /// Runtime-only — driven by purchase state, never persisted.
+    var eventCreationLimit: Int?
+
+    /// Max transactions per individual asset `addTransaction` allows; nil = unlimited.
+    /// Per-asset (compares one asset's own `transactions.count`), unlike the global asset limit.
+    /// Runtime-only — driven by purchase state, never persisted.
+    var transactionCreationLimit: Int?
+
     var backgroundTheme: BackgroundTheme = .mist {
         didSet { markDirty() }
     }
@@ -81,6 +95,16 @@ final class AssetStore {
 
     /// Whether creating or restoring another asset is currently allowed under `assetCreationLimit`.
     var hasAssetCapacity: Bool { assetCreationLimit.map { allAssets.count < $0 } ?? true }
+
+    /// Whether adding another event to `asset` is currently allowed under `eventCreationLimit`.
+    func hasEventCapacity(for asset: Asset) -> Bool {
+        eventCreationLimit.map { asset.events.count < $0 } ?? true
+    }
+
+    /// Whether adding another transaction to `asset` is currently allowed under `transactionCreationLimit`.
+    func hasTransactionCapacity(for asset: Asset) -> Bool {
+        transactionCreationLimit.map { asset.transactions.count < $0 } ?? true
+    }
 
     // MARK: - AssetCategory CRUD
 
@@ -619,6 +643,9 @@ final class AssetStore {
     @discardableResult
     func addEvent(title: String, date: Date, notes: String = "", recurrence: RecurrenceInterval? = nil, toAssetID assetID: UUID) throws -> Event {
         guard let asset = assets[assetID] else { throw AssetStoreError.assetNotFound(assetID) }
+        if let limit = eventCreationLimit, asset.events.count >= limit {
+            throw AssetStoreError.freeEventLimitReached(limit: limit)
+        }
         let event = Event(title: title, date: date, notes: notes, recurrence: recurrence)
         asset.events.append(event)
         asset.modifiedDate = Date()
@@ -652,6 +679,9 @@ final class AssetStore {
     @discardableResult
     func addTransaction(details: String, amount: Decimal, date: Date, kind: TransactionKind, payeeContactID: String? = nil, notes: String = "", recurrence: RecurrenceInterval? = nil, toAssetID assetID: UUID) throws -> Transaction {
         guard let asset = assets[assetID] else { throw AssetStoreError.assetNotFound(assetID) }
+        if let limit = transactionCreationLimit, asset.transactions.count >= limit {
+            throw AssetStoreError.freeTransactionLimitReached(limit: limit)
+        }
         let txn = Transaction(details: details, amount: amount, date: date, kind: kind, payeeContactID: payeeContactID, notes: notes, recurrence: recurrence)
         asset.transactions.append(txn)
         asset.modifiedDate = Date()

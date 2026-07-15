@@ -1,9 +1,30 @@
 import SwiftUI
 
-/// Shown when a free-tier user tries to create or restore an asset beyond the
-/// free limit. Offers the one-time Full Version unlock, plus a restore link for
-/// users who already own it (reinstall, new device, or a stale entitlement check).
+/// Which free-tier limit triggered the paywall — determines the message shown.
+enum PaywallReason {
+    case assets
+    case events
+    case transactions
+
+    var message: String {
+        switch self {
+        case .assets:
+            return "The free version is limited to \(PurchaseManager.freeAssetLimit) active assets. Unlock the Full Version to add more."
+        case .events:
+            return "The free version is limited to \(PurchaseManager.freeEventLimit) events per asset. Unlock the Full Version to add more."
+        case .transactions:
+            return "The free version is limited to \(PurchaseManager.freeTransactionLimit) transactions per asset. Unlock the Full Version to add more."
+        }
+    }
+}
+
+/// Shown when a free-tier user tries to create or restore an asset, event, or
+/// transaction beyond the free limit. Offers the one-time Full Version unlock,
+/// plus a restore link for users who already own it (reinstall, new device, or
+/// a stale entitlement check).
 struct PaywallView: View {
+    var reason: PaywallReason = .assets
+
     @Environment(AssetStore.self) private var store
     @Environment(PurchaseManager.self) private var purchases
     @Environment(\.dismiss) private var dismiss
@@ -26,7 +47,7 @@ struct PaywallView: View {
                     Text("Full Version")
                         .font(.title2.weight(.semibold))
                         .foregroundStyle(palette.onBackground)
-                    Text("The free version is limited to \(PurchaseManager.freeAssetLimit) active assets. Unlock the Full Version to add more.")
+                    Text(reason.message)
                         .font(.body)
                         .multilineTextAlignment(.center)
                         .foregroundStyle(palette.onBackgroundSecondary)

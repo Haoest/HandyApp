@@ -27,6 +27,10 @@ enum EventSheetMode: Identifiable {
 struct EventsSection: View {
     let asset: Asset
     @Binding var sheetMode: EventSheetMode?
+    /// Called when a creation action is blocked by the free-tier event limit.
+    /// The paywall itself is presented by the owner (see AssetDetailView's
+    /// note on why sheets can't live at the section/row level).
+    let onLimitReached: () -> Void
 
     /// Non-recurring items shown inline before collapsing behind the "Show All"
     /// row; recurring items are never collapsed. User-tunable in Preferences.
@@ -55,12 +59,12 @@ struct EventsSection: View {
                 Text("None").foregroundStyle(.secondary)
             } else {
                 ForEach(displayed) { event in
-                    EventItemRow(asset: asset, event: event, sheetMode: $sheetMode)
+                    EventItemRow(asset: asset, event: event, sheetMode: $sheetMode, onLimitReached: onLimitReached)
                         .pagingExcludedRow(id: event.id.uuidString)
                 }
                 if hasMore {
                     NavigationLink {
-                        EventListView(asset: asset, sheetMode: $sheetMode)
+                        EventListView(asset: asset, sheetMode: $sheetMode, onLimitReached: onLimitReached)
                     } label: {
                         Text("Show All").foregroundStyle(.secondary)
                     }
@@ -73,13 +77,14 @@ struct EventsSection: View {
 struct EventListView: View {
     let asset: Asset
     @Binding var sheetMode: EventSheetMode?
+    let onLimitReached: () -> Void
 
     private var sorted: [Event] { asset.events.recurringFirstDateDescending() }
 
     var body: some View {
         List {
             ForEach(sorted) { event in
-                EventItemRow(asset: asset, event: event, sheetMode: $sheetMode)
+                EventItemRow(asset: asset, event: event, sheetMode: $sheetMode, onLimitReached: onLimitReached)
             }
         }
         .navigationTitle("Events")
@@ -92,6 +97,7 @@ private struct EventItemRow: View {
     let asset: Asset
     let event: Event
     @Binding var sheetMode: EventSheetMode?
+    let onLimitReached: () -> Void
 
     var body: some View {
         EventRow(event: event)
@@ -106,12 +112,20 @@ private struct EventItemRow: View {
             }
             .contextMenu {
                 Button {
-                    try? store.addEvent(title: event.title, date: Date(), notes: event.notes, toAssetID: asset.id)
+                    if store.hasEventCapacity(for: asset) {
+                        try? store.addEvent(title: event.title, date: Date(), notes: event.notes, toAssetID: asset.id)
+                    } else {
+                        onLimitReached()
+                    }
                 } label: {
                     Label("Duplicate", systemImage: "plus.square.on.square")
                 }
                 Button {
-                    sheetMode = .duplicate(event)
+                    if store.hasEventCapacity(for: asset) {
+                        sheetMode = .duplicate(event)
+                    } else {
+                        onLimitReached()
+                    }
                 } label: {
                     Label("Duplicate…", systemImage: "square.and.pencil")
                 }

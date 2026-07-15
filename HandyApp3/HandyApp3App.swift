@@ -42,6 +42,8 @@ struct HandyApp3App: App {
                     try? await ContactResolver.shared.requestAccess()
                     store.startCloudMonitor()
                     store.assetCreationLimit = purchases.isFullVersion ? nil : PurchaseManager.freeAssetLimit
+                    store.eventCreationLimit = purchases.isFullVersion ? nil : PurchaseManager.freeEventLimit
+                    store.transactionCreationLimit = purchases.isFullVersion ? nil : PurchaseManager.freeTransactionLimit
                     purchases.start()
                 }
         }
@@ -53,6 +55,8 @@ struct HandyApp3App: App {
         }
         .onChange(of: purchases.isFullVersion) { _, unlocked in
             store.assetCreationLimit = unlocked ? nil : PurchaseManager.freeAssetLimit
+            store.eventCreationLimit = unlocked ? nil : PurchaseManager.freeEventLimit
+            store.transactionCreationLimit = unlocked ? nil : PurchaseManager.freeTransactionLimit
         }
     }
 }
