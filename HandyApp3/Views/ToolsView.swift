@@ -38,7 +38,7 @@ struct ToolsTab: View {
     private var exportFilename: String {
         let formatter = DateFormatter()
         formatter.dateFormat = "yyyy-MM-dd"
-        return "HandyApp-\(formatter.string(from: Date()))"
+        return "Geeloo-\(formatter.string(from: Date()))"
     }
 
     var body: some View {
