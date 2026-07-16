@@ -4,28 +4,9 @@ import SwiftUI
 struct HandyApp3App: App {
     @Environment(\.scenePhase) private var scenePhase
     @AppStorage(AppPreference.languageKey) private var languageCode: String = ""
-    @State private var router = AppRouter()
+    @State private var router = AppDependencies.shared.router
     @State private var purchases = PurchaseManager()
-    @State private var store: AssetStore = {
-        let s = AssetStore()
-        // File I/O runs on background thread internally; blocks main briefly (store.json is tiny)
-        let wasLoaded = s.load()
-        // Built-in seeds are idempotent — always run to pick up new types added in app updates
-        s.seedBuiltInComboLists()
-        s.seedBuiltInCategories()
-        s.seedBuiltInTypes()
-        if !wasLoaded {
-            s.seedBuiltInAssets()
-            s.seedSampleAutomobile()
-        } else {
-            let storedDays = UserDefaults.standard.integer(forKey: AppPreference.deletedRetentionDaysKey)
-            let retentionDays = storedDays > 0 ? storedDays : AppPreference.deletedRetentionDaysDefault
-            s.purgeHardDeleted(olderThan: TimeInterval(retentionDays) * 86_400)
-        }
-        DispatchQueue.global(qos: .background).async { s.save() }
-        s.notificationScheduler = NotificationScheduler()
-        return s
-    }()
+    @State private var store = AppDependencies.shared.store
 
     var body: some Scene {
         WindowGroup {
@@ -45,12 +26,14 @@ struct HandyApp3App: App {
                     store.eventCreationLimit = purchases.isFullVersion ? nil : PurchaseManager.freeEventLimit
                     store.transactionCreationLimit = purchases.isFullVersion ? nil : PurchaseManager.freeTransactionLimit
                     purchases.start()
+                    HandyAppShortcuts.updateAppShortcutParameters()
                 }
         }
         .onChange(of: scenePhase) { _, phase in
             if phase == .inactive || phase == .background {
                 DispatchQueue.global(qos: .background).async { store.save() }
             }
+            if phase == .background { HandyAppShortcuts.updateAppShortcutParameters() }
             if phase == .active { store.notificationScheduler?.requestResync(assets: store.allAssets) }
         }
         .onChange(of: purchases.isFullVersion) { _, unlocked in
