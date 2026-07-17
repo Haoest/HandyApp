@@ -107,6 +107,24 @@ final class StoreIntegrityTests: XCTestCase {
         }
     }
 
+    // MARK: - Bug #3: import must be durable before returning
+
+    func testImportIsOnDiskWhenCallReturns() throws {
+        let unique = "Probe-\(UUID().uuidString)"
+        let category = try store.createCategory(name: "Garage")
+        _ = try store.createAsset(name: unique, categoryID: category.id)
+        let export = try XCTUnwrap(store.exportJSON())
+
+        try store.importJSON(data: export)
+
+        let disk = try Data(contentsOf: AssetStore.storeURL)
+        let text = try XCTUnwrap(String(data: disk, encoding: .utf8))
+        XCTAssertTrue(
+            text.contains(unique),
+            "importJSON must persist synchronously — an async save lets a relaunch or cloud-monitor refresh resurrect the pre-import store"
+        )
+    }
+
     // MARK: - Control: a clean round-trip works today and must keep working
 
     func testImportOfUnmodifiedExportPreservesEverything() throws {

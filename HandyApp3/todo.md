@@ -13,4 +13,4 @@ icloud backup not working, can't find on device under account/icloud backup
 data import needs refining
 
 app names: daybook, glean
-
+redesign deleting, allow restore, show remaining days before deep delete

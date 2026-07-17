@@ -86,11 +86,12 @@ extension AssetStore {
     /// safe to call from the main thread. Returns false if no file exists or decoding fails.
     @discardableResult
     func load() -> Bool {
-        var snapshot: StoreSnapshotDTO? = nil
+        var data: Data? = nil
         DispatchQueue.global(qos: .userInitiated).sync {
-            snapshot = readSnapshot()
+            data = readStoreData()
         }
-        guard let snap = snapshot else { return false }
+        guard let data, let snap = decodeSnapshot(data) else { return false }
+        lastPersistedData = data
         applySnapshot(migrate(snap))
         return true
     }
@@ -131,7 +132,9 @@ extension AssetStore {
         }
 
         applySnapshot(migrate(incoming))
-        DispatchQueue.global(qos: .background).async { self.save() }
+        // Synchronous: the import must be durably on disk before this returns, or a
+        // relaunch / cloud-monitor refresh can resurrect the pre-import store.
+        DispatchQueue.global(qos: .userInitiated).sync { self.save() }
     }
 
     /// Encodes the current store state to disk via NSFileCoordinator.
@@ -141,11 +144,13 @@ extension AssetStore {
         encoder.dateEncodingStrategy = .iso8601
         guard let data = try? encoder.encode(buildSnapshot()) else { return }
         let url = Self.storeURL
+        var written = false
         var coordinatorError: NSError?
         NSFileCoordinator().coordinate(writingItemAt: url, options: .forReplacing,
                                        error: &coordinatorError) { dest in
-            try? data.write(to: dest, options: .atomic)
+            written = (try? data.write(to: dest, options: .atomic)) != nil
         }
+        if written { lastPersistedData = data }
         if let err = coordinatorError { print("[AssetStore] save error: \(err)") }
     }
 
@@ -161,10 +166,17 @@ extension AssetStore {
             query.disableUpdates()
             DispatchQueue.global(qos: .userInitiated).async { [weak self] in
                 guard let self else { return }
-                let snap = self.readSnapshot()
+                let data = self.readStoreData()
                 DispatchQueue.main.async {
-                    if let snap { self.applySnapshot(self.migrate(snap)) }
-                    query.enableUpdates()
+                    defer { query.enableUpdates() }
+                    // Upload-progress events echo our own saves back at us. Applying an
+                    // echo (or any bytes we already persisted) would clobber in-memory
+                    // mutations made since that write — only foreign content may apply.
+                    guard let data, data != self.lastPersistedData else { return }
+                    if let snap = self.decodeSnapshot(data) {
+                        self.lastPersistedData = data
+                        self.applySnapshot(self.migrate(snap))
+                    }
                 }
             }
         }
@@ -174,20 +186,23 @@ extension AssetStore {
 
     // MARK: - File I/O (background thread)
 
-    private func readSnapshot() -> StoreSnapshotDTO? {
+    private func readStoreData() -> Data? {
         let url = Self.storeURL
         try? FileManager.default.startDownloadingUbiquitousItem(at: url)
-        var result: StoreSnapshotDTO? = nil
+        var result: Data? = nil
         var coordinatorError: NSError?
         NSFileCoordinator().coordinate(readingItemAt: url, options: .withoutChanges,
                                        error: &coordinatorError) { src in
-            guard let data = try? Data(contentsOf: src) else { return }
-            let decoder = JSONDecoder()
-            decoder.dateDecodingStrategy = .iso8601
-            result = try? decoder.decode(StoreSnapshotDTO.self, from: data)
+            result = try? Data(contentsOf: src)
         }
         if let err = coordinatorError { print("[AssetStore] load error: \(err)") }
         return result
+    }
+
+    private func decodeSnapshot(_ data: Data) -> StoreSnapshotDTO? {
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        return try? decoder.decode(StoreSnapshotDTO.self, from: data)
     }
 
     // MARK: - Migration

@@ -84,6 +84,20 @@ final class AssetStore {
     @ObservationIgnored
     private var saveTask: Task<Void, Never>?
 
+    /// The exact bytes last written to (or read from) store.json by this process.
+    /// The cloud monitor compares against this to tell foreign changes from echoes
+    /// of our own saves — applying an echo would clobber newer in-memory mutations.
+    /// Guarded by `persistLock`: written on background save threads, read on main.
+    @ObservationIgnored
+    private let persistLock = NSLock()
+    @ObservationIgnored
+    private var _lastPersistedData: Data?
+
+    var lastPersistedData: Data? {
+        get { persistLock.lock(); defer { persistLock.unlock() }; return _lastPersistedData }
+        set { persistLock.lock(); _lastPersistedData = newValue; persistLock.unlock() }
+    }
+
     // MARK: - Derived collections
 
     var allAssets: [Asset] { assets.values.filter { !$0.isDeleted } }
