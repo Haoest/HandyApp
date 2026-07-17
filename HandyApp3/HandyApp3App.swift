@@ -22,10 +22,10 @@ struct HandyApp3App: App {
                     }
                     try? await ContactResolver.shared.requestAccess()
                     store.startCloudMonitor()
+                    purchases.start()
                     store.assetCreationLimit = purchases.isFullVersion ? nil : PurchaseManager.freeAssetLimit
                     store.eventCreationLimit = purchases.isFullVersion ? nil : PurchaseManager.freeEventLimit
                     store.transactionCreationLimit = purchases.isFullVersion ? nil : PurchaseManager.freeTransactionLimit
-                    purchases.start()
                     HandyAppShortcuts.updateAppShortcutParameters()
                 }
         }

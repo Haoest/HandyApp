@@ -17,6 +17,10 @@ final class PurchaseManager {
     static let freeEventLimit = 5
     static let freeTransactionLimit = 5
 
+    #if DEBUG
+    static let debugForcedVersionKey = "debug.forcedFullVersion"
+    #endif
+
     private(set) var isFullVersion = false
     private(set) var product: Product?
 
@@ -30,6 +34,19 @@ final class PurchaseManager {
     /// Loads the product, checks current entitlements, and starts listening for
     /// transaction updates for the rest of the app's lifetime. Call once at launch.
     func start() {
+        #if DEBUG
+        // Launch args are only present when Xcode launches the app, so persist the
+        // forced state — home-screen launches then keep it until -ClearForcedVersion.
+        let args = CommandLine.arguments
+        let defaults = UserDefaults.standard
+        if args.contains("-ForceFullVersion") { defaults.set(true, forKey: Self.debugForcedVersionKey) }
+        if args.contains("-ForceTrial") { defaults.set(false, forKey: Self.debugForcedVersionKey) }
+        if args.contains("-ClearForcedVersion") { defaults.removeObject(forKey: Self.debugForcedVersionKey) }
+        if let forced = defaults.object(forKey: Self.debugForcedVersionKey) as? Bool {
+            isFullVersion = forced
+            return
+        }
+        #endif
         Task { await loadProduct() }
         Task { await refreshEntitlements() }
         updatesTask?.cancel()
