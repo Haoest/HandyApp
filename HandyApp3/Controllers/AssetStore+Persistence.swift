@@ -15,8 +15,14 @@ enum PhotoStorage {
         try? thumbnailData.write(to: thumbURL(id: id), options: .atomic)
     }
 
-    static func loadFull(id: UUID) -> Data? { try? Data(contentsOf: fullURL(id: id)) }
-    static func loadThumb(id: UUID) -> Data? { try? Data(contentsOf: thumbURL(id: id)) }
+    private static func read(_ url: URL) -> Data? {
+        if let data = try? Data(contentsOf: url) { return data }
+        try? FileManager.default.startDownloadingUbiquitousItem(at: url)
+        return nil
+    }
+
+    static func loadFull(id: UUID) -> Data? { read(fullURL(id: id)) }
+    static func loadThumb(id: UUID) -> Data? { read(thumbURL(id: id)) }
 
     static func delete(id: UUID) {
         try? FileManager.default.removeItem(at: fullURL(id: id))
@@ -30,11 +36,24 @@ extension AssetStore {
 
     // MARK: - URL resolution
 
+    /// Tests only: points the store at a private temp directory.
+    static var baseDirOverride: URL?
+
+    static var baseDir: URL {
+        if let override = baseDirOverride {
+            try? FileManager.default.createDirectory(
+                at: override.appendingPathComponent("Photos", isDirectory: true),
+                withIntermediateDirectories: true)
+            return override
+        }
+        return resolvedBaseDir
+    }
+
     /// Base directory for all store files. Uses the iCloud ubiquity container when available;
     /// falls back to the local Documents directory. Resolved once per launch —
     /// `url(forUbiquityContainerIdentifier:)` can block, so avoid re-resolving on every access.
     /// Creates the Photos/ subdirectory and migrates pre-iCloud local data as side effects.
-    static let baseDir: URL = {
+    private static let resolvedBaseDir: URL = {
         let fm = FileManager.default
         let localDocs = fm.urls(for: .documentDirectory, in: .userDomainMask)[0]
         let dir: URL
@@ -88,6 +107,7 @@ extension AssetStore {
     func load() -> Bool {
         var data: Data? = nil
         DispatchQueue.global(qos: .userInitiated).sync {
+            Self.waitForCloudStore(timeout: 10)
             data = readStoreData()
         }
         guard let data, let snap = decodeSnapshot(data) else { return false }
@@ -96,12 +116,32 @@ extension AssetStore {
         return true
     }
 
+    /// If the ubiquity container is active, the local file is absent, and a placeholder
+    /// exists, triggers download and polls up to `timeout` seconds for it to arrive.
+    private static func waitForCloudStore(timeout: TimeInterval) {
+        let fm = FileManager.default
+        guard baseDirOverride == nil,
+              fm.url(forUbiquityContainerIdentifier: nil) != nil else { return }
+        let url = storeURL
+        guard !fm.fileExists(atPath: url.path) else { return }
+        let placeholder = url.deletingLastPathComponent()
+            .appendingPathComponent(".store.json.icloud")
+        guard fm.fileExists(atPath: placeholder.path) else { return }
+        try? fm.startDownloadingUbiquitousItem(at: url)
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline, !fm.fileExists(atPath: url.path) {
+            Thread.sleep(forTimeInterval: 0.2)
+        }
+    }
+
     func factoryReset() {
+        savesSuspended = false
         let photosDir = Self.baseDir.appendingPathComponent("Photos", isDirectory: true)
         if let files = try? FileManager.default.contentsOfDirectory(at: photosDir, includingPropertiesForKeys: nil) {
             for file in files { try? FileManager.default.removeItem(at: file) }
         }
-        try? FileManager.default.removeItem(at: Self.storeURL)
+        // Do NOT removeItem on storeURL — overwriting via save() propagates as content
+        // (a "tombstone by overwrite") so other devices apply it, rather than ignoring a deletion.
         _applyLoaded(compositeTypes: [:], comboLists: [:], categories: [:], assets: [:],
                      activityLog: [], backgroundTheme: .mist)
         seedBuiltInComboLists()
@@ -109,14 +149,14 @@ extension AssetStore {
         seedBuiltInTypes()
         seedBuiltInAssets()
         seedSampleAutomobile()
-        DispatchQueue.global(qos: .background).async { self.save() }
+        DispatchQueue.global(qos: .userInitiated).sync { self.save() }
     }
 
     func exportJSON() -> Data? {
         let encoder = JSONEncoder()
         encoder.dateEncodingStrategy = .iso8601
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-        return try? encoder.encode(buildSnapshot())
+        return try? encoder.encode(buildSnapshot(includePhotoData: true))
     }
 
     /// Decodes the given exported JSON, wipes all local data and photos, then replaces the
@@ -126,12 +166,37 @@ extension AssetStore {
         decoder.dateDecodingStrategy = .iso8601
         let incoming = try decoder.decode(StoreSnapshotDTO.self, from: data)
 
+        // Phase 2A: only delete photo files not referenced by the incoming snapshot.
+        let keepIDs = Set(incoming.assets.flatMap { $0.photos.map(\.id) })
         let photosDir = Self.baseDir.appendingPathComponent("Photos", isDirectory: true)
         if let files = try? FileManager.default.contentsOfDirectory(at: photosDir, includingPropertiesForKeys: nil) {
-            for file in files { try? FileManager.default.removeItem(at: file) }
+            for file in files {
+                let prefix = file.lastPathComponent.split(separator: "_").first.map(String.init) ?? ""
+                if let id = UUID(uuidString: prefix), keepIDs.contains(id) { continue }
+                try? FileManager.default.removeItem(at: file)
+            }
         }
 
         applySnapshot(migrate(incoming))
+
+        // Phase 2B: write embedded photo bytes so other-device imports recreate the files.
+        for assetDTO in incoming.assets {
+            for photoDTO in assetDTO.photos {
+                if let full = photoDTO.fullImage {
+                    let url = PhotoStorage.fullURL(id: photoDTO.id)
+                    if !FileManager.default.fileExists(atPath: url.path) {
+                        try? full.write(to: url, options: .atomic)
+                    }
+                }
+                if let thumb = photoDTO.thumbnail {
+                    let url = PhotoStorage.thumbURL(id: photoDTO.id)
+                    if !FileManager.default.fileExists(atPath: url.path) {
+                        try? thumb.write(to: url, options: .atomic)
+                    }
+                }
+            }
+        }
+
         // Synchronous: the import must be durably on disk before this returns, or a
         // relaunch / cloud-monitor refresh can resurrect the pre-import store.
         DispatchQueue.global(qos: .userInitiated).sync { self.save() }
@@ -140,6 +205,7 @@ extension AssetStore {
     /// Encodes the current store state to disk via NSFileCoordinator.
     /// Must be called on a background thread.
     func save() {
+        guard !savesSuspended else { return }
         let encoder = JSONEncoder()
         encoder.dateEncodingStrategy = .iso8601
         guard let data = try? encoder.encode(buildSnapshot()) else { return }
@@ -150,8 +216,20 @@ extension AssetStore {
                                        error: &coordinatorError) { dest in
             written = (try? data.write(to: dest, options: .atomic)) != nil
         }
-        if written { lastPersistedData = data }
+        if written {
+            lastPersistedData = data
+            resolveConflicts()
+        }
         if let err = coordinatorError { print("[AssetStore] save error: \(err)") }
+    }
+
+    private func resolveConflicts() {
+        guard Self.baseDirOverride == nil else { return }
+        if let conflicts = NSFileVersion.unresolvedConflictVersionsOfItem(at: Self.storeURL),
+           !conflicts.isEmpty {
+            for version in conflicts { version.isResolved = true }
+            try? NSFileVersion.removeOtherVersionsOfItem(at: Self.storeURL)
+        }
     }
 
     /// Starts watching the iCloud ubiquity container for remote changes pushed by other devices.
@@ -160,28 +238,49 @@ extension AssetStore {
         let query = NSMetadataQuery()
         query.predicate = NSPredicate(format: "%K == 'store.json'", NSMetadataItemFSNameKey)
         query.searchScopes = [NSMetadataQueryUbiquitousDocumentsScope]
+
+        let handleEvent: (Notification) -> Void = { [weak self] notification in
+            self?.handleCloudMonitorNotification(notification, query: query)
+        }
         NotificationCenter.default.addObserver(
-            forName: .NSMetadataQueryDidUpdate, object: query, queue: .main
-        ) { [weak self] _ in
-            query.disableUpdates()
-            DispatchQueue.global(qos: .userInitiated).async { [weak self] in
-                guard let self else { return }
-                let data = self.readStoreData()
-                DispatchQueue.main.async {
-                    defer { query.enableUpdates() }
-                    // Upload-progress events echo our own saves back at us. Applying an
-                    // echo (or any bytes we already persisted) would clobber in-memory
-                    // mutations made since that write — only foreign content may apply.
-                    guard let data, data != self.lastPersistedData else { return }
-                    if let snap = self.decodeSnapshot(data) {
-                        self.lastPersistedData = data
-                        self.applySnapshot(self.migrate(snap))
+            forName: .NSMetadataQueryDidUpdate, object: query, queue: .main, using: handleEvent
+        )
+        // Phase 1 step 5 / Phase 5a: resolve savesSuspended when gather completes.
+        NotificationCenter.default.addObserver(
+            forName: .NSMetadataQueryDidFinishGathering, object: query, queue: .main, using: handleEvent
+        )
+        query.start()
+        cloudQuery = query
+    }
+
+    private func handleCloudMonitorNotification(_ notification: Notification, query: NSMetadataQuery) {
+        let isGather = notification.name == .NSMetadataQueryDidFinishGathering
+        query.disableUpdates()
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            guard let self else { return }
+            let data = self.readStoreData()
+            DispatchQueue.main.async {
+                defer { query.enableUpdates() }
+                if isGather && query.resultCount == 0 {
+                    // Gather finished with no store.json in cloud — seeds are safe to persist.
+                    if self.savesSuspended {
+                        self.savesSuspended = false
+                        self.markDirty()
                     }
+                    return
+                }
+                // Upload-progress events echo our own saves back at us. Applying an
+                // echo (or any bytes we already persisted) would clobber in-memory
+                // mutations made since that write — only foreign content may apply.
+                guard let data, data != self.lastPersistedData else { return }
+                if let snap = self.decodeSnapshot(data) {
+                    self.lastPersistedData = data
+                    self.applySnapshot(self.migrate(snap))
+                    self.savesSuspended = false
+                    self.resolveConflicts()
                 }
             }
         }
-        query.start()
-        cloudQuery = query
     }
 
     // MARK: - File I/O (background thread)
@@ -309,7 +408,7 @@ extension AssetStore {
 
     // MARK: - Live objects → snapshot
 
-    private func buildSnapshot() -> StoreSnapshotDTO {
+    private func buildSnapshot(includePhotoData: Bool = false) -> StoreSnapshotDTO {
         StoreSnapshotDTO(
             schemaVersion: storeSchemaVersion,
             compositeTypes: compositeTypes.values.map { ct in
@@ -331,7 +430,13 @@ extension AssetStore {
                     id: asset.id, name: asset.name, categoryID: asset.category.id,
                     baseProperties: asset.baseProperties.map { assetPropertyDTO($0) },
                     customProperties: asset.customProperties.map { assetPropertyDTO($0) },
-                    photos: asset.photos.map { PhotoDTO(id: $0.id, caption: $0.caption, addedDate: $0.addedDate) },
+                    photos: asset.photos.map { p in
+                        PhotoDTO(
+                            id: p.id, caption: p.caption, addedDate: p.addedDate,
+                            fullImage: includePhotoData ? PhotoStorage.loadFull(id: p.id) : nil,
+                            thumbnail: includePhotoData ? PhotoStorage.loadThumb(id: p.id) : nil
+                        )
+                    },
                     events: asset.events.map {
                         EventDTO(id: $0.id, title: $0.title, date: $0.date,
                                  notes: $0.notes, recurrence: $0.recurrence?.rawValue)

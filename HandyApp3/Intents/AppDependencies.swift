@@ -21,15 +21,25 @@ final class AppDependencies {
         s.seedBuiltInComboLists()
         s.seedBuiltInCategories()
         s.seedBuiltInTypes()
-        if !wasLoaded {
-            s.seedBuiltInAssets()
-            s.seedSampleAutomobile()
-        } else {
+        switch AssetStore.coldStartAction(
+            loaded: wasLoaded,
+            iCloudActive: FileManager.default.url(forUbiquityContainerIdentifier: nil) != nil
+        ) {
+        case .useLoaded:
             let storedDays = UserDefaults.standard.integer(forKey: AppPreference.deletedRetentionDaysKey)
             let retentionDays = storedDays > 0 ? storedDays : AppPreference.deletedRetentionDaysDefault
             s.purgeHardDeleted(olderThan: TimeInterval(retentionDays) * 86_400)
+            DispatchQueue.global(qos: .background).async { s.save() }
+        case .seedAndPersist:
+            s.seedBuiltInAssets()
+            s.seedSampleAutomobile()
+            DispatchQueue.global(qos: .background).async { s.save() }
+        case .seedSuspended:
+            s.seedBuiltInAssets()
+            s.seedSampleAutomobile()
+            s.savesSuspended = true
+            // Do NOT save — cloud may have real data; savesSuspended lifts when cloud answers.
         }
-        DispatchQueue.global(qos: .background).async { s.save() }
         s.notificationScheduler = NotificationScheduler()
         return s
     }

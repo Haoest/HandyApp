@@ -12,10 +12,19 @@ import XCTest
 final class StoreIntegrityTests: XCTestCase {
 
     var store: AssetStore!
+    private var tempDir: URL!
 
     override func setUp() {
         super.setUp()
+        tempDir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        AssetStore.baseDirOverride = tempDir
         store = AssetStore()
+    }
+
+    override func tearDown() {
+        super.tearDown()
+        AssetStore.baseDirOverride = nil
+        try? FileManager.default.removeItem(at: tempDir)
     }
 
     // MARK: - Helpers

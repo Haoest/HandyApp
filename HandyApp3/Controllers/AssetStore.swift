@@ -84,6 +84,12 @@ final class AssetStore {
     @ObservationIgnored
     private var saveTask: Task<Void, Never>?
 
+    /// True while we have seeded in-memory data but have NOT yet confirmed the cloud
+    /// container is empty. While set, save()/markDirty() are no-ops so seed data can
+    /// never overwrite an unread cloud store.
+    @ObservationIgnored
+    var savesSuspended = false
+
     /// The exact bytes last written to (or read from) store.json by this process.
     /// The cloud monitor compares against this to tell foreign changes from echoes
     /// of our own saves — applying an echo would clobber newer in-memory mutations.
@@ -250,6 +256,7 @@ final class AssetStore {
             asset._removeChild(child)
             grandparent?._addChild(child)
         }
+        for photo in asset.photos { PhotoStorage.delete(id: photo.id) }
         assets.removeValue(forKey: id)
         notificationScheduler?.requestResync(assets: allAssets)
         markDirty()
@@ -746,9 +753,17 @@ final class AssetStore {
     // MARK: - Persistence internals
     // These must live here to write private(set) storage properties.
 
+    enum ColdStartAction { case useLoaded, seedAndPersist, seedSuspended }
+
+    static func coldStartAction(loaded: Bool, iCloudActive: Bool) -> ColdStartAction {
+        if loaded { return .useLoaded }
+        return iCloudActive ? .seedSuspended : .seedAndPersist
+    }
+
     /// Schedules a background save ~2 s after the last mutation. Cancels and replaces
     /// any pending save, so rapid mutations collapse into one write.
     func markDirty() {
+        guard !savesSuspended else { return }
         saveTask?.cancel()
         saveTask = Task.detached(priority: .utility) { [weak self] in
             try? await Task.sleep(for: .seconds(2))

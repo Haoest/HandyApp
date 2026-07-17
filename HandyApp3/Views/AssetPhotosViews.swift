@@ -63,9 +63,15 @@ struct PhotosSection: View {
                 .clipShape(RoundedRectangle(cornerRadius: 8))
         }
         .buttonStyle(.plain)
-        .onAppear {
-            if photo.thumbnailData == nil {
-                photo.thumbnailData = PhotoStorage.loadThumb(id: photo.id)
+        .task(id: photo.id) {
+            guard photo.thumbnailData == nil else { return }
+            for _ in 0..<10 {
+                if Task.isCancelled { return }
+                if let data = PhotoStorage.loadThumb(id: photo.id) {
+                    photo.thumbnailData = data
+                    return
+                }
+                try? await Task.sleep(for: .seconds(1))
             }
         }
     }
@@ -180,6 +186,17 @@ struct PhotoViewerSheet: View {
             }
             .sheet(isPresented: $paywallPresented) {
                 PaywallView(reason: .transactions)
+            }
+            .task(id: photo.id) {
+                guard photo.imageData == nil else { return }
+                for _ in 0..<10 {
+                    if Task.isCancelled { return }
+                    if let data = PhotoStorage.loadFull(id: photo.id) {
+                        photo.imageData = data
+                        return
+                    }
+                    try? await Task.sleep(for: .seconds(1))
+                }
             }
         }
     }

@@ -105,12 +105,16 @@ struct CategoryDTO: Codable {
 }
 
 // MARK: - PhotoDTO
-// Binary data is stored as separate files in Photos/; this DTO holds metadata only.
+// Binary data is stored as separate files in Photos/; metadata is always present.
+// fullImage/thumbnail are populated only in exports so imports on other devices can
+// recreate the files — store.json itself never carries them (kept lean for sync).
 
 struct PhotoDTO: Codable {
     var id: UUID
     var caption: String
     var addedDate: Date
+    var fullImage: Data?
+    var thumbnail: Data?
 }
 
 // MARK: - EventDTO
