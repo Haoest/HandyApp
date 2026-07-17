@@ -413,6 +413,7 @@
 				DEVELOPMENT_ASSET_PATHS = "\"HandyApp3/Preview Content\"";
 				DEVELOPMENT_TEAM = RB7JT8ZD99;
 				ENABLE_PREVIEWS = YES;
+				CODE_SIGN_ENTITLEMENTS = HandyApp3.entitlements;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = Geeloo;
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
@@ -446,6 +447,7 @@
 				DEVELOPMENT_ASSET_PATHS = "\"HandyApp3/Preview Content\"";
 				DEVELOPMENT_TEAM = RB7JT8ZD99;
 				ENABLE_PREVIEWS = YES;
+				CODE_SIGN_ENTITLEMENTS = HandyApp3.entitlements;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = Geeloo;
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;

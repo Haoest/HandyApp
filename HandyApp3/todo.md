@@ -11,3 +11,5 @@ export data to excel by email
 swiping to delete transaction/event carries the asset sheet under
 icloud backup not working, can't find on device under account/icloud backup
 
+app names: daybook, glean
+

@@ -31,17 +31,51 @@ extension AssetStore {
     // MARK: - URL resolution
 
     /// Base directory for all store files. Uses the iCloud ubiquity container when available;
-    /// falls back to the local Documents directory. Creates the Photos/ subdirectory as a side effect.
-    static var baseDir: URL {
+    /// falls back to the local Documents directory. Resolved once per launch —
+    /// `url(forUbiquityContainerIdentifier:)` can block, so avoid re-resolving on every access.
+    /// Creates the Photos/ subdirectory and migrates pre-iCloud local data as side effects.
+    static let baseDir: URL = {
+        let fm = FileManager.default
+        let localDocs = fm.urls(for: .documentDirectory, in: .userDomainMask)[0]
         let dir: URL
-        if let container = FileManager.default.url(forUbiquityContainerIdentifier: nil) {
-            dir = container.appendingPathComponent("Documents", isDirectory: true)
+        if let container = fm.url(forUbiquityContainerIdentifier: nil) {
+            let cloudDocs = container.appendingPathComponent("Documents", isDirectory: true)
+            migrateLocalStoreIfNeeded(from: localDocs, to: cloudDocs)
+            dir = cloudDocs
         } else {
-            dir = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+            dir = localDocs
         }
         let photosDir = dir.appendingPathComponent("Photos", isDirectory: true)
-        try? FileManager.default.createDirectory(at: photosDir, withIntermediateDirectories: true)
+        try? fm.createDirectory(at: photosDir, withIntermediateDirectories: true)
         return dir
+    }()
+
+    /// One-time move of pre-iCloud data into the ubiquity container. Without this, the first
+    /// launch after enabling iCloud would find an empty container, reseed sample data, and the
+    /// user's real store would appear wiped. Copies (rather than moves) so the local files
+    /// remain as a frozen fallback if the app is ever built without iCloud entitlements again.
+    /// Never overwrites cloud data: if the container already has a store (downloaded or still
+    /// a placeholder), another device got there first and its copy wins.
+    private static func migrateLocalStoreIfNeeded(from localDocs: URL, to cloudDocs: URL) {
+        let fm = FileManager.default
+        let localStore = localDocs.appendingPathComponent("store.json")
+        let cloudStore = cloudDocs.appendingPathComponent("store.json")
+        let cloudPlaceholder = cloudDocs.appendingPathComponent(".store.json.icloud")
+        guard fm.fileExists(atPath: localStore.path),
+              !fm.fileExists(atPath: cloudStore.path),
+              !fm.fileExists(atPath: cloudPlaceholder.path) else { return }
+
+        try? fm.createDirectory(at: cloudDocs, withIntermediateDirectories: true)
+        try? fm.copyItem(at: localStore, to: cloudStore)
+
+        let localPhotos = localDocs.appendingPathComponent("Photos", isDirectory: true)
+        let cloudPhotos = cloudDocs.appendingPathComponent("Photos", isDirectory: true)
+        try? fm.createDirectory(at: cloudPhotos, withIntermediateDirectories: true)
+        if let files = try? fm.contentsOfDirectory(at: localPhotos, includingPropertiesForKeys: nil) {
+            for file in files {
+                try? fm.copyItem(at: file, to: cloudPhotos.appendingPathComponent(file.lastPathComponent))
+            }
+        }
     }
 
     static var storeURL: URL { baseDir.appendingPathComponent("store.json") }
