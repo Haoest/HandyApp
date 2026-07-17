@@ -761,7 +761,9 @@ final class AssetStore {
     }
 
     /// Permanently removes soft-deleted assets/categories whose deletedAt is older than `seconds`.
-    /// Deletes associated photo files before discarding each asset.
+    /// Deletes associated photo files before discarding each asset. Categories still referenced
+    /// by any surviving asset are kept regardless of age — purging them would leave dangling
+    /// categoryIDs that load/import cannot resolve.
     func purgeHardDeleted(olderThan seconds: TimeInterval = 90 * 86_400) {
         let cutoff = Date().addingTimeInterval(-seconds)
         assets = assets.filter { _, a in
@@ -769,8 +771,10 @@ final class AssetStore {
             for photo in a.photos { PhotoStorage.delete(id: photo.id) }
             return false
         }
-        categories = categories.filter { _, c in
-            !(c.isDeleted && (c.deletedAt ?? .distantFuture) < cutoff)
+        let referencedCategoryIDs = Set(assets.values.map { $0.category.id })
+        categories = categories.filter { id, c in
+            referencedCategoryIDs.contains(id)
+                || !(c.isDeleted && (c.deletedAt ?? .distantFuture) < cutoff)
         }
     }
 }

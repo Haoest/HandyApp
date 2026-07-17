@@ -234,9 +234,19 @@ extension AssetStore {
         }
 
         // 5. Assets — no hierarchy links yet; photo imageData/thumbnailData start nil (lazy load)
+        // A dangling categoryID (category hard-deleted while its assets lived on) must never
+        // cost the user an asset: resurrect a placeholder category instead of dropping.
         var assetMap: [UUID: Asset] = [:]
         for dto in snap.assets {
-            guard let cat = catMap[dto.categoryID] else { continue }
+            let cat: AssetCategory
+            if let existing = catMap[dto.categoryID] {
+                cat = existing
+            } else {
+                let placeholder = AssetCategory(id: dto.categoryID, name: "Recovered",
+                                                iconName: "questionmark.folder", propertyTemplates: [])
+                catMap[dto.categoryID] = placeholder
+                cat = placeholder
+            }
             let asset = Asset(
                 id: dto.id, name: dto.name, category: cat,
                 baseProperties: dto.baseProperties.compactMap { assetProperty(from: $0, ctMap: ctMap, clMap: clMap) },
