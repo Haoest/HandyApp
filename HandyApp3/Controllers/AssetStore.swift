@@ -320,6 +320,11 @@ final class AssetStore {
         return assets.values.filter { $0.category.id == categoryID }
     }
 
+    /// Number of assets referencing this category, including soft-deleted ones.
+    func associatedAssetCount(categoryID: UUID) -> Int {
+        assets.values.filter { $0.category.id == categoryID }.count
+    }
+
     // MARK: - Property value management
 
     /// Sets a value on a base or custom property identified by its definition id.

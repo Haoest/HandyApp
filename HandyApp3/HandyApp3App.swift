@@ -35,7 +35,11 @@ struct HandyApp3App: App {
                 DispatchQueue.global(qos: .background).async { store.save() }
             }
             if phase == .background { HandyAppShortcuts.updateAppShortcutParameters() }
-            if phase == .active { store.notificationScheduler?.requestResync(assets: store.allAssets) }
+            if phase == .active {
+                store.purgeHardDeleted(olderThan: TimeInterval(AppPreference.DaysToRetainDeletedItems) * 86_400)
+                store.notificationScheduler?.requestResync(assets: store.allAssets)
+                DispatchQueue.global(qos: .background).async { store.save() }
+            }
         }
         .onChange(of: purchases.isFullVersion) { _, unlocked in
             store.assetCreationLimit = unlocked ? nil : PurchaseManager.freeAssetLimit

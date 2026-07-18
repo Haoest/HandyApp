@@ -264,20 +264,53 @@ struct DeletedCategoriesView: View {
                 ContentUnavailableView("No Deleted Categories", systemImage: "folder.badge.minus")
             } else {
                 List(sorted) { cat in
-                    Label(cat.name, systemImage: cat.iconName)
-                        .swipeActions(edge: .leading) {
-                            Button {
-                                try? store.restoreCategory(id: cat.id)
-                            } label: {
-                                Label("Restore", systemImage: "arrow.uturn.backward")
-                            }
-                            .tint(.green)
-                        }
+                    DeletedCategoryRow(category: cat)
                 }
             }
         }
         .navigationTitle("Deleted Categories")
         .navigationBarTitleDisplayMode(.inline)
+    }
+}
+
+private struct DeletedCategoryRow: View {
+    @Environment(AssetStore.self) private var store
+    let category: AssetCategory
+
+    var body: some View {
+        let count = store.associatedAssetCount(categoryID: category.id)
+        VStack(alignment: .leading, spacing: 2) {
+            Label(category.name, systemImage: category.iconName)
+            Text(subtitle(count: count))
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+        .swipeActions(edge: .trailing) {
+            if count == 0 {
+                Button(role: .destructive) {
+                    try? store.deleteCategory(id: category.id)
+                } label: {
+                    Label("Delete now", systemImage: "trash")
+                }
+            }
+            Button {
+                try? store.restoreCategory(id: category.id)
+            } label: {
+                Label("Restore", systemImage: "arrow.uturn.backward")
+            }
+            .tint(.green)
+        }
+    }
+
+    private func subtitle(count: Int) -> LocalizedStringKey {
+        if count > 0 {
+            return "Associated with ^[\(count) asset](inflect: true)"
+        }
+        let elapsed = Calendar.current.dateComponents(
+            [.day], from: category.deletedAt ?? Date(), to: Date()
+        ).day ?? 0
+        let remaining = max(0, AppPreference.DaysToRetainDeletedItems - elapsed)
+        return "Delete in ^[\(remaining) day](inflect: true)"
     }
 }
 
