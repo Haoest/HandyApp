@@ -36,6 +36,11 @@ extension AssetStore {
 
     // MARK: - URL resolution
 
+    /// Master switch for iCloud document sync of the store. While false, all store files
+    /// live in local Documents and no ubiquity-container access happens. iCloud Backup of
+    /// the local Documents directory is unaffected. Flip to true to re-enable sync.
+    static let iCloudSyncEnabled = false
+
     /// Tests only: points the store at a private temp directory.
     static var baseDirOverride: URL?
 
@@ -49,15 +54,25 @@ extension AssetStore {
         return resolvedBaseDir
     }
 
-    /// Base directory for all store files. Always uses the local Documents directory —
-    /// iCloud sync of store.json is intentionally disabled (iCloud Backup still applies).
-    /// Resolved once per launch. Creates the Photos/ subdirectory as a side effect.
+    /// Base directory for all store files. When `iCloudSyncEnabled` is true and the
+    /// ubiquity container is available, uses the iCloud Documents directory (migrating
+    /// any existing local store on first run). Otherwise uses local Documents.
+    /// Resolved once per launch — `url(forUbiquityContainerIdentifier:)` can block.
+    /// Creates the Photos/ subdirectory as a side effect.
     private static let resolvedBaseDir: URL = {
         let fm = FileManager.default
         let localDocs = fm.urls(for: .documentDirectory, in: .userDomainMask)[0]
-        let photosDir = localDocs.appendingPathComponent("Photos", isDirectory: true)
+        let dir: URL
+        if iCloudSyncEnabled, let container = fm.url(forUbiquityContainerIdentifier: nil) {
+            let cloudDocs = container.appendingPathComponent("Documents", isDirectory: true)
+            migrateLocalStoreIfNeeded(from: localDocs, to: cloudDocs)
+            dir = cloudDocs
+        } else {
+            dir = localDocs
+        }
+        let photosDir = dir.appendingPathComponent("Photos", isDirectory: true)
         try? fm.createDirectory(at: photosDir, withIntermediateDirectories: true)
-        return localDocs
+        return dir
     }()
 
     /// One-time move of pre-iCloud data into the ubiquity container. Without this, the first
@@ -107,11 +122,13 @@ extension AssetStore {
         return true
     }
 
-    /// If the ubiquity container is active, the local file is absent, and a placeholder
-    /// exists, triggers download and polls up to `timeout` seconds for it to arrive.
+    /// If iCloud sync is enabled, the ubiquity container is active, the local file is
+    /// absent, and a placeholder exists, triggers download and polls up to `timeout`
+    /// seconds for it to arrive.
     private static func waitForCloudStore(timeout: TimeInterval) {
         let fm = FileManager.default
-        guard baseDirOverride == nil,
+        guard iCloudSyncEnabled,
+              baseDirOverride == nil,
               fm.url(forUbiquityContainerIdentifier: nil) != nil else { return }
         let url = storeURL
         guard !fm.fileExists(atPath: url.path) else { return }
@@ -224,8 +241,9 @@ extension AssetStore {
     }
 
     /// Starts watching the iCloud ubiquity container for remote changes pushed by other devices.
-    /// Call once from the app's `.task` modifier after launch.
+    /// Call once from the app's `.task` modifier after launch. No-op when `iCloudSyncEnabled` is false.
     func startCloudMonitor() {
+        guard Self.iCloudSyncEnabled else { return }
         let query = NSMetadataQuery()
         query.predicate = NSPredicate(format: "%K == 'store.json'", NSMetadataItemFSNameKey)
         query.searchScopes = [NSMetadataQueryUbiquitousDocumentsScope]
