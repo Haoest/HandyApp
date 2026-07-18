@@ -5,6 +5,10 @@ enum AppTab: Hashable {
     case home, assets, categories, tools, preferences
 }
 
+enum ToolsAction: Hashable {
+    case export
+}
+
 /// Lightweight cross-tab navigation state. Lets one tab drive another — e.g. the
 /// Categories tab sends the user to the Assets tab focused on a specific category.
 @Observable
@@ -21,4 +25,7 @@ final class AppRouter {
     /// user taps a recurrence notification). Cleared back to nil on dismiss by the
     /// navigation binding.
     var pendingAssetID: UUID?
+
+    /// When non-nil, ToolsTab consumes this action (e.g. trigger export), then resets to nil.
+    var pendingToolsAction: ToolsAction?
 }

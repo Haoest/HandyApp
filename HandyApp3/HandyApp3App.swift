@@ -2,6 +2,7 @@ import SwiftUI
 
 @main
 struct HandyApp3App: App {
+    @UIApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     @Environment(\.scenePhase) private var scenePhase
     @AppStorage(AppPreference.languageKey) private var languageCode: String = ""
     @State private var router = AppDependencies.shared.router

@@ -22,6 +22,7 @@ private struct JSONExportDocument: FileDocument {
 struct ToolsTab: View {
     @Environment(AssetStore.self) private var store
     @Environment(PurchaseManager.self) private var purchases
+    @Environment(AppRouter.self) private var router
     @State private var showingExporter = false
     @State private var exportDocument: JSONExportDocument?
     @State private var showingImportConfirm = false
@@ -41,16 +42,20 @@ struct ToolsTab: View {
         return "Geeloo-\(formatter.string(from: Date()))"
     }
 
+    private func runExport() {
+        if let data = store.exportJSON() {
+            exportDocument = JSONExportDocument(data: data)
+            showingExporter = true
+        }
+    }
+
     var body: some View {
         NavigationStack {
             ZStack {
                 AppBackground()
                 List {
                     Button {
-                        if let data = store.exportJSON() {
-                            exportDocument = JSONExportDocument(data: data)
-                            showingExporter = true
-                        }
+                        runExport()
                     } label: {
                         Label("Export Data", systemImage: "square.and.arrow.up")
                     }
@@ -103,6 +108,12 @@ struct ToolsTab: View {
             .navigationTitle("Tools")
             .toolbarColorScheme(.light, for: .navigationBar)
             .toolbarBackground(.hidden, for: .navigationBar)
+            .onChange(of: router.pendingToolsAction, initial: true) { _, action in
+                if action == .export {
+                    router.pendingToolsAction = nil
+                    runExport()
+                }
+            }
             .alert("Factory Reset", isPresented: $showingResetAlert) {
                 TextField("Type \"reset\" to confirm", text: $resetConfirmText)
                     .autocorrectionDisabled()
