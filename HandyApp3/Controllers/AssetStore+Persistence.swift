@@ -49,24 +49,15 @@ extension AssetStore {
         return resolvedBaseDir
     }
 
-    /// Base directory for all store files. Uses the iCloud ubiquity container when available;
-    /// falls back to the local Documents directory. Resolved once per launch —
-    /// `url(forUbiquityContainerIdentifier:)` can block, so avoid re-resolving on every access.
-    /// Creates the Photos/ subdirectory and migrates pre-iCloud local data as side effects.
+    /// Base directory for all store files. Always uses the local Documents directory —
+    /// iCloud sync of store.json is intentionally disabled (iCloud Backup still applies).
+    /// Resolved once per launch. Creates the Photos/ subdirectory as a side effect.
     private static let resolvedBaseDir: URL = {
         let fm = FileManager.default
         let localDocs = fm.urls(for: .documentDirectory, in: .userDomainMask)[0]
-        let dir: URL
-        if let container = fm.url(forUbiquityContainerIdentifier: nil) {
-            let cloudDocs = container.appendingPathComponent("Documents", isDirectory: true)
-            migrateLocalStoreIfNeeded(from: localDocs, to: cloudDocs)
-            dir = cloudDocs
-        } else {
-            dir = localDocs
-        }
-        let photosDir = dir.appendingPathComponent("Photos", isDirectory: true)
+        let photosDir = localDocs.appendingPathComponent("Photos", isDirectory: true)
         try? fm.createDirectory(at: photosDir, withIntermediateDirectories: true)
-        return dir
+        return localDocs
     }()
 
     /// One-time move of pre-iCloud data into the ubiquity container. Without this, the first

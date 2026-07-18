@@ -23,7 +23,7 @@ final class AppDependencies {
         s.seedBuiltInTypes()
         switch AssetStore.coldStartAction(
             loaded: wasLoaded,
-            iCloudActive: FileManager.default.url(forUbiquityContainerIdentifier: nil) != nil
+            iCloudActive: false
         ) {
         case .useLoaded:
             let storedDays = UserDefaults.standard.integer(forKey: AppPreference.deletedRetentionDaysKey)
