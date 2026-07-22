@@ -215,8 +215,11 @@ struct DeletedAssetsView: View {
     @Environment(AssetStore.self) private var store
     @State private var paywallPresented = false
 
+    // Only the roots of deleted families — descendants stay linked internally and are excluded.
     private var sorted: [Asset] {
-        store.deletedAssets.sorted { $0.name.localizedCompare($1.name) == .orderedAscending }
+        store.deletedAssets
+            .filter { $0.isRoot }
+            .sorted { $0.name.localizedCompare($1.name) == .orderedAscending }
     }
 
     var body: some View {
@@ -224,21 +227,16 @@ struct DeletedAssetsView: View {
             if sorted.isEmpty {
                 ContentUnavailableView("No Deleted Assets", systemImage: "trash.slash")
             } else {
-                List(sorted) { asset in
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(asset.name)
-                        Text(asset.category.name)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
+                List {
+                    ForEach(sorted) { asset in
+                        DeletedAssetRow(asset: asset, paywallPresented: $paywallPresented)
                     }
-                    .swipeActions(edge: .leading) {
-                        Button {
-                            guard store.hasAssetCapacity else { paywallPresented = true; return }
-                            try? store.restoreAsset(id: asset.id)
-                        } label: {
-                            Label("Restore", systemImage: "arrow.uturn.backward")
-                        }
-                        .tint(.green)
+                    Section {
+                        Text("Swipe on any row for actions")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                            .frame(maxWidth: .infinity, alignment: .center)
+                            .listRowBackground(Color.clear)
                     }
                 }
             }
@@ -246,6 +244,47 @@ struct DeletedAssetsView: View {
         .navigationTitle("Deleted Assets")
         .navigationBarTitleDisplayMode(.inline)
         .sheet(isPresented: $paywallPresented) { PaywallView() }
+    }
+}
+
+private struct DeletedAssetRow: View {
+    @Environment(AssetStore.self) private var store
+    let asset: Asset
+    @Binding var paywallPresented: Bool
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(asset.name)
+            Text(subtitle)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+        .swipeActions(edge: .trailing) {
+            Button(role: .destructive) {
+                try? store.hardDeleteAsset(id: asset.id)
+            } label: {
+                Label("Delete now", systemImage: "trash")
+            }
+            Button {
+                let subtreeCount = 1 + asset.descendants.count
+                guard store.hasCapacity(forAdditional: subtreeCount) else {
+                    paywallPresented = true
+                    return
+                }
+                try? store.restoreAsset(id: asset.id)
+            } label: {
+                Label("Restore", systemImage: "arrow.uturn.backward")
+            }
+            .tint(.green)
+        }
+    }
+
+    private var subtitle: LocalizedStringKey {
+        let elapsed = Calendar.current.dateComponents(
+            [.day], from: asset.deletedAt ?? Date(), to: Date()
+        ).day ?? 0
+        let remaining = max(0, AppPreference.DaysToRetainDeletedItems - elapsed)
+        return "Purge in ^[\(remaining) day](inflect: true)"
     }
 }
 
@@ -263,8 +302,17 @@ struct DeletedCategoriesView: View {
             if sorted.isEmpty {
                 ContentUnavailableView("No Deleted Categories", systemImage: "folder.badge.minus")
             } else {
-                List(sorted) { cat in
-                    DeletedCategoryRow(category: cat)
+                List {
+                    ForEach(sorted) { cat in
+                        DeletedCategoryRow(category: cat)
+                    }
+                    Section {
+                        Text("Swipe on any row for actions")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                            .frame(maxWidth: .infinity, alignment: .center)
+                            .listRowBackground(Color.clear)
+                    }
                 }
             }
         }
@@ -310,7 +358,7 @@ private struct DeletedCategoryRow: View {
             [.day], from: category.deletedAt ?? Date(), to: Date()
         ).day ?? 0
         let remaining = max(0, AppPreference.DaysToRetainDeletedItems - elapsed)
-        return "Delete in ^[\(remaining) day](inflect: true)"
+        return "Purge in ^[\(remaining) day](inflect: true)"
     }
 }
 

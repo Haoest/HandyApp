@@ -94,6 +94,40 @@ final class CategoryDeletionTests: XCTestCase {
         XCTAssertTrue(store.deletedCategories.contains { $0.id == cat.id })
     }
 
+    func testPurgeCategoryOnceReferringAssetAlsoPurged() throws {
+        // A category kept alive only by a soft-deleted asset should be purged in the same
+        // sweep once that asset's retention also expires.
+        let cat = try makeCategory()
+        let asset = try store.createAsset(name: "Asset A", categoryID: cat.id)
+        try store.softDeleteAsset(id: asset.id)
+        asset.deletedAt = Date().addingTimeInterval(-15 * 86_400) // expired
+        try store.softDeleteCategory(id: cat.id)
+        cat.deletedAt = Date().addingTimeInterval(-15 * 86_400) // expired
+
+        store.purgeHardDeleted(olderThan: TimeInterval(AppPreference.DaysToRetainDeletedItems) * 86_400)
+
+        XCTAssertFalse(store.deletedAssets.contains { $0.id == asset.id }, "asset must be purged")
+        XCTAssertFalse(store.deletedCategories.contains { $0.id == cat.id },
+                       "category must be purged once its only referencing asset is gone")
+    }
+
+    // MARK: - hardDeleteAsset (immediate "Delete now" path)
+
+    func testHardDeleteAssetRemovesSubtreeImmediately() throws {
+        let cat = try makeCategory()
+        let parent = try store.createAsset(name: "Parent", categoryID: cat.id)
+        let child = try store.createAsset(name: "Child", categoryID: cat.id)
+        try store.addChild(assetID: child.id, toParentID: parent.id)
+        try store.softDeleteAsset(id: parent.id)
+
+        try store.hardDeleteAsset(id: parent.id)
+
+        XCTAssertFalse(store.deletedAssets.contains { $0.id == parent.id })
+        XCTAssertFalse(store.deletedAssets.contains { $0.id == child.id })
+        XCTAssertNil(store.assets[parent.id])
+        XCTAssertNil(store.assets[child.id])
+    }
+
     // MARK: - deleteCategory (hard delete — "Delete now" path)
 
     func testDeleteCategoryHardRemovesImmediately() throws {

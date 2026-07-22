@@ -89,4 +89,40 @@ final class AssetLimitTests: XCTestCase {
         XCTAssertNoThrow(try store.restoreAsset(id: created[0].id))
         XCTAssertEqual(store.allAssets.count, 5)
     }
+
+    func testRestoreSubtreeBlockedWhenFamilyExceedsLimit() throws {
+        store.assetCreationLimit = 5
+        // Build a 2-asset family (parent + child) and delete it first, so the live
+        // count never exceeds the limit of 5 while setting up the scenario.
+        let parent = try makeAsset("Parent")
+        let child = try makeAsset("Child")
+        try store.addChild(assetID: child.id, toParentID: parent.id)
+        try store.softDeleteAsset(id: parent.id) // 0 live, 2 soft-deleted
+
+        // Now fill 4 live slots.
+        for i in 0..<4 { try makeAsset("Asset \(i)") } // 4 live remain
+
+        // Restoring the 2-asset family would bring us to 6 > 5, so it must throw.
+        XCTAssertFalse(store.hasCapacity(forAdditional: 2))
+        XCTAssertThrowsError(try store.restoreAsset(id: parent.id)) { error in
+            XCTAssertEqual(error as? AssetStoreError, .freeLimitReached(limit: 5))
+        }
+    }
+
+    func testRestoreSubtreeRestoresAllDescendants() throws {
+        let parent = try makeAsset("Parent")
+        let child = try makeAsset("Child")
+        let grandchild = try makeAsset("Grandchild")
+        try store.addChild(assetID: child.id, toParentID: parent.id)
+        try store.addChild(assetID: grandchild.id, toParentID: child.id)
+
+        try store.softDeleteAsset(id: parent.id)
+        XCTAssertEqual(store.allAssets.count, 0)
+
+        try store.restoreAsset(id: parent.id)
+        XCTAssertEqual(store.allAssets.count, 3)
+        XCTAssertFalse(parent.isDeleted)
+        XCTAssertFalse(child.isDeleted)
+        XCTAssertFalse(grandchild.isDeleted)
+    }
 }

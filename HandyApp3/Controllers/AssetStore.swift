@@ -116,6 +116,11 @@ final class AssetStore {
     /// Whether creating or restoring another asset is currently allowed under `assetCreationLimit`.
     var hasAssetCapacity: Bool { assetCreationLimit.map { allAssets.count < $0 } ?? true }
 
+    /// Whether adding `n` more assets (e.g. a restored subtree) would stay within the limit.
+    func hasCapacity(forAdditional n: Int) -> Bool {
+        assetCreationLimit.map { allAssets.count + n <= $0 } ?? true
+    }
+
     /// Whether adding another event to `asset` is currently allowed under `eventCreationLimit`.
     func hasEventCapacity(for asset: Asset) -> Bool {
         eventCreationLimit.map { asset.events.count < $0 } ?? true
@@ -262,24 +267,10 @@ final class AssetStore {
         markDirty()
     }
 
-    /// Marks the asset as deleted without removing it from the store.
-    /// Detaches it from its parent; direct children become top-level assets.
-    func softDeleteAsset(id: UUID) throws {
-        guard let asset = assets[id] else { throw AssetStoreError.assetNotFound(id) }
-        asset.parent?._removeChild(asset)
-        for child in Array(asset.children) {
-            asset._removeChild(child)
-        }
-        asset.isDeleted = true
-        asset.deletedAt = Date()
-        asset.modifiedDate = Date()
-        notificationScheduler?.requestResync(assets: allAssets)
-        markDirty()
-    }
-
-    /// Soft-deletes the asset and all of its descendants, preserving their parent-child
+    /// Soft-deletes the asset and all of its descendants, preserving internal parent-child
     /// relationships until the records are hard-deleted by the retention sweep.
-    func softDeleteAssetDeep(id: UUID) throws {
+    /// The root is detached from its live parent; descendants stay linked to each other.
+    func softDeleteAsset(id: UUID) throws {
         guard let asset = assets[id] else { throw AssetStoreError.assetNotFound(id) }
         let now = Date()
         asset.parent?._removeChild(asset)
@@ -295,14 +286,34 @@ final class AssetStore {
         markDirty()
     }
 
+    /// Restores a soft-deleted asset and its entire subtree as top-level assets.
+    /// Throws `freeLimitReached` if restoring the family would exceed the asset creation limit.
     func restoreAsset(id: UUID) throws {
         guard let asset = assets[id] else { throw AssetStoreError.assetNotFound(id) }
-        if let limit = assetCreationLimit, allAssets.count >= limit {
+        let subtree = [asset] + asset.descendants
+        if let limit = assetCreationLimit, allAssets.count + subtree.count > limit {
             throw AssetStoreError.freeLimitReached(limit: limit)
         }
-        asset.isDeleted = false
-        asset.deletedAt = nil
-        asset.modifiedDate = Date()
+        let now = Date()
+        for node in subtree {
+            node.isDeleted = false
+            node.deletedAt = nil
+            node.modifiedDate = now
+        }
+        notificationScheduler?.requestResync(assets: allAssets)
+        markDirty()
+    }
+
+    /// Immediately hard-deletes a soft-deleted asset and its entire subtree.
+    /// Photo files are deleted; inline events and transactions are discarded with the assets.
+    func hardDeleteAsset(id: UUID) throws {
+        guard let asset = assets[id] else { throw AssetStoreError.assetNotFound(id) }
+        let subtree = [asset] + asset.descendants
+        asset.parent?._removeChild(asset)
+        for node in subtree {
+            for photo in node.photos { PhotoStorage.delete(id: photo.id) }
+            assets.removeValue(forKey: node.id)
+        }
         notificationScheduler?.requestResync(assets: allAssets)
         markDirty()
     }
@@ -794,10 +805,11 @@ final class AssetStore {
         self.backgroundTheme = backgroundTheme
     }
 
-    /// Permanently removes soft-deleted assets/categories whose deletedAt is older than `seconds`.
-    /// Deletes associated photo files before discarding each asset. Categories still referenced
-    /// by any surviving asset are kept regardless of age — purging them would leave dangling
-    /// categoryIDs that load/import cannot resolve.
+    /// Permanently removes soft-deleted assets and categories whose deletedAt is older than `seconds`.
+    /// Assets are purged first (photo files deleted, inline events/transactions discarded with them).
+    /// Categories are evaluated after — a category kept alive only by a now-purged asset is eligible
+    /// for removal in the same sweep. Categories still referenced by any surviving asset are retained
+    /// regardless of age to avoid dangling categoryIDs.
     func purgeHardDeleted(olderThan seconds: TimeInterval = 90 * 86_400) {
         let cutoff = Date().addingTimeInterval(-seconds)
         assets = assets.filter { _, a in
@@ -810,5 +822,6 @@ final class AssetStore {
             referencedCategoryIDs.contains(id)
                 || !(c.isDeleted && (c.deletedAt ?? .distantFuture) < cutoff)
         }
+        notificationScheduler?.requestResync(assets: allAssets)
     }
 }

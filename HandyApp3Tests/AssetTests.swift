@@ -197,8 +197,8 @@ final class AssetTests: XCTestCase {
         XCTAssertEqual(child.parent?.id, parentA.id)
     }
 
-    // soft-deleting an asset orphans its direct children and removes it from allAssets.
-    func testSoftDeleteOrphansChildrenAndHidesAsset() throws {
+    // soft-deleting an asset marks it and all descendants as deleted, preserving internal links.
+    func testSoftDeleteDeletesSubtreeAndHidesAssets() throws {
         store.seedBuiltInCategories()
         let categoryID = try XCTUnwrap(store.allCategories.first).id
 
@@ -211,13 +211,21 @@ final class AssetTests: XCTestCase {
 
         try store.softDeleteAsset(id: parent.id)
 
+        // All three are hidden from active lists.
         XCTAssertFalse(store.allAssets.contains(where: { $0.id == parent.id }))
-        XCTAssertNil(childA.parent)
-        XCTAssertNil(childA.parentID)
-        XCTAssertNil(childB.parent)
-        XCTAssertNil(childB.parentID)
-        XCTAssertTrue(childA.isRoot)
-        XCTAssertTrue(childB.isRoot)
+        XCTAssertFalse(store.allAssets.contains(where: { $0.id == childA.id }))
+        XCTAssertFalse(store.allAssets.contains(where: { $0.id == childB.id }))
+
+        // All three are marked deleted.
+        XCTAssertTrue(parent.isDeleted)
+        XCTAssertTrue(childA.isDeleted)
+        XCTAssertTrue(childB.isDeleted)
+
+        // Internal parent-child links are preserved for the trash screen and restore.
+        XCTAssertNotNil(childA.parent)
+        XCTAssertEqual(childA.parentID, parent.id)
+        XCTAssertNotNil(childB.parent)
+        XCTAssertEqual(childB.parentID, parent.id)
     }
 
     // descendants returns all nodes in the subtree (breadth-first, excluding self).

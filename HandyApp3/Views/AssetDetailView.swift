@@ -455,25 +455,14 @@ private struct AssetDetailContent: View {
             }
         }
         .confirmationDialog("Delete \"\(asset.name)\"?", isPresented: $deleteConfirmationPresented, titleVisibility: .visible) {
-            if childCount > 0 {
-                Button("Keep Belongings", role: .destructive) {
-                    try? store.softDeleteAsset(id: asset.id)
-                    dismiss()
-                }
-                Button("Delete Everything Inside", role: .destructive) {
-                    try? store.softDeleteAssetDeep(id: asset.id)
-                    dismiss()
-                }
-            } else {
-                Button("Delete", role: .destructive) {
-                    try? store.softDeleteAsset(id: asset.id)
-                    dismiss()
-                }
+            Button("Delete", role: .destructive) {
+                try? store.softDeleteAsset(id: asset.id)
+                dismiss()
             }
             Button("Cancel", role: .cancel) {}
         } message: {
             if childCount > 0 {
-                Text("\(childCount) items inside. Keep them as top-level assets, or delete everything.")
+                Text("^[\(childCount) item](inflect: true) inside will be deleted too.")
             }
         }
     }

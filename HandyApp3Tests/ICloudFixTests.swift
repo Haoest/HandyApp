@@ -237,6 +237,48 @@ final class DeletionHygieneTests: XCTestCase {
         XCTAssertFalse(FileManager.default.fileExists(atPath: thumbURL.path),
                        "deleteAsset must remove thumbnail file")
     }
+
+    func testHardDeleteAssetRemovesSubtreePhotoFiles() throws {
+        let cat = try store.createCategory(name: "Vehicles")
+        let parent = try store.createAsset(name: "Car", categoryID: cat.id)
+        let child = try store.createAsset(name: "Trailer", categoryID: cat.id)
+        try store.addChild(assetID: child.id, toParentID: parent.id)
+
+        let parentPhoto = try store.addPhoto(imageData: Data("p-full".utf8),
+                                             thumbnailData: Data("p-thumb".utf8), toAssetID: parent.id)
+        let childPhoto = try store.addPhoto(imageData: Data("c-full".utf8),
+                                            thumbnailData: Data("c-thumb".utf8), toAssetID: child.id)
+        try store.softDeleteAsset(id: parent.id)
+
+        let urls = [parentPhoto, childPhoto].flatMap {
+            [PhotoStorage.fullURL(id: $0.id), PhotoStorage.thumbURL(id: $0.id)]
+        }
+        XCTAssertTrue(urls.allSatisfy { FileManager.default.fileExists(atPath: $0.path) },
+                      "photo files must exist before hard delete")
+
+        try store.hardDeleteAsset(id: parent.id)
+
+        XCTAssertTrue(urls.allSatisfy { !FileManager.default.fileExists(atPath: $0.path) },
+                      "hardDeleteAsset must delete photo files for every node in the subtree")
+    }
+
+    func testPurgeRemovesExpiredAssetPhotoFiles() throws {
+        let cat = try store.createCategory(name: "Vehicles")
+        let asset = try store.createAsset(name: "Bike", categoryID: cat.id)
+        let photo = try store.addPhoto(imageData: Data("full".utf8),
+                                       thumbnailData: Data("thumb".utf8), toAssetID: asset.id)
+        let fullURL = PhotoStorage.fullURL(id: photo.id)
+        let thumbURL = PhotoStorage.thumbURL(id: photo.id)
+
+        try store.softDeleteAsset(id: asset.id)
+        asset.deletedAt = Date().addingTimeInterval(-15 * 86_400)
+        store.purgeHardDeleted(olderThan: TimeInterval(AppPreference.DaysToRetainDeletedItems) * 86_400)
+
+        XCTAssertFalse(FileManager.default.fileExists(atPath: fullURL.path),
+                       "purge must remove full-image file for expired asset")
+        XCTAssertFalse(FileManager.default.fileExists(atPath: thumbURL.path),
+                       "purge must remove thumbnail file for expired asset")
+    }
 }
 
 // MARK: - Phase 4: photo download trigger
