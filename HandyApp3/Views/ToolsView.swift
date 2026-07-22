@@ -39,7 +39,7 @@ struct ToolsTab: View {
     private var exportFilename: String {
         let formatter = DateFormatter()
         formatter.dateFormat = "yyyy-MM-dd"
-        return "Geeloo-\(formatter.string(from: Date()))"
+        return "BaronBook-\(formatter.string(from: Date()))"
     }
 
     private func runExport() {
