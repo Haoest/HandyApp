@@ -118,6 +118,11 @@ struct AssetTab: View {
             .onChange(of: router.focusedCategoryID) { _, id in
                 if id != nil { viewMode = .all }
             }
+            .onChange(of: router.pendingNewAsset) { _, pending in
+                guard pending else { return }
+                router.pendingNewAsset = false
+                if store.hasAssetCapacity { newAssetPresented = true } else { paywallPresented = true }
+            }
             .navigationDestination(item: $router.pendingAssetID) { id in
                 if let asset = store.assets[id], !asset.isDeleted {
                     AssetDetailView(asset: asset, orderedIDs: orderedAssetIDs)

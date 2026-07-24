@@ -28,4 +28,7 @@ final class AppRouter {
 
     /// When non-nil, ToolsTab consumes this action (e.g. trigger export), then resets to nil.
     var pendingToolsAction: ToolsAction?
+
+    /// When true, the Assets tab opens the new-asset creation sheet. Cleared after consumption.
+    var pendingNewAsset: Bool = false
 }
