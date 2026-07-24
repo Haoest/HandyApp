@@ -170,6 +170,7 @@ struct AssetDetailView: View {
 
 private struct AssetDetailContent: View {
     @Environment(AssetStore.self) private var store
+    @Environment(AppRouter.self) private var router
     @Environment(\.dismiss) private var dismiss
     let asset: Asset
     /// Section to scroll to once the form lays out (deep link from the activity log).
@@ -187,6 +188,7 @@ private struct AssetDetailContent: View {
     // Event/transaction add state
     @State private var addEventPresented = false
     @State private var addTransactionPresented = false
+    @State private var initialTransactionKind: TransactionKind? = nil
 
     // Paywall presentation. Lives at the Form level (not inside a section/row)
     // for the same reason eventSheetMode/transactionSheetMode/selectedPhoto do.
@@ -340,6 +342,21 @@ private struct AssetDetailContent: View {
             }
         }
         .navigationTitle(asset.name)
+        .onAppear {
+            if let kind = router.pendingTransactionKind {
+                router.pendingTransactionKind = nil
+                initialTransactionKind = kind
+                if store.hasTransactionCapacity(for: asset) { addTransactionPresented = true }
+                else { paywallReason = .transactions; paywallPresented = true }
+            }
+        }
+        .onChange(of: router.pendingTransactionKind) { _, kind in
+            guard let kind else { return }
+            router.pendingTransactionKind = nil
+            initialTransactionKind = kind
+            if store.hasTransactionCapacity(for: asset) { addTransactionPresented = true }
+            else { paywallReason = .transactions; paywallPresented = true }
+        }
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 Menu {
@@ -404,8 +421,8 @@ private struct AssetDetailContent: View {
                 try? store.addEvent(title: title, date: date, notes: notes, recurrence: recurrence, toAssetID: asset.id)
             }
         }
-        .sheet(isPresented: $addTransactionPresented) {
-            TransactionEditView { details, amount, date, kind, payeeID, notes, recurrence in
+        .sheet(isPresented: $addTransactionPresented, onDismiss: { initialTransactionKind = nil }) {
+            TransactionEditView(initialKind: initialTransactionKind) { details, amount, date, kind, payeeID, notes, recurrence in
                 try? store.addTransaction(details: details, amount: amount, date: date, kind: kind, payeeContactID: payeeID, notes: notes, recurrence: recurrence, toAssetID: asset.id)
             }
         }

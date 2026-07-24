@@ -34,4 +34,7 @@ final class AppRouter {
 
     /// Optional name pre-fill for the next new-asset sheet. Consumed alongside `pendingNewAsset`.
     var pendingNewAssetName: String? = nil
+
+    /// When non-nil, the asset detail screen opens the add-transaction sheet with this kind pre-selected.
+    var pendingTransactionKind: TransactionKind? = nil
 }

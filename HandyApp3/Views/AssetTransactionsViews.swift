@@ -205,14 +205,14 @@ struct TransactionEditView: View {
     @State private var interval: RecurrenceInterval
     @State private var contactPickerPresented = false
 
-    init(existing: Transaction? = nil, prefill: Transaction? = nil, onSave: @escaping (String, Decimal, Date, TransactionKind, String?, String, RecurrenceInterval?) -> Void) {
+    init(existing: Transaction? = nil, prefill: Transaction? = nil, initialKind: TransactionKind? = nil, onSave: @escaping (String, Decimal, Date, TransactionKind, String?, String, RecurrenceInterval?) -> Void) {
         self.existing = existing
         self.onSave = onSave
         let source = existing ?? prefill
         _details = State(initialValue: source?.details ?? "")
         _amountText = State(initialValue: source.map { "\($0.amount)" } ?? "")
         _date = State(initialValue: existing?.date ?? Date())
-        _kind = State(initialValue: source?.kind ?? .expense)
+        _kind = State(initialValue: source?.kind ?? initialKind ?? .expense)
         _payeeContactID = State(initialValue: source?.payeeContactID)
         _notes = State(initialValue: source?.notes ?? "")
         // Recurrence intentionally doesn't carry over from a duplicate prefill —
