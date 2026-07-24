@@ -114,7 +114,13 @@ struct AssetTab: View {
             .sheet(isPresented: $paywallPresented) {
                 PaywallView()
             }
-            .onAppear { if router.focusedCategoryID != nil { viewMode = .all } }
+            .onAppear {
+                if router.focusedCategoryID != nil { viewMode = .all }
+                if router.pendingNewAsset {
+                    router.pendingNewAsset = false
+                    if store.hasAssetCapacity { newAssetPresented = true } else { paywallPresented = true }
+                }
+            }
             .onChange(of: router.focusedCategoryID) { _, id in
                 if id != nil { viewMode = .all }
             }
