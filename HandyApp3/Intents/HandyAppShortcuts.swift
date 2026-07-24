@@ -24,5 +24,14 @@ struct HandyAppShortcuts: AppShortcutsProvider {
             shortTitle: "Add Asset",
             systemImageName: "plus.circle"
         )
+        AppShortcut(
+            intent: AddNamedAssetIntent(),
+            phrases: [
+                "Add new named asset in \(.applicationName)",
+                "Create new named asset in \(.applicationName)"
+            ],
+            shortTitle: "Add Named Asset",
+            systemImageName: "plus.circle"
+        )
     }
 }

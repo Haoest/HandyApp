@@ -31,4 +31,7 @@ final class AppRouter {
 
     /// When true, the Assets tab opens the new-asset creation sheet. Cleared after consumption.
     var pendingNewAsset: Bool = false
+
+    /// Optional name pre-fill for the next new-asset sheet. Consumed alongside `pendingNewAsset`.
+    var pendingNewAssetName: String? = nil
 }

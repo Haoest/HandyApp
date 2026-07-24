@@ -10,6 +10,7 @@ struct AssetTab: View {
     @Environment(AppRouter.self) private var router
     @State private var newAssetPresented = false
     @State private var paywallPresented = false
+    @State private var pendingAssetName: String? = nil
     @State private var viewMode: AssetListMode = .all
     @State private var expanded: Set<UUID> = []
 
@@ -108,8 +109,8 @@ struct AssetTab: View {
                     }
                 }
             }
-            .sheet(isPresented: $newAssetPresented) {
-                NewAssetSheet()
+            .sheet(isPresented: $newAssetPresented, onDismiss: { pendingAssetName = nil }) {
+                NewAssetSheet(initialName: pendingAssetName)
             }
             .sheet(isPresented: $paywallPresented) {
                 PaywallView()
@@ -118,6 +119,8 @@ struct AssetTab: View {
                 if router.focusedCategoryID != nil { viewMode = .all }
                 if router.pendingNewAsset {
                     router.pendingNewAsset = false
+                    pendingAssetName = router.pendingNewAssetName
+                    router.pendingNewAssetName = nil
                     if store.hasAssetCapacity { newAssetPresented = true } else { paywallPresented = true }
                 }
             }
@@ -127,6 +130,8 @@ struct AssetTab: View {
             .onChange(of: router.pendingNewAsset) { _, pending in
                 guard pending else { return }
                 router.pendingNewAsset = false
+                pendingAssetName = router.pendingNewAssetName
+                router.pendingNewAssetName = nil
                 if store.hasAssetCapacity { newAssetPresented = true } else { paywallPresented = true }
             }
             .navigationDestination(item: $router.pendingAssetID) { id in

@@ -96,10 +96,11 @@ struct NewAssetSheet: View {
     @Environment(AssetStore.self) private var store
     @Environment(\.dismiss) private var dismiss
     @State private var createdAsset: Asset?
+    var initialName: String? = nil
 
     var body: some View {
         NavigationStack {
-            CategoryPickerContent { asset in createdAsset = asset }
+            CategoryPickerContent(initialName: initialName) { asset in createdAsset = asset }
                 .navigationTitle("New Asset")
                 .toolbar {
                     ToolbarItem(placement: .cancellationAction) {
@@ -125,6 +126,7 @@ struct NewAssetSheet: View {
 
 private struct CategoryPickerContent: View {
     @Environment(AssetStore.self) private var store
+    var initialName: String? = nil
     let onCreate: (Asset) -> Void
 
     private var sortedCategories: [AssetCategory] {
@@ -143,11 +145,14 @@ private struct CategoryPickerContent: View {
                 Section("Select Category") {
                     ForEach(sortedCategories) { category in
                         Button(category.name) {
-                            let count = (try? store.assets(ofCategoryID: category.id))?.count ?? 0
-                            if let asset = try? store.createAsset(
-                                name: "\(category.name) \(count + 1)",
-                                categoryID: category.id
-                            ) {
+                            let name: String
+                            if let provided = initialName, !provided.trimmingCharacters(in: .whitespaces).isEmpty {
+                                name = provided
+                            } else {
+                                let count = (try? store.assets(ofCategoryID: category.id))?.count ?? 0
+                                name = "\(category.name) \(count + 1)"
+                            }
+                            if let asset = try? store.createAsset(name: name, categoryID: category.id) {
                                 onCreate(asset)
                             }
                         }
