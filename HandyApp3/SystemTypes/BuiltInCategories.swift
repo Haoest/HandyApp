@@ -38,18 +38,12 @@ extension BuiltInTypes {
         return [
             .residentialHousing: [
                 PropertyDefinition(name: "Address",       type: .basic(.text),    isRequired: true),
-                PropertyDefinition(name: "Address2",      type: .basic(.text),    isRequired: false),
-                PropertyDefinition(name: "City",          type: .basic(.text),    isRequired: false),
-                PropertyDefinition(name: "State",         type: .basic(.text),    isRequired: false),
-                PropertyDefinition(name: "Zip",           type: .basic(.text),    isRequired: false),
+
                 PropertyDefinition(name: "Purchase date", type: .basic(.date),    isRequired: false),
                 PropertyDefinition(name: "HOA Contact",   type: .basic(.contact), isRequired: false),
             ],
             .rentalHome: [
                 PropertyDefinition(name: "Address",       type: .basic(.text),    isRequired: true),
-                PropertyDefinition(name: "City",          type: .basic(.text),    isRequired: false),
-                PropertyDefinition(name: "State",         type: .basic(.text),    isRequired: false),
-                PropertyDefinition(name: "Zip",           type: .basic(.text),    isRequired: false),
                 PropertyDefinition(name: "Purchase date", type: .basic(.date),    isRequired: false),
                 PropertyDefinition(name: "Tenant",        type: .basic(.contact), isRequired: false),
             ],
