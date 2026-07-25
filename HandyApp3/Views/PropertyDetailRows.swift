@@ -2,6 +2,26 @@ import SwiftUI
 import UIKit
 import Contacts
 
+// MARK: - Shared label
+
+struct PropertyLabel: View {
+    let name: String
+    let onEditLabel: (() -> Void)?
+
+    var body: some View {
+        Group {
+            if let onEditLabel {
+                Button(name) { onEditLabel() }
+                    .buttonStyle(.plain)
+            } else {
+                Text(name)
+            }
+        }
+        .font(.subheadline)
+        .foregroundStyle(.secondary)
+    }
+}
+
 // MARK: - Property detail rows
 
 struct PropertyDetailRow: View {
@@ -26,16 +46,9 @@ struct PropertyDetailRow: View {
         case .composite(let def):
             CompositeDetailLink(assetID: assetID, property: property, definition: def, onEditLabel: onEditLabel)
         default:
-            LabeledContent {
+            VStack(alignment: .leading, spacing: 4) {
+                PropertyLabel(name: property.definition.name, onEditLabel: onEditLabel)
                 Text("—").foregroundStyle(.tertiary)
-            } label: {
-                if let onEditLabel {
-                    Button(property.definition.name) { onEditLabel() }
-                        .buttonStyle(.plain)
-                        .foregroundStyle(.primary)
-                } else {
-                    Text(property.definition.name)
-                }
             }
         }
     }
@@ -60,42 +73,32 @@ private struct ContactDetailRow: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            LabeledContent {
-                if identifier != nil {
-                    HStack(spacing: 12) {
-                        if let name = resolvedName {
-                            Text(name).foregroundStyle(.secondary)
-                        } else {
-                            Text("(not found)").foregroundStyle(.tertiary)
-                        }
-                        Button { pickerPresented = true } label: {
-                            Image(systemName: "person.crop.circle")
-                        }
-                        .buttonStyle(.borderless)
-                        Button {
-                            try? store.removePropertyValue(forDefinitionID: property.definition.id, fromAssetID: assetID)
-                        } label: {
-                            Image(systemName: "xmark.circle.fill")
-                        }
-                        .buttonStyle(.borderless)
-                        .foregroundStyle(.secondary)
+        VStack(alignment: .leading, spacing: 4) {
+            PropertyLabel(name: property.definition.name, onEditLabel: onEditLabel)
+            if identifier != nil {
+                HStack(spacing: 12) {
+                    if let name = resolvedName {
+                        Text(name).foregroundStyle(.secondary)
+                    } else {
+                        Text("(not found)").foregroundStyle(.tertiary)
                     }
-                } else {
                     Button { pickerPresented = true } label: {
                         Image(systemName: "person.crop.circle")
                     }
+                    .buttonStyle(.borderless)
+                    Button {
+                        try? store.removePropertyValue(forDefinitionID: property.definition.id, fromAssetID: assetID)
+                    } label: {
+                        Image(systemName: "xmark.circle.fill")
+                    }
+                    .buttonStyle(.borderless)
+                    .foregroundStyle(.secondary)
                 }
-            } label: {
-                if let onEditLabel {
-                    Button(property.definition.name) { onEditLabel() }
-                        .buttonStyle(.plain)
-                        .foregroundStyle(.primary)
-                } else {
-                    Text(property.definition.name)
+            } else {
+                Button { pickerPresented = true } label: {
+                    Image(systemName: "person.crop.circle")
                 }
             }
-
             if let contact = resolvedContact {
                 ContactActionBar(contact: contact)
             }
@@ -190,9 +193,9 @@ private struct TextDetailField: View {
     }
 
     var body: some View {
-        LabeledContent {
+        VStack(alignment: .leading, spacing: 4) {
+            PropertyLabel(name: property.definition.name, onEditLabel: onEditLabel)
             TextField("", text: $text, axis: .vertical)
-                .multilineTextAlignment(.trailing)
                 .focused($isFocused)
                 .onSubmit { commit() }
                 .onChange(of: isFocused) { _, focused in if !focused { commit() } }
@@ -200,14 +203,6 @@ private struct TextDetailField: View {
                     guard !isFocused else { return }
                     if case .text(let s) = newValue { text = s } else { text = "" }
                 }
-        } label: {
-            if let onEditLabel {
-                Button(property.definition.name) { onEditLabel() }
-                    .buttonStyle(.plain)
-                    .foregroundStyle(.primary)
-            } else {
-                Text(property.definition.name)
-            }
         }
     }
 
@@ -237,24 +232,16 @@ private struct NumberDetailField: View {
     }
 
     var body: some View {
-        LabeledContent {
+        VStack(alignment: .leading, spacing: 4) {
+            PropertyLabel(name: property.definition.name, onEditLabel: onEditLabel)
             TextField("", text: $text)
                 .keyboardType(.decimalPad)
-                .multilineTextAlignment(.trailing)
                 .focused($isFocused)
                 .onChange(of: isFocused) { _, focused in if !focused { commit() } }
                 .onChange(of: property.value) { _, newValue in
                     guard !isFocused else { return }
                     if case .number(let d) = newValue { text = "\(d)" } else { text = "" }
                 }
-        } label: {
-            if let onEditLabel {
-                Button(property.definition.name) { onEditLabel() }
-                    .buttonStyle(.plain)
-                    .foregroundStyle(.primary)
-            } else {
-                Text(property.definition.name)
-            }
         }
     }
 
@@ -284,24 +271,16 @@ private struct CurrencyDetailField: View {
     }
 
     var body: some View {
-        LabeledContent {
+        VStack(alignment: .leading, spacing: 4) {
+            PropertyLabel(name: property.definition.name, onEditLabel: onEditLabel)
             TextField("", text: $text)
                 .keyboardType(.decimalPad)
-                .multilineTextAlignment(.trailing)
                 .focused($isFocused)
                 .onChange(of: isFocused) { _, focused in if !focused { commit() } }
                 .onChange(of: property.value) { _, newValue in
                     guard !isFocused else { return }
                     if case .currency(let d) = newValue { text = "\(d)" } else { text = "" }
                 }
-        } label: {
-            if let onEditLabel {
-                Button(property.definition.name) { onEditLabel() }
-                    .buttonStyle(.plain)
-                    .foregroundStyle(.primary)
-            } else {
-                Text(property.definition.name)
-            }
         }
     }
 
@@ -335,25 +314,15 @@ private struct CompositeDetailLink: View {
     }
 
     var body: some View {
-        // The trailing summary is the NavigationLink (drill-in to edit values); the
-        // label stays a rename Button for custom properties. Keeping them as separate
-        // tap targets avoids nesting a Button inside a NavigationLink.
-        LabeledContent {
+        let title = definition.decoratedLabel(property.definition.name)
+        let summary = property.value?.compositeSummary(for: definition) ?? ""
+        VStack(alignment: .leading, spacing: 4) {
+            PropertyLabel(name: title, onEditLabel: onEditLabel)
             NavigationLink {
                 CompositeEditView(definition: definition, value: valueBinding)
             } label: {
-                let summary = property.value?.compositeSummary(for: definition) ?? ""
                 Text(summary.isEmpty ? "—" : summary)
                     .foregroundStyle(summary.isEmpty ? .tertiary : .secondary)
-            }
-        } label: {
-            let title = definition.decoratedLabel(property.definition.name)
-            if let onEditLabel {
-                Button(title) { onEditLabel() }
-                    .buttonStyle(.plain)
-                    .foregroundStyle(.primary)
-            } else {
-                Text(title)
             }
         }
     }
@@ -373,17 +342,10 @@ private struct DateDetailRow: View {
     }
 
     var body: some View {
-        LabeledContent {
+        VStack(alignment: .leading, spacing: 4) {
+            PropertyLabel(name: property.definition.name, onEditLabel: onEditLabel)
             DatePicker("", selection: dateBinding, displayedComponents: .date)
                 .labelsHidden()
-        } label: {
-            if let onEditLabel {
-                Button(property.definition.name) { onEditLabel() }
-                    .buttonStyle(.plain)
-                    .foregroundStyle(.primary)
-            } else {
-                Text(property.definition.name)
-            }
         }
     }
 }
@@ -409,7 +371,8 @@ private struct ComboListDetailRow: View {
     }
 
     var body: some View {
-        LabeledContent {
+        VStack(alignment: .leading, spacing: 4) {
+            PropertyLabel(name: property.definition.name, onEditLabel: onEditLabel)
             Picker("", selection: selectionBinding) {
                 Text("—").tag("")
                 ForEach(list.allOptions, id: \.self) { option in
@@ -417,14 +380,6 @@ private struct ComboListDetailRow: View {
                 }
             }
             .labelsHidden()
-        } label: {
-            if let onEditLabel {
-                Button(property.definition.name) { onEditLabel() }
-                    .buttonStyle(.plain)
-                    .foregroundStyle(.primary)
-            } else {
-                Text(property.definition.name)
-            }
         }
     }
 }

@@ -130,12 +130,9 @@ private struct TemplatePropertyRow: View {
         case .composite(let def):
             TemplateCompositeRow(categoryID: categoryID, property: property, definition: def, onEditLabel: onEditLabel)
         default:
-            LabeledContent {
+            VStack(alignment: .leading, spacing: 4) {
+                PropertyLabel(name: property.definition.name, onEditLabel: onEditLabel)
                 Text("—").foregroundStyle(.tertiary)
-            } label: {
-                Button(property.definition.name) { onEditLabel() }
-                    .buttonStyle(.plain)
-                    .foregroundStyle(.primary)
             }
         }
     }
@@ -158,9 +155,9 @@ private struct TemplateTextRow: View {
     }
 
     var body: some View {
-        LabeledContent {
+        VStack(alignment: .leading, spacing: 4) {
+            PropertyLabel(name: property.definition.name, onEditLabel: onEditLabel)
             TextField("", text: $text, axis: .vertical)
-                .multilineTextAlignment(.trailing)
                 .focused($isFocused)
                 .onSubmit { commit() }
                 .onChange(of: isFocused) { _, focused in if !focused { commit() } }
@@ -172,10 +169,6 @@ private struct TemplateTextRow: View {
                     default: text = ""
                     }
                 }
-        } label: {
-            Button(property.definition.name) { onEditLabel() }
-                .buttonStyle(.plain)
-                .foregroundStyle(.primary)
         }
     }
 
@@ -205,20 +198,16 @@ private struct TemplateNumberRow: View {
     }
 
     var body: some View {
-        LabeledContent {
+        VStack(alignment: .leading, spacing: 4) {
+            PropertyLabel(name: property.definition.name, onEditLabel: onEditLabel)
             TextField("", text: $text)
                 .keyboardType(.decimalPad)
-                .multilineTextAlignment(.trailing)
                 .focused($isFocused)
                 .onChange(of: isFocused) { _, focused in if !focused { commit() } }
                 .onChange(of: property.value) { _, newValue in
                     guard !isFocused else { return }
                     if case .number(let d) = newValue { text = "\(d)" } else { text = "" }
                 }
-        } label: {
-            Button(property.definition.name) { onEditLabel() }
-                .buttonStyle(.plain)
-                .foregroundStyle(.primary)
         }
     }
 
@@ -248,20 +237,16 @@ private struct TemplateCurrencyRow: View {
     }
 
     var body: some View {
-        LabeledContent {
+        VStack(alignment: .leading, spacing: 4) {
+            PropertyLabel(name: property.definition.name, onEditLabel: onEditLabel)
             TextField("", text: $text)
                 .keyboardType(.decimalPad)
-                .multilineTextAlignment(.trailing)
                 .focused($isFocused)
                 .onChange(of: isFocused) { _, focused in if !focused { commit() } }
                 .onChange(of: property.value) { _, newValue in
                     guard !isFocused else { return }
                     if case .currency(let d) = newValue { text = "\(d)" } else { text = "" }
                 }
-        } label: {
-            Button(property.definition.name) { onEditLabel() }
-                .buttonStyle(.plain)
-                .foregroundStyle(.primary)
         }
     }
 
@@ -288,13 +273,10 @@ private struct TemplateDateRow: View {
     }
 
     var body: some View {
-        LabeledContent {
+        VStack(alignment: .leading, spacing: 4) {
+            PropertyLabel(name: property.definition.name, onEditLabel: onEditLabel)
             DatePicker("", selection: dateBinding, displayedComponents: .date)
                 .labelsHidden()
-        } label: {
-            Button(property.definition.name) { onEditLabel() }
-                .buttonStyle(.plain)
-                .foregroundStyle(.primary)
         }
     }
 }
@@ -320,18 +302,16 @@ private struct TemplateCompositeRow: View {
     }
 
     var body: some View {
-        LabeledContent {
+        let title = definition.decoratedLabel(property.definition.name)
+        let summary = property.value?.compositeSummary(for: definition) ?? ""
+        VStack(alignment: .leading, spacing: 4) {
+            PropertyLabel(name: title, onEditLabel: onEditLabel)
             NavigationLink {
                 CompositeEditView(definition: definition, value: valueBinding)
             } label: {
-                let summary = property.value?.compositeSummary(for: definition) ?? ""
                 Text(summary.isEmpty ? "—" : summary)
                     .foregroundStyle(summary.isEmpty ? .tertiary : .secondary)
             }
-        } label: {
-            Button(definition.decoratedLabel(property.definition.name)) { onEditLabel() }
-                .buttonStyle(.plain)
-                .foregroundStyle(.primary)
         }
     }
 }
@@ -357,7 +337,8 @@ private struct TemplateComboRow: View {
     }
 
     var body: some View {
-        LabeledContent {
+        VStack(alignment: .leading, spacing: 4) {
+            PropertyLabel(name: property.definition.name, onEditLabel: onEditLabel)
             Picker("", selection: selectionBinding) {
                 Text("—").tag("")
                 ForEach(list.allOptions, id: \.self) { option in
@@ -365,10 +346,6 @@ private struct TemplateComboRow: View {
                 }
             }
             .labelsHidden()
-        } label: {
-            Button(property.definition.name) { onEditLabel() }
-                .buttonStyle(.plain)
-                .foregroundStyle(.primary)
         }
     }
 }
