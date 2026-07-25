@@ -33,6 +33,10 @@ struct CategoryPropertyDefsView: View {
             }
 
             Section {
+                CategoryNameField(category: category)
+            }
+
+            Section {
                 ForEach(category.propertyTemplates) { prop in
                     TemplatePropertyRow(categoryID: category.id, property: prop, onEditLabel: { propertyToEdit = prop })
                         .swipeActions(edge: .trailing, allowsFullSwipe: false) {
@@ -106,6 +110,37 @@ struct CategoryPropertyDefsView: View {
         } message: {
             Text("The category will be removed. Existing assets will not be affected.")
         }
+    }
+}
+
+// MARK: - Name field
+
+private struct CategoryNameField: View {
+    @Environment(AssetStore.self) private var store
+    let category: AssetCategory
+    @State private var text: String
+    @FocusState private var isFocused: Bool
+
+    init(category: AssetCategory) {
+        self.category = category
+        _text = State(initialValue: category.name)
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            PropertyLabel(name: "Name", onEditLabel: nil)
+            TextField("Name", text: $text)
+                .focused($isFocused)
+                .onSubmit { commit() }
+                .onChange(of: isFocused) { _, focused in if !focused { commit() } }
+        }
+    }
+
+    private func commit() {
+        let trimmed = text.trimmingCharacters(in: .whitespaces)
+        guard !trimmed.isEmpty else { text = category.name; return }
+        guard trimmed != category.name else { return }
+        try? store.updateCategory(id: category.id, name: trimmed)
     }
 }
 
