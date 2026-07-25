@@ -799,6 +799,9 @@
         }
       }
     },
+    "Choose File" : {
+
+    },
     "Choose Icon" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -993,6 +996,9 @@
           }
         }
       }
+    },
+    "Data from the file you choose will be merged into what's already on this device. Nothing is deleted or overwritten — categories, assets, properties, events, transactions and photos that already exist are left as they are, and anything new is added." : {
+
     },
     "Date" : {
       "extractionState" : "manual",
@@ -2974,6 +2980,9 @@
           }
         }
       }
+    },
+    "The imported file has been merged into your data. Existing records were left unchanged; anything new was added." : {
+
     },
     "These values are copied into new assets created from this category." : {
       "extractionState" : "manual",

@@ -2,13 +2,13 @@ import XCTest
 @testable import HandyApp3
 
 /// Referential-integrity invariants between assets and their categories across
-/// hard-purge and export/import. These encode the *intended* behavior:
-/// - Bug #1: `importJSON` silently drops assets whose category is missing from
-///   the snapshot (`applySnapshot` guard), while keeping their activity entries.
-/// - Bug #2: `purgeHardDeleted` removes a soft-deleted category even when live
-///   assets still reference it, creating the dangling references Bug #1 then eats.
-/// The bug tests FAIL against the current implementation by design; they go
-/// green when the fixes land.
+/// hard-purge and merge-on-import:
+/// - `purgeHardDeleted` must not remove a soft-deleted category still referenced
+///   by a live asset — that would leave the asset with a dangling categoryID.
+/// - `importJSON` merges additively; an incoming asset whose category is absent
+///   from the snapshot must still land (recovered under a placeholder category),
+///   never silently dropped.
+/// - The activity log must never reference an asset that didn't survive a merge.
 final class StoreIntegrityTests: XCTestCase {
 
     var store: AssetStore!
@@ -73,7 +73,7 @@ final class StoreIntegrityTests: XCTestCase {
         )
     }
 
-    // MARK: - Bug #1: import must not silently drop orphaned assets
+    // MARK: - Merge must not silently drop orphaned assets
 
     func testImportPreservesAssetWhoseCategoryIsMissingFromSnapshot() throws {
         let keptCategory = try store.createCategory(name: "Kept")
@@ -85,33 +85,52 @@ final class StoreIntegrityTests: XCTestCase {
         let export = try XCTUnwrap(store.exportJSON())
         let doctored = try stripCategory(id: missingCategory.id, fromExport: export)
 
-        try store.importJSON(data: doctored)
+        // Import into a second, empty store — merging the doctored file back into `store`
+        // would pass vacuously since `store` still has the (undoctored) category locally.
+        let tempDir2 = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        AssetStore.baseDirOverride = tempDir2
+        let store2 = AssetStore()
+        defer {
+            AssetStore.baseDirOverride = tempDir
+            try? FileManager.default.removeItem(at: tempDir2)
+        }
 
-        XCTAssertNotNil(store.assets[keptAsset.id], "asset with an intact category must survive import")
+        try store2.importJSON(data: doctored)
+
+        XCTAssertNotNil(store2.assets[keptAsset.id], "asset with an intact category must survive import")
         XCTAssertNotNil(
-            store.assets[orphanAsset.id],
+            store2.assets[orphanAsset.id],
             "asset whose category is missing from the snapshot must be recovered, not silently dropped"
         )
     }
 
     func testImportedActivityLogOnlyReferencesAssetsThatSurvivedImport() throws {
         let category = try store.createCategory(name: "Vanishing")
-        let asset = try store.createAsset(name: "Fridge", categoryID: category.id)
-        _ = try store.addEvent(title: "Checkup", date: Date(), toAssetID: asset.id)
-        _ = try store.addTransaction(details: "Repair", amount: 42, date: Date(),
-                                     kind: .expense, toAssetID: asset.id)
+        let survivor = try store.createAsset(name: "Fridge", categoryID: category.id)
+        let skipped = try store.createAsset(name: "Trashed", categoryID: category.id)
+        _ = try store.addEvent(title: "Checkup", date: Date(), toAssetID: survivor.id)
+        _ = try store.addEvent(title: "Recall", date: Date(), toAssetID: skipped.id)
+        try store.softDeleteAsset(id: skipped.id)
 
         let export = try XCTUnwrap(store.exportJSON())
-        let doctored = try stripCategory(id: category.id, fromExport: export)
 
-        try store.importJSON(data: doctored)
+        let tempDir2 = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        AssetStore.baseDirOverride = tempDir2
+        let store2 = AssetStore()
+        defer {
+            AssetStore.baseDirOverride = tempDir
+            try? FileManager.default.removeItem(at: tempDir2)
+        }
 
-        for entry in store.activityLog {
+        try store2.importJSON(data: export)
+
+        XCTAssertNil(store2.assets[skipped.id], "soft-deleted incoming asset must be skipped by merge")
+        for entry in store2.activityLog {
             let referenced = entry.owningAssetID ?? (entry.kind == .asset ? entry.recordID : nil)
             guard let assetID = referenced else { continue }
             XCTAssertNotNil(
-                store.assets[assetID],
-                "activity entry (\(entry.kind)) references asset \(assetID) that import dropped — log and assets must stay consistent"
+                store2.assets[assetID],
+                "activity entry (\(entry.kind)) references asset \(assetID) that merge skipped — log and assets must stay consistent"
             )
         }
     }

@@ -108,20 +108,20 @@ final class PhotoImportExportTests: XCTestCase {
         XCTAssertEqual(restored.photos.first?.id, photo.id)
     }
 
-    func testImportDeletesUnreferencedPhotoFiles() throws {
-        // Write orphan files that no snapshot references.
-        let orphanID = UUID()
-        PhotoStorage.save(id: orphanID,
-                          imageData: Data("orphan_full".utf8),
-                          thumbnailData: Data("orphan_thumb".utf8))
+    func testImportPreservesUnreferencedLocalPhotoFiles() throws {
+        // Write a local-only photo file that the incoming snapshot doesn't reference.
+        let localOnlyID = UUID()
+        PhotoStorage.save(id: localOnlyID,
+                          imageData: Data("local_full".utf8),
+                          thumbnailData: Data("local_thumb".utf8))
 
         let cat = try store.createCategory(name: "Fleet")
         let export = try XCTUnwrap(store.exportJSON())
         try store.importJSON(data: export)
 
-        XCTAssertFalse(FileManager.default.fileExists(atPath: PhotoStorage.fullURL(id: orphanID).path),
-                       "importJSON must delete photo files not referenced by the incoming snapshot")
-        XCTAssertFalse(FileManager.default.fileExists(atPath: PhotoStorage.thumbURL(id: orphanID).path))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: PhotoStorage.fullURL(id: localOnlyID).path),
+                      "merge-on-import must never delete local photo files, referenced or not")
+        XCTAssertTrue(FileManager.default.fileExists(atPath: PhotoStorage.thumbURL(id: localOnlyID).path))
     }
 
     func testExportEmbedsPhotoBytes() throws {
