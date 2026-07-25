@@ -1,7 +1,7 @@
 import Foundation
 
 enum SystemCategory: String {
-    case residentialHousing = "Residential Housing"
+    case residentialHousing = "Primary Home"
     case rentalHome         = "Rental Home"
     case automobile         = "Automobile"
     case appliance          = "Appliance"
