@@ -54,53 +54,61 @@ struct ToolsTab: View {
             ZStack {
                 AppBackground()
                 List {
-                    Button {
-                        runExport()
-                    } label: {
-                        Label("Export Data", systemImage: "square.and.arrow.up")
-                    }
-                    .listRowBackground(Color.white.opacity(0.5))
-                    Button {
-                        importConfirmText = ""
-                        showingImportConfirm = true
-                    } label: {
-                        Label("Import Data", systemImage: "square.and.arrow.down")
-                    }
-                    .listRowBackground(Color.white.opacity(0.5))
-                    NavigationLink(destination: DeletedAssetsView()) {
-                        Label("Deleted Assets", systemImage: "trash.slash")
-                    }
-                    .listRowBackground(Color.white.opacity(0.5))
-                    NavigationLink(destination: DeletedCategoriesView()) {
-                        Label("Deleted Categories", systemImage: "folder.badge.minus")
-                    }
-                    .listRowBackground(Color.white.opacity(0.5))
-                    NavigationLink(destination: BulkCommunicationView()) {
-                        Label("Bulk Communication", systemImage: "bubble.left.and.bubble.right")
-                    }
-                    .listRowBackground(Color.white.opacity(0.5))
-                    Button {
-                        restorePurchases()
-                    } label: {
-                        if isRestoringPurchases {
-                            HStack {
-                                Label("Restore Purchases", systemImage: "arrow.clockwise")
-                                Spacer()
-                                ProgressView()
-                            }
-                        } else {
-                            Label("Restore Purchases", systemImage: "arrow.clockwise")
+                    Section("Data") {
+                        Button {
+                            runExport()
+                        } label: {
+                            Label("Export Data", systemImage: "square.and.arrow.up")
                         }
+                        .listRowBackground(Color.white.opacity(0.5))
+                        Button {
+                            importConfirmText = ""
+                            showingImportConfirm = true
+                        } label: {
+                            Label("Import Data", systemImage: "square.and.arrow.down")
+                        }
+                        .listRowBackground(Color.white.opacity(0.5))
+                        NavigationLink(destination: DeletedAssetsView()) {
+                            Label("Deleted Assets", systemImage: "trash.slash")
+                        }
+                        .listRowBackground(Color.white.opacity(0.5))
+                        NavigationLink(destination: DeletedCategoriesView()) {
+                            Label("Deleted Categories", systemImage: "folder.badge.minus")
+                        }
+                        .listRowBackground(Color.white.opacity(0.5))
                     }
-                    .disabled(isRestoringPurchases)
-                    .listRowBackground(Color.white.opacity(0.5))
-                    Button(role: .destructive) {
-                        resetConfirmText = ""
-                        showingResetAlert = true
-                    } label: {
-                        Label("Factory Reset", systemImage: "exclamationmark.triangle")
+
+                    Section("Communication") {
+                        NavigationLink(destination: BulkCommunicationView()) {
+                            Label("Bulk Communication", systemImage: "bubble.left.and.bubble.right")
+                        }
+                        .listRowBackground(Color.white.opacity(0.5))
                     }
-                    .listRowBackground(Color.white.opacity(0.5))
+
+                    Section("System") {
+                        Button {
+                            restorePurchases()
+                        } label: {
+                            if isRestoringPurchases {
+                                HStack {
+                                    Label("Restore Purchases", systemImage: "arrow.clockwise")
+                                    Spacer()
+                                    ProgressView()
+                                }
+                            } else {
+                                Label("Restore Purchases", systemImage: "arrow.clockwise")
+                            }
+                        }
+                        .disabled(isRestoringPurchases)
+                        .listRowBackground(Color.white.opacity(0.5))
+                        Button(role: .destructive) {
+                            resetConfirmText = ""
+                            showingResetAlert = true
+                        } label: {
+                            Label("Factory Reset", systemImage: "exclamationmark.triangle")
+                        }
+                        .listRowBackground(Color.white.opacity(0.5))
+                    }
                 }
                 .scrollContentBackground(.hidden)
                 .environment(\.colorScheme, .light)
