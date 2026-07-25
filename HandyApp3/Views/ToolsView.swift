@@ -54,6 +54,13 @@ struct ToolsTab: View {
             ZStack {
                 AppBackground()
                 List {
+                    Section("Help") {
+                        NavigationLink(destination: QuickStartGuideView()) {
+                            Label("Quick Start Guide", systemImage: "questionmark.circle")
+                        }
+                        .listRowBackground(Color.white.opacity(0.5))
+                    }
+
                     Section("Data") {
                         Button {
                             runExport()
@@ -541,6 +548,88 @@ struct BulkCommunicationView: View {
             guard let url = URL(string: urlString) else { continue }
             UIApplication.shared.open(url)
         }
+    }
+}
+
+// MARK: - Quick start guide
+
+private struct SiriCommand: Identifiable {
+    let id = UUID()
+    let phrases: [String]
+    let description: String
+}
+
+struct QuickStartGuideView: View {
+    private let commands: [SiriCommand] = [
+        SiriCommand(
+            phrases: [
+                "\"Open asset [name] in Baron Book\"",
+                "\"Show [name] in Baron Book\"",
+                "\"Open an asset in Baron Book\""
+            ],
+            description: "Jump straight to an asset's detail screen."
+        ),
+        SiriCommand(
+            phrases: [
+                "\"Add asset in Baron Book\"",
+                "\"Create new asset in Baron Book\""
+            ],
+            description: "Start creating a new asset."
+        ),
+        SiriCommand(
+            phrases: [
+                "\"Add new named asset in Baron Book\"",
+                "\"Create new named asset in Baron Book\""
+            ],
+            description: "Start creating a new asset with the name you say."
+        ),
+        SiriCommand(
+            phrases: [
+                "\"Add transaction to [asset] in Baron Book\"",
+                "\"Record transaction to [asset] in Baron Book\""
+            ],
+            description: "Start recording a transaction for an asset."
+        ),
+        SiriCommand(
+            phrases: [
+                "\"Add expense to [asset] in Baron Book\"",
+                "\"Record expense to [asset] in Baron Book\""
+            ],
+            description: "Start recording an expense for an asset."
+        ),
+        SiriCommand(
+            phrases: [
+                "\"Add income to [asset] in Baron Book\"",
+                "\"Record income to [asset] in Baron Book\""
+            ],
+            description: "Start recording income for an asset."
+        )
+    ]
+
+    var body: some View {
+        List {
+            Section {
+                Text("You can use these Siri commands anywhere on your device — just say \"Hey Siri\" followed by one of the phrases below.")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+            }
+            Section("Siri Commands") {
+                ForEach(commands) { command in
+                    VStack(alignment: .leading, spacing: 4) {
+                        ForEach(command.phrases, id: \.self) { phrase in
+                            Text(phrase)
+                                .font(.body.weight(.medium))
+                        }
+                        Text(command.description)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    .padding(.vertical, 4)
+                }
+            }
+        }
+        .navigationTitle("Quick Start Guide")
+        .navigationBarTitleDisplayMode(.inline)
     }
 }
 
