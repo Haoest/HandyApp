@@ -8,6 +8,8 @@ iOS/SwiftUI app for tracking physical assets the user owns (a house, a car, appl
 - iOS deployment target **18.2**; Swift language version **5.0**; universal (`TARGETED_DEVICE_FAMILY = 1,2`, iPhone + iPad); `MARKETING_VERSION = 0.9`.
 - SwiftUI throughout, with the Observation framework (`@Observable` / `@Environment(Type.self)`) for shared state — `AssetStore` and `AppRouter` are injected this way.
 
+- don't use embedded simulator in claude. i'll build with xcode
+
 ## Layout
 
 - `HandyApp3/HandyApp3App.swift`, `ContentView.swift` — SwiftUI app entry & root view
