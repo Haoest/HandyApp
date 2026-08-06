@@ -13,7 +13,8 @@ struct CategoryTab: View {
     @State private var expandedCategoryID: UUID?
     @State private var newCategoryPresented = false
     @State private var categoryToDuplicate: AssetCategory?
-    @State private var assetToEdit: Asset?
+    @State private var categoryForNewAsset: AssetCategory?
+    @State private var createdAssetID: UUID?
     @State private var paywallPresented = false
 
     private var sortedCategories: [AssetCategory] {
@@ -43,11 +44,7 @@ struct CategoryTab: View {
                                 },
                                 onNewAsset: {
                                     guard store.hasAssetCapacity else { paywallPresented = true; return }
-                                    let count = (try? store.assets(ofCategoryID: category.id))?.count ?? 0
-                                    let defaultName = "\(category.name) \(count + 1)"
-                                    if let asset = try? store.createAsset(name: defaultName, categoryID: category.id) {
-                                        assetToEdit = asset
-                                    }
+                                    categoryForNewAsset = category
                                 },
                                 onViewAssets: {
                                     router.focusedCategoryID = category.id
@@ -84,7 +81,26 @@ struct CategoryTab: View {
             }
             .sheet(isPresented: $newCategoryPresented) { CategoryNewView() }
             .sheet(item: $categoryToDuplicate) { category in CategoryNewView(duplicating: category) }
-            .sheet(item: $assetToEdit) { asset in NavigationStack { AssetEditView(asset: asset) } }
+            .sheet(item: $categoryForNewAsset, onDismiss: {
+                // Hand off to the Assets tab after the sheet has finished dismissing —
+                // pushing while it's still animating away can be dropped by SwiftUI.
+                if let id = createdAssetID {
+                    createdAssetID = nil
+                    router.selectedTab = .assets
+                    router.pendingAssetID = id
+                }
+            }) { category in
+                NavigationStack {
+                    AssetCreateView(
+                        category: category,
+                        onCreated: { asset in
+                            createdAssetID = asset.id
+                            categoryForNewAsset = nil
+                        },
+                        onCancel: { categoryForNewAsset = nil }
+                    )
+                }
+            }
             .sheet(isPresented: $paywallPresented) { PaywallView() }
         }
     }

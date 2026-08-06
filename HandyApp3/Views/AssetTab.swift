@@ -11,6 +11,7 @@ struct AssetTab: View {
     @State private var newAssetPresented = false
     @State private var paywallPresented = false
     @State private var pendingAssetName: String? = nil
+    @State private var createdAssetID: UUID? = nil
     @State private var viewMode: AssetListMode = .all
     @State private var expanded: Set<UUID> = []
 
@@ -109,8 +110,20 @@ struct AssetTab: View {
                     }
                 }
             }
-            .sheet(isPresented: $newAssetPresented, onDismiss: { pendingAssetName = nil }) {
-                NewAssetSheet(initialName: pendingAssetName)
+            .sheet(isPresented: $newAssetPresented, onDismiss: {
+                pendingAssetName = nil
+                // Push after the sheet has finished dismissing — pushing onto the
+                // NavigationStack while the sheet is still animating away can be
+                // dropped by SwiftUI.
+                if let id = createdAssetID {
+                    createdAssetID = nil
+                    router.pendingAssetID = id
+                }
+            }) {
+                NewAssetSheet(initialName: pendingAssetName) { asset in
+                    createdAssetID = asset.id
+                    newAssetPresented = false
+                }
             }
             .sheet(isPresented: $paywallPresented) {
                 PaywallView()

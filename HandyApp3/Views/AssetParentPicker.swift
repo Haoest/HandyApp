@@ -12,6 +12,13 @@ struct BelongsToRow: View {
         return store.assets[id]
     }
 
+    /// The asset itself and its descendants can't become its own parent.
+    private var excludedIDs: Set<UUID> {
+        var ids = Set(asset.descendants.map(\.id))
+        ids.insert(asset.id)
+        return ids
+    }
+
     var body: some View {
         LabeledContent("Belongs to") {
             if let parent {
@@ -25,7 +32,7 @@ struct BelongsToRow: View {
             }
         }
         .sheet(isPresented: $pickerPresented) {
-            AssetParentPickerSheet(asset: asset) { selectedID in
+            AssetParentPickerSheet(excludedIDs: excludedIDs, selectedID: asset.parentID) { selectedID in
                 if let newID = selectedID {
                     try? store.moveAsset(assetID: asset.id, toParentID: newID)
                 } else {
@@ -37,17 +44,51 @@ struct BelongsToRow: View {
     }
 }
 
+/// Label-above-value "Belongs to" row that edits only a local selection — used by the
+/// asset creation form, where no `Asset` exists yet to move in the store.
+struct AssetParentSelectionRow: View {
+    @Environment(AssetStore.self) private var store
+    @Binding var parentID: UUID?
+    @State private var pickerPresented = false
+
+    private var parentName: String? {
+        parentID.flatMap { store.assets[$0] }?.name
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            PropertyLabel(name: "Belongs to", onEditLabel: nil)
+            Button { pickerPresented = true } label: {
+                HStack {
+                    Text(parentName ?? "None (top level)")
+                        .foregroundStyle(parentName == nil ? .secondary : .primary)
+                    Spacer()
+                    Image(systemName: "chevron.up.chevron.down")
+                        .font(.caption)
+                        .foregroundStyle(.tertiary)
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+        }
+        .sheet(isPresented: $pickerPresented) {
+            AssetParentPickerSheet(selectedID: parentID) { selected in
+                parentID = selected
+                pickerPresented = false
+            }
+        }
+    }
+}
+
 struct AssetParentPickerSheet: View {
     @Environment(AssetStore.self) private var store
     @Environment(\.dismiss) private var dismiss
-    let asset: Asset
+    /// The asset itself and its descendants — empty when picking a parent for an
+    /// asset that doesn't exist yet, since it can have no descendants.
+    var excludedIDs: Set<UUID> = []
+    /// Currently chosen parent, shown with a checkmark.
+    var selectedID: UUID? = nil
     let onSelect: (UUID?) -> Void
-
-    private var excludedIDs: Set<UUID> {
-        var ids = Set(asset.descendants.map(\.id))
-        ids.insert(asset.id)
-        return ids
-    }
 
     private var candidates: [Asset] {
         store.allAssets
@@ -86,7 +127,7 @@ struct AssetParentPickerSheet: View {
                                             .foregroundStyle(.tint)
                                     }
                                     Spacer()
-                                    if candidate.id == asset.parentID {
+                                    if candidate.id == selectedID {
                                         Image(systemName: "checkmark")
                                             .foregroundStyle(.tint)
                                     }

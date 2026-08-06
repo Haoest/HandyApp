@@ -2,7 +2,7 @@ import SwiftUI
 
 /// Drill-in editor for a composite value (e.g. 2D Size). Generic over any
 /// `CompositeTypeDefinition`: it renders one row per field, reusing the same
-/// `PropertyEditRow` dispatch as the top-level asset form.
+/// `PropertyEditRow` dispatch used elsewhere for editable property fields.
 ///
 /// Edits are held in a local working copy and pushed back to `value` as a single
 /// `.composite(...)` on disappear, so a half-filled composite never reaches the
