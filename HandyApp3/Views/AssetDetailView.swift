@@ -1,5 +1,6 @@
 import SwiftUI
 import PhotosUI
+import UIKit
 
 /// Jump targets for the section index on the trailing edge of the detail form, and
 /// for deep links from the activity log that open straight to a section.
@@ -156,6 +157,10 @@ struct AssetDetailView: View {
     /// Swipe right → previous item; screens scroll left-to-right (new enters from the left).
     private func goToPrevious() {
         guard hasPrevious, let i = anchorIndex else { return }
+        // End editing before the subtree swap: the outgoing screen's fields commit on
+        // focus loss, and that must happen while their views are still installed rather
+        // than racing the .id()-driven teardown.
+        endTextEditing()
         slideEdge = .leading
         withAnimation(.easeInOut(duration: 0.28)) { currentID = orderedIDs[i - 1] }
     }
@@ -163,6 +168,7 @@ struct AssetDetailView: View {
     /// Swipe left → next item; screens scroll right-to-left (new enters from the right).
     private func goToNext() {
         guard hasNext, let i = anchorIndex else { return }
+        endTextEditing()
         slideEdge = .trailing
         withAnimation(.easeInOut(duration: 0.28)) { currentID = orderedIDs[i + 1] }
     }
@@ -545,7 +551,7 @@ private struct NameDetailField: View {
         TextField("Name", text: $text)
             .focused($isFocused)
             .onSubmit { commit() }
-            .onChange(of: isFocused) { _, focused in if !focused { commit() } }
+            .commitsPendingEdit(focused: isFocused) { commit() }
     }
 
     private func commit() {

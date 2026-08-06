@@ -85,6 +85,7 @@ struct PhotoViewerSheet: View {
     let asset: Asset
     let photo: Photo
     @State private var caption: String
+    @FocusState private var captionFocused: Bool
     @State private var isScanning = false
     @State private var analysis: ReceiptAnalysis?
     @State private var pendingPrefill: Transaction?
@@ -113,7 +114,9 @@ struct PhotoViewerSheet: View {
                     TextField("Caption", text: $caption, axis: .vertical)
                         .textFieldStyle(.roundedBorder)
                         .padding(.horizontal)
+                        .focused($captionFocused)
                         .onSubmit { saveCaption() }
+                        .commitsPendingEdit(focused: captionFocused) { saveCaption() }
                 }
                 .padding(.vertical)
             }

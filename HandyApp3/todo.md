@@ -35,3 +35,4 @@ put field abel and value on different lines
 
 improve localization to read more like asset management app
 
+improve combo list feature

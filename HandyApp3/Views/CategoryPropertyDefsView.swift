@@ -132,7 +132,7 @@ private struct CategoryNameField: View {
             TextField("Name", text: $text)
                 .focused($isFocused)
                 .onSubmit { commit() }
-                .onChange(of: isFocused) { _, focused in if !focused { commit() } }
+                .commitsPendingEdit(focused: isFocused) { commit() }
         }
     }
 
@@ -195,7 +195,7 @@ private struct TemplateTextRow: View {
             TextField("", text: $text, axis: .vertical)
                 .focused($isFocused)
                 .onSubmit { commit() }
-                .onChange(of: isFocused) { _, focused in if !focused { commit() } }
+                .commitsPendingEdit(focused: isFocused) { commit() }
                 .onChange(of: property.value) { _, newValue in
                     guard !isFocused else { return }
                     switch newValue {
@@ -208,10 +208,12 @@ private struct TemplateTextRow: View {
     }
 
     private func commit() {
-        if text.isEmpty {
-            try? store.removeTemplatePropertyValue(forPropertyID: property.id, inCategoryID: categoryID)
+        let newValue: StoredValue? = text.isEmpty ? nil : .text(text)
+        guard newValue != property.value else { return }
+        if let newValue {
+            try? store.setTemplatePropertyValue(newValue, forPropertyID: property.id, inCategoryID: categoryID)
         } else {
-            try? store.setTemplatePropertyValue(.text(text), forPropertyID: property.id, inCategoryID: categoryID)
+            try? store.removeTemplatePropertyValue(forPropertyID: property.id, inCategoryID: categoryID)
         }
     }
 }
@@ -238,7 +240,7 @@ private struct TemplateNumberRow: View {
             TextField("", text: $text)
                 .keyboardType(.decimalPad)
                 .focused($isFocused)
-                .onChange(of: isFocused) { _, focused in if !focused { commit() } }
+                .commitsPendingEdit(focused: isFocused) { commit() }
                 .onChange(of: property.value) { _, newValue in
                     guard !isFocused else { return }
                     if case .number(let d) = newValue { text = "\(d)" } else { text = "" }
@@ -247,9 +249,14 @@ private struct TemplateNumberRow: View {
     }
 
     private func commit() {
-        if let d = Double(text) {
-            try? store.setTemplatePropertyValue(.number(d), forPropertyID: property.id, inCategoryID: categoryID)
-        } else if text.isEmpty {
+        let newValue: StoredValue?
+        if let d = Double(text) { newValue = .number(d) }
+        else if text.isEmpty { newValue = nil }
+        else { return }   // unparseable draft ("-", "12abc") — leave the stored value alone
+        guard newValue != property.value else { return }
+        if let newValue {
+            try? store.setTemplatePropertyValue(newValue, forPropertyID: property.id, inCategoryID: categoryID)
+        } else {
             try? store.removeTemplatePropertyValue(forPropertyID: property.id, inCategoryID: categoryID)
         }
     }
@@ -277,7 +284,7 @@ private struct TemplateCurrencyRow: View {
             TextField("", text: $text)
                 .keyboardType(.decimalPad)
                 .focused($isFocused)
-                .onChange(of: isFocused) { _, focused in if !focused { commit() } }
+                .commitsPendingEdit(focused: isFocused) { commit() }
                 .onChange(of: property.value) { _, newValue in
                     guard !isFocused else { return }
                     if case .currency(let d) = newValue { text = "\(d)" } else { text = "" }
@@ -286,9 +293,14 @@ private struct TemplateCurrencyRow: View {
     }
 
     private func commit() {
-        if let d = Decimal(string: text) {
-            try? store.setTemplatePropertyValue(.currency(d), forPropertyID: property.id, inCategoryID: categoryID)
-        } else if text.isEmpty {
+        let newValue: StoredValue?
+        if let d = Decimal(string: text) { newValue = .currency(d) }
+        else if text.isEmpty { newValue = nil }
+        else { return }   // unparseable draft ("-", "12abc") — leave the stored value alone
+        guard newValue != property.value else { return }
+        if let newValue {
+            try? store.setTemplatePropertyValue(newValue, forPropertyID: property.id, inCategoryID: categoryID)
+        } else {
             try? store.removeTemplatePropertyValue(forPropertyID: property.id, inCategoryID: categoryID)
         }
     }
