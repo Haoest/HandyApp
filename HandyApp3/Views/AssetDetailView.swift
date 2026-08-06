@@ -205,6 +205,14 @@ private struct AssetDetailContent: View {
     // during the first present, dismissing the viewer immediately.
     @State private var selectedPhoto: Photo?
 
+    // New nested asset. Presented from the Form (not a section) for the same reason
+    // the photo/event/transaction sheets are.
+    @State private var addChildPresented = false
+    /// Staged during the sheet, consumed in onDismiss — see the sheet below.
+    @State private var createdChildID: UUID?
+    /// Drives the push to the newly created child's detail screen.
+    @State private var childToOpen: UUID?
+
     private var sortedBase: [AssetProperty] {
         asset.baseProperties.sorted { $0.sortOrder < $1.sortOrder }
     }
@@ -385,6 +393,16 @@ private struct AssetDetailContent: View {
                     } label: {
                         Label("Transaction", systemImage: "dollarsign.circle")
                     }
+                    Button {
+                        if store.hasAssetCapacity {
+                            addChildPresented = true
+                        } else {
+                            paywallReason = .assets
+                            paywallPresented = true
+                        }
+                    } label: {
+                        Label("Add asset inside", systemImage: "shippingbox")
+                    }
                 } label: {
                     Image(systemName: "plus")
                 }
@@ -432,6 +450,31 @@ private struct AssetDetailContent: View {
         .sheet(isPresented: $addPropertyPresented) {
             PropertyEditView { definition, value in
                 try? store.addCustomProperty(definition: definition, value: value, toAssetID: asset.id)
+            }
+        }
+        .sheet(isPresented: $addChildPresented, onDismiss: {
+            // Push after the sheet has finished dismissing — pushing onto the
+            // NavigationStack while the sheet is still animating away can be
+            // dropped by SwiftUI.
+            if let id = createdChildID {
+                createdChildID = nil
+                childToOpen = id
+            }
+        }) {
+            NewAssetSheet(initialParentID: asset.id) { newAsset in
+                createdChildID = newAsset.id
+                addChildPresented = false
+            }
+        }
+        .navigationDestination(item: $childToOpen) { id in
+            if let child = store.assets[id], !child.isDeleted {
+                AssetDetailView(asset: child, orderedIDs: sortedChildren.map(\.id))
+            } else {
+                ContentUnavailableView(
+                    "Asset Not Found",
+                    systemImage: "shippingbox",
+                    description: Text("This asset no longer exists.")
+                )
             }
         }
         .sheet(item: $eventSheetMode) { mode in

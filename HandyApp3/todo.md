@@ -32,3 +32,6 @@ add quick guide to tools tab, include some sample siri commands
 group tools tab
 support multiline text 
 put field abel and value on different lines
+
+improve localization to read more like asset management app
+

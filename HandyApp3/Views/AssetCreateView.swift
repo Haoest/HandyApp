@@ -12,6 +12,9 @@ struct AssetCreateView: View {
     /// Name override (e.g. from the Siri "add a named asset" intent); otherwise a
     /// default name is derived from the category.
     var initialName: String? = nil
+    /// Pre-selected parent, e.g. when creating an asset inside an existing one.
+    /// Only a starting value — the user can still change it before saving.
+    var initialParentID: UUID? = nil
     /// Called with the freshly created asset once Save commits it to the store.
     /// The presenter is responsible for dismissing and navigating to it.
     let onCreated: (Asset) -> Void
@@ -63,7 +66,7 @@ struct AssetCreateView: View {
                     .disabled(trimmedName.isEmpty)
             }
         }
-        .onAppear { prefillName() }
+        .onAppear { prefillDraft() }
         .sheet(isPresented: $paywallPresented) {
             PaywallView(reason: .assets)
         }
@@ -77,11 +80,13 @@ struct AssetCreateView: View {
         }
     }
 
-    /// Default name mirrors the previous behavior: "<Category> <n+1>", unless a name
-    /// was supplied. Runs once so retyping isn't clobbered on re-appear.
-    private func prefillName() {
+    /// Seeds the draft once, so retyping the name (or re-picking a parent) isn't
+    /// clobbered on re-appear. Default name mirrors the previous behavior:
+    /// "<Category> <n+1>", unless a name was supplied.
+    private func prefillDraft() {
         guard !didPrefill else { return }
         didPrefill = true
+        parentID = initialParentID
         if let provided = initialName, !provided.trimmingCharacters(in: .whitespaces).isEmpty {
             name = provided
         } else {
@@ -113,6 +118,8 @@ struct NewAssetSheet: View {
     @Environment(AssetStore.self) private var store
     @Environment(\.dismiss) private var dismiss
     var initialName: String? = nil
+    /// Parent to pre-select on the create form (see `AssetCreateView.initialParentID`).
+    var initialParentID: UUID? = nil
     let onCreated: (Asset) -> Void
 
     @State private var selectedCategoryID: UUID?
@@ -131,6 +138,7 @@ struct NewAssetSheet: View {
                         AssetCreateView(
                             category: category,
                             initialName: initialName,
+                            initialParentID: initialParentID,
                             onCreated: { asset in onCreated(asset) },
                             onCancel: { dismiss() }
                         )
