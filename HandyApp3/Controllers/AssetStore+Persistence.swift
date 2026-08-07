@@ -347,7 +347,9 @@ extension AssetStore {
         // 4. Categories
         var catMap: [UUID: AssetCategory] = [:]
         for dto in snap.categories {
-            let templates = dto.propertyTemplates.compactMap { assetProperty(from: $0, ctMap: ctMap, clMap: clMap) }
+            let templates = dto.propertyTemplates.compactMap {
+                assetProperty(from: $0, ctMap: ctMap, clMap: clMap, fallbackModifyDate: .distantPast)
+            }
             let cat = AssetCategory(id: dto.id, name: dto.name, iconName: dto.iconName, propertyTemplates: templates)
             cat.isDeleted = dto.isDeleted
             cat.deletedAt = dto.deletedAt
@@ -370,9 +372,14 @@ extension AssetStore {
             }
             let asset = Asset(
                 id: dto.id, name: dto.name, category: cat,
-                baseProperties: dto.baseProperties.compactMap { assetProperty(from: $0, ctMap: ctMap, clMap: clMap) },
-                customProperties: dto.customProperties.compactMap { assetProperty(from: $0, ctMap: ctMap, clMap: clMap) },
-                parentID: dto.parentID, createdDate: dto.createdDate, modifiedDate: dto.modifiedDate
+                baseProperties: dto.baseProperties.compactMap {
+                    assetProperty(from: $0, ctMap: ctMap, clMap: clMap, fallbackModifyDate: dto.modifiedDate)
+                },
+                customProperties: dto.customProperties.compactMap {
+                    assetProperty(from: $0, ctMap: ctMap, clMap: clMap, fallbackModifyDate: dto.modifiedDate)
+                },
+                parentID: dto.parentID, createdDate: dto.createdDate, modifiedDate: dto.modifiedDate,
+                parentageModifyDate: dto.parentageModifyDate ?? dto.createdDate
             )
             asset.isDeleted = dto.isDeleted
             asset.deletedAt = dto.deletedAt
@@ -391,12 +398,12 @@ extension AssetStore {
             assetMap[asset.id] = asset
         }
 
-        // 6. Wire parent→child hierarchy
+        // 6. Wire parent→child hierarchy — rehydration, not a move: keep the stored timestamps.
         for dto in snap.assets {
             guard let asset = assetMap[dto.id],
                   let parentID = dto.parentID,
                   let parent = assetMap[parentID] else { continue }
-            parent._addChild(asset)
+            parent._addChild(asset, stampParentage: false)
         }
 
         // 7. Activity log
@@ -467,7 +474,9 @@ extension AssetStore {
                 }
                 mergeTemplates(into: existing, from: dto, ctMap: ctMap, clMap: clMap)
             } else {
-                let templates = dto.propertyTemplates.compactMap { assetProperty(from: $0, ctMap: ctMap, clMap: clMap) }
+                let templates = dto.propertyTemplates.compactMap {
+                    assetProperty(from: $0, ctMap: ctMap, clMap: clMap, fallbackModifyDate: .distantPast)
+                }
                 catMap[dto.id] = AssetCategory(id: dto.id, name: dto.name, iconName: dto.iconName, propertyTemplates: templates)
             }
         }
@@ -501,9 +510,14 @@ extension AssetStore {
             )
             let asset = Asset(
                 id: dto.id, name: dto.name, category: cat,
-                baseProperties: dto.baseProperties.compactMap { assetProperty(from: $0, ctMap: ctMap, clMap: clMap) },
-                customProperties: dto.customProperties.compactMap { assetProperty(from: $0, ctMap: ctMap, clMap: clMap) },
-                parentID: dto.parentID, createdDate: dto.createdDate, modifiedDate: dto.modifiedDate
+                baseProperties: dto.baseProperties.compactMap {
+                    assetProperty(from: $0, ctMap: ctMap, clMap: clMap, fallbackModifyDate: dto.modifiedDate)
+                },
+                customProperties: dto.customProperties.compactMap {
+                    assetProperty(from: $0, ctMap: ctMap, clMap: clMap, fallbackModifyDate: dto.modifiedDate)
+                },
+                parentID: dto.parentID, createdDate: dto.createdDate, modifiedDate: dto.modifiedDate,
+                parentageModifyDate: dto.parentageModifyDate ?? dto.createdDate
             )
             asset.photos = dto.photos.map { Photo(id: $0.id, caption: $0.caption, addedDate: $0.addedDate) }
             asset.events = dto.events.map {
@@ -568,7 +582,9 @@ extension AssetStore {
         if let existing = catMap[categoryID] { return existing }
         if let placeholder = recoveredPlaceholders[categoryID] { return placeholder }
         if let catDTO = incomingCategoriesByID[categoryID], catDTO.isDeleted {
-            let templates = catDTO.propertyTemplates.compactMap { assetProperty(from: $0, ctMap: ctMap, clMap: clMap) }
+            let templates = catDTO.propertyTemplates.compactMap {
+                assetProperty(from: $0, ctMap: ctMap, clMap: clMap, fallbackModifyDate: .distantPast)
+            }
             let cat = AssetCategory(id: catDTO.id, name: catDTO.name, iconName: catDTO.iconName, propertyTemplates: templates)
             cat.isDeleted = true
             cat.deletedAt = catDTO.deletedAt
@@ -596,7 +612,8 @@ extension AssetStore {
         var seenDefIDs = Set(cat.propertyTemplates.map(\.definition.id))
         appendMissingProperties(
             dto.propertyTemplates, into: &cat.propertyTemplates,
-            seenPropIDs: &seenPropIDs, seenDefIDs: &seenDefIDs, ctMap: ctMap, clMap: clMap
+            seenPropIDs: &seenPropIDs, seenDefIDs: &seenDefIDs, ctMap: ctMap, clMap: clMap,
+            fallbackModifyDate: .distantPast
         )
     }
 
@@ -623,12 +640,14 @@ extension AssetStore {
         if local.category.id == dto.categoryID {
             added += appendMissingProperties(
                 dto.baseProperties, into: &local.baseProperties,
-                seenPropIDs: &seenPropIDs, seenDefIDs: &seenDefIDs, ctMap: ctMap, clMap: clMap
+                seenPropIDs: &seenPropIDs, seenDefIDs: &seenDefIDs, ctMap: ctMap, clMap: clMap,
+                fallbackModifyDate: dto.modifiedDate
             )
         }
         added += appendMissingProperties(
             dto.customProperties, into: &local.customProperties,
-            seenPropIDs: &seenPropIDs, seenDefIDs: &seenDefIDs, ctMap: ctMap, clMap: clMap
+            seenPropIDs: &seenPropIDs, seenDefIDs: &seenDefIDs, ctMap: ctMap, clMap: clMap,
+            fallbackModifyDate: dto.modifiedDate
         )
 
         let seenEventIDs = Set(local.events.map(\.id))
@@ -662,6 +681,8 @@ extension AssetStore {
     /// definition id, assigning each a `sortOrder` strictly after the target's current
     /// maximum so merged rows never tie with (and always sort after) existing ones.
     /// Updates the seen-sets as it goes so duplicates *within* `dtos` itself only land once.
+    /// `sortOrder` is positional and gets renormalized; `modifyDate` is a factual record of
+    /// when the other device edited the field and is carried over untouched.
     @discardableResult
     private func appendMissingProperties(
         _ dtos: [AssetPropertyDTO],
@@ -669,13 +690,15 @@ extension AssetStore {
         seenPropIDs: inout Set<UUID>,
         seenDefIDs: inout Set<UUID>,
         ctMap: [UUID: CompositeTypeDefinition],
-        clMap: [UUID: ComboListDefinition]
+        clMap: [UUID: ComboListDefinition],
+        fallbackModifyDate: Date
     ) -> Int {
         var next = (target.map(\.sortOrder).max() ?? -AssetProperty.sortOrderIncrement) + AssetProperty.sortOrderIncrement
         var added = 0
         for pdto in dtos.sorted(by: { $0.sortOrder < $1.sortOrder }) {
             guard !seenPropIDs.contains(pdto.id), !seenDefIDs.contains(pdto.definition.id),
-                  let prop = assetProperty(from: pdto, ctMap: ctMap, clMap: clMap) else { continue }
+                  let prop = assetProperty(from: pdto, ctMap: ctMap, clMap: clMap,
+                                           fallbackModifyDate: fallbackModifyDate) else { continue }
             prop.sortOrder = next
             next += AssetProperty.sortOrderIncrement
             target.append(prop)
@@ -744,7 +767,8 @@ extension AssetStore {
                 asset.parentID = nil
                 continue
             }
-            parent._addChild(asset)
+            // Wiring a record that already carried this link elsewhere — keep its own timestamp.
+            parent._addChild(asset, stampParentage: false)
         }
     }
 
@@ -790,7 +814,8 @@ extension AssetStore {
                                        recurrence: txn.recurrence?.rawValue)
                     },
                     parentID: asset.parentID, isDeleted: asset.isDeleted, deletedAt: asset.deletedAt,
-                    createdDate: asset.createdDate, modifiedDate: asset.modifiedDate
+                    createdDate: asset.createdDate, modifiedDate: asset.modifiedDate,
+                    parentageModifyDate: asset.parentageModifyDate
                 )
             },
             activityLog: activityLog.map {
@@ -836,15 +861,20 @@ extension AssetStore {
         }
     }
 
+    /// `fallbackModifyDate` stands in for files written before per-property timestamps existed:
+    /// the owning asset's `modifiedDate` for asset properties, `.distantPast` for category
+    /// templates (AssetCategory carries no date of its own).
     private func assetProperty(
         from dto: AssetPropertyDTO,
         ctMap: [UUID: CompositeTypeDefinition],
-        clMap: [UUID: ComboListDefinition]
+        clMap: [UUID: ComboListDefinition],
+        fallbackModifyDate: Date
     ) -> AssetProperty? {
         guard let def = propertyDefinition(from: dto.definition, ctMap: ctMap, clMap: clMap) else { return nil }
         return AssetProperty(id: dto.id, definition: def,
                              value: dto.value.map { storedValue(from: $0) },
-                             sortOrder: dto.sortOrder)
+                             sortOrder: dto.sortOrder,
+                             modifyDate: dto.modifyDate ?? fallbackModifyDate)
     }
 
     // MARK: - Live object → DTO helpers
@@ -876,6 +906,7 @@ extension AssetStore {
 
     private func assetPropertyDTO(_ prop: AssetProperty) -> AssetPropertyDTO {
         AssetPropertyDTO(id: prop.id, definition: propertyDefinitionDTO(prop.definition),
-                         value: prop.value.map { storedValueDTO($0) }, sortOrder: prop.sortOrder)
+                         value: prop.value.map { storedValueDTO($0) }, sortOrder: prop.sortOrder,
+                         modifyDate: prop.modifyDate)
     }
 }

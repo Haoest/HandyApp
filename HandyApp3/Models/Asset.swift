@@ -9,6 +9,10 @@ final class Asset: Identifiable, Equatable {
     let createdDate: Date
     var modifiedDate: Date
 
+    /// Absolute instant the asset's parent link last changed (attached, detached, or re-parented).
+    /// Initialized at creation — being a root is itself a parentage state.
+    var parentageModifyDate: Date
+
     /// The category this asset was created from.
     var category: AssetCategory
 
@@ -43,7 +47,8 @@ final class Asset: Identifiable, Equatable {
         customProperties: [AssetProperty] = [],
         parentID: UUID? = nil,
         createdDate: Date = Date(),
-        modifiedDate: Date = Date()
+        modifiedDate: Date = Date(),
+        parentageModifyDate: Date = Date()
     ) {
         self.id = id
         self.name = name
@@ -53,6 +58,7 @@ final class Asset: Identifiable, Equatable {
         self.parentID = parentID
         self.createdDate = createdDate
         self.modifiedDate = modifiedDate
+        self.parentageModifyDate = parentageModifyDate
     }
 
     // MARK: - Property value convenience
@@ -95,42 +101,30 @@ final class Asset: Identifiable, Equatable {
 
     var isRoot: Bool { parent == nil }
 
-    // MARK: - Custom property management
-
-    @discardableResult
-    func addProperty(_ definition: PropertyDefinition, value: StoredValue? = nil) -> AssetProperty {
-        let prop = AssetProperty(definition: definition, value: value)
-        customProperties.append(prop)
-        return prop
-    }
-
-    func removeProperty(id: UUID) {
-        customProperties.removeAll { $0.id == id }
-    }
-
-    /// Changing `type` clears the stored value to avoid type mismatch.
-    /// Pass `value: .some(nil)` to explicitly clear the stored value; omit to leave it unchanged.
-    func updateProperty(id: UUID, name: String? = nil, type: PropertyType? = nil, isRequired: Bool? = nil, value: StoredValue?? = .none) {
-        guard let prop = customProperties.first(where: { $0.id == id }) else { return }
-        if let name { prop.definition.name = name }
-        if let isRequired { prop.definition.isRequired = isRequired }
-        if let type { prop.definition.type = type; prop.value = nil }
-        if let value { prop.value = value }
-    }
-
     // MARK: - Internal child management (called only by AssetStore)
 
-    func _addChild(_ child: Asset) {
+    /// Pass `stampParentage: false` only when rehydrating an already-recorded link — loading a
+    /// snapshot or wiring merged assets — so the stored timestamp survives instead of resetting.
+    func _addChild(_ child: Asset, stampParentage: Bool = true) {
         guard !children.contains(where: { $0.id == child.id }) else { return }
         children.append(child)
         child.parent = self
         child.parentID = self.id
+        if stampParentage { child.stampParentage() }
     }
 
-    func _removeChild(_ child: Asset) {
+    func _removeChild(_ child: Asset, stampParentage: Bool = true) {
+        let wasLinked = children.contains(where: { $0.id == child.id }) || child.parentID != nil
         children.removeAll { $0.id == child.id }
         child.parent = nil
         child.parentID = nil
+        if stampParentage && wasLinked { child.stampParentage() }
+    }
+
+    /// A move changes the child's record, so both timestamps advance.
+    private func stampParentage(_ date: Date = Date()) {
+        parentageModifyDate = date
+        modifiedDate = date
     }
 
     static func == (lhs: Asset, rhs: Asset) -> Bool {

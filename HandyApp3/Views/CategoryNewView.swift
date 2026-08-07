@@ -115,6 +115,7 @@ struct CategoryNewView: View {
                 PropertyEditView(existing: prop) { definition, value in
                     prop.definition = definition
                     prop.value = value
+                    prop.touch()
                 }
             }
             .alert("Duplicate Name", isPresented: $showDuplicateNameAlert) {

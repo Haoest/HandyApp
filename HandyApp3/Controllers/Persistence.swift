@@ -72,6 +72,9 @@ struct AssetPropertyDTO: Codable {
     var definition: PropertyDefinitionDTO
     var value: StoredValueDTO?
     var sortOrder: Double
+    /// Optional: absent in files written before per-property timestamps existed.
+    /// Decoders substitute the owning record's date — see `assetProperty(from:)`.
+    var modifyDate: Date?
 }
 
 // MARK: - CompositeTypeDTO
@@ -156,6 +159,9 @@ struct AssetDTO: Codable {
     var deletedAt: Date?
     var createdDate: Date
     var modifiedDate: Date
+    /// Optional: absent in files written before parentage changes were timestamped.
+    /// Decoders fall back to `createdDate`.
+    var parentageModifyDate: Date?
 }
 
 // MARK: - ActivityLogDTO

@@ -807,4 +807,57 @@ final class ImportMergeTests: XCTestCase {
         XCTAssertNotNil(store.assets[localOnlyAsset.id])
         XCTAssertEqual(store.categories[unrelatedCat.id]?.name, "Unrelated", "unrelated local category must be untouched")
     }
+
+    // MARK: - Record timestamps
+
+    /// Files written before per-record timestamps existed carry neither key. Decoding must
+    /// substitute sensible values rather than throwing — a decode failure here is silent and
+    /// destructive, since `load()` then falls through to seeding over the user's data.
+    func testLegacyRecordsWithoutTimestampsDecodeToFallbacks() throws {
+        let cat = try store.createCategory(name: "Storage")
+        let assetID = UUID()
+        let defID = UUID()
+        let created = Date(timeIntervalSince1970: 1_400_000_000)
+        let modified = Date(timeIntervalSince1970: 1_500_000_000)
+        let iso = ISO8601DateFormatter()
+
+        var assetJSON = fabricatedAssetJSON(id: assetID, name: "Legacy", categoryID: cat.id, parentID: nil)
+        assetJSON["createdDate"] = iso.string(from: created)
+        assetJSON["modifiedDate"] = iso.string(from: modified)
+        assetJSON["customProperties"] = [[
+            "id": UUID().uuidString,
+            "definition": [
+                "id": defID.uuidString, "name": "Make",
+                "type": ["kind": "basic", "basicType": "text"], "isRequired": false,
+            ],
+            "sortOrder": 0,
+        ]]
+        let doctored = try addingAsset(assetJSON, to: try XCTUnwrap(store.exportJSON()))
+
+        try store.importJSON(data: doctored)
+
+        let merged = try XCTUnwrap(store.assets[assetID])
+        XCTAssertEqual(merged.parentageModifyDate, created,
+                       "an asset with no recorded parentage change falls back to its creation date")
+        XCTAssertEqual(merged.customProperties.first?.modifyDate, modified,
+                       "a property with no recorded edit falls back to the owning asset's modifiedDate")
+    }
+
+    /// The merge renormalizes `sortOrder` because it is positional, but `modifyDate` records
+    /// when the other device actually edited the field and must survive verbatim.
+    func testMergePreservesIncomingPropertyModifyDate() throws {
+        let stamp = Date(timeIntervalSince1970: 1_600_000_000)
+        let cat = try store.createCategory(name: "Vehicle", propertyTemplates: [
+            AssetProperty(definition: PropertyDefinition(name: "Make", type: .basic(.text)))
+        ])
+        let asset = try store.createAsset(name: "Car", categoryID: cat.id)
+        asset.baseProperties[0].modifyDate = stamp
+        let export = try XCTUnwrap(store.exportJSON())
+
+        let store2 = makeSecondStore()
+        try store2.importJSON(data: export)
+
+        let merged = try XCTUnwrap(store2.assets[asset.id])
+        XCTAssertEqual(merged.baseProperties.first?.modifyDate, stamp)
+    }
 }

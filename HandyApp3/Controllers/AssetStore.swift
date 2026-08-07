@@ -186,6 +186,7 @@ final class AssetStore {
         }
         try validate(stored: stored, against: prop.definition.type, definitionName: prop.definition.name)
         prop.value = stored
+        prop.touch()
         markDirty()
     }
 
@@ -195,6 +196,7 @@ final class AssetStore {
             throw AssetStoreError.propertyNotFound(propID)
         }
         prop.value = nil
+        prop.touch()
         markDirty()
     }
 
@@ -223,6 +225,7 @@ final class AssetStore {
             prop.definition.type = type
             prop.value = nil
         }
+        prop.touch()
         markDirty()
     }
 
@@ -350,16 +353,20 @@ final class AssetStore {
         if let prop = asset.baseProperties.first(where: { $0.definition.id == definitionID }) {
             try validate(stored: stored, against: prop.definition.type, definitionName: prop.definition.name)
             handleComboListAutoAdd(stored: stored, type: prop.definition.type)
+            let now = Date()
             prop.value = stored
-            asset.modifiedDate = Date()
+            prop.touch(now)
+            asset.modifiedDate = now
             markDirty()
             return prop
         }
         if let prop = asset.customProperties.first(where: { $0.definition.id == definitionID }) {
             try validate(stored: stored, against: prop.definition.type, definitionName: prop.definition.name)
             handleComboListAutoAdd(stored: stored, type: prop.definition.type)
+            let now = Date()
             prop.value = stored
-            asset.modifiedDate = Date()
+            prop.touch(now)
+            asset.modifiedDate = now
             markDirty()
             return prop
         }
@@ -370,14 +377,18 @@ final class AssetStore {
     func removePropertyValue(forDefinitionID definitionID: UUID, fromAssetID assetID: UUID) throws {
         guard let asset = assets[assetID] else { throw AssetStoreError.assetNotFound(assetID) }
         if let prop = asset.baseProperties.first(where: { $0.definition.id == definitionID }) {
+            let now = Date()
             prop.value = nil
-            asset.modifiedDate = Date()
+            prop.touch(now)
+            asset.modifiedDate = now
             markDirty()
             return
         }
         if let prop = asset.customProperties.first(where: { $0.definition.id == definitionID }) {
+            let now = Date()
             prop.value = nil
-            asset.modifiedDate = Date()
+            prop.touch(now)
+            asset.modifiedDate = now
             markDirty()
             return
         }
@@ -416,8 +427,10 @@ final class AssetStore {
             throw AssetStoreError.propertyNotFound(propID)
         }
         try validate(stored: stored, against: prop.definition.type, definitionName: prop.definition.name)
+        let now = Date()
         prop.value = stored
-        asset.modifiedDate = Date()
+        prop.touch(now)
+        asset.modifiedDate = now
         markDirty()
         return prop
     }
@@ -441,7 +454,9 @@ final class AssetStore {
             prop.definition.type = type
             prop.value = nil
         }
-        asset.modifiedDate = Date()
+        let now = Date()
+        prop.touch(now)
+        asset.modifiedDate = now
         markDirty()
     }
 
