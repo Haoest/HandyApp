@@ -73,7 +73,21 @@ final class EventTransactionLimitTests: XCTestCase {
             created.append(try makeEvent(on: assetA, title: "Event \(i)"))
         }
         try store.removeEvent(id: created[0].id, fromAssetID: assetA.id)
+        // The tombstone stays in the array but must not occupy a paywall slot.
+        XCTAssertEqual(assetA.events.count, 5)
+        XCTAssertEqual(assetA.liveEvents.count, 4)
         XCTAssertNoThrow(try makeEvent(on: assetA, title: "Replacement"))
+    }
+
+    func testTombstonedEventDoesNotCountTowardHasEventCapacity() throws {
+        store.eventCreationLimit = 5
+        var created: [Event] = []
+        for i in 0..<5 {
+            created.append(try makeEvent(on: assetA, title: "Event \(i)"))
+        }
+        XCTAssertFalse(store.hasEventCapacity(for: assetA))
+        try store.removeEvent(id: created[0].id, fromAssetID: assetA.id)
+        XCTAssertTrue(store.hasEventCapacity(for: assetA))
     }
 
     func testImportedOverflowEventsStayIntactButBlockNewAdds() throws {
@@ -95,7 +109,8 @@ final class EventTransactionLimitTests: XCTestCase {
         let first = assetA.events[0]
         XCTAssertNoThrow(try store.updateEvent(id: first.id, onAssetID: assetA.id, title: "Renamed", date: first.date, notes: "", recurrence: nil))
         XCTAssertNoThrow(try store.removeEvent(id: first.id, fromAssetID: assetA.id))
-        XCTAssertEqual(assetA.events.count, 7)
+        XCTAssertEqual(assetA.events.count, 8, "the tombstone stays until purge")
+        XCTAssertEqual(assetA.liveEvents.count, 7)
     }
 
     // MARK: - Transactions
@@ -146,7 +161,21 @@ final class EventTransactionLimitTests: XCTestCase {
             created.append(try makeTransaction(on: assetA, details: "Txn \(i)"))
         }
         try store.removeTransaction(id: created[0].id, fromAssetID: assetA.id)
+        // The tombstone stays in the array but must not occupy a paywall slot.
+        XCTAssertEqual(assetA.transactions.count, 5)
+        XCTAssertEqual(assetA.liveTransactions.count, 4)
         XCTAssertNoThrow(try makeTransaction(on: assetA, details: "Replacement"))
+    }
+
+    func testTombstonedTransactionDoesNotCountTowardHasTransactionCapacity() throws {
+        store.transactionCreationLimit = 5
+        var created: [Transaction] = []
+        for i in 0..<5 {
+            created.append(try makeTransaction(on: assetA, details: "Txn \(i)"))
+        }
+        XCTAssertFalse(store.hasTransactionCapacity(for: assetA))
+        try store.removeTransaction(id: created[0].id, fromAssetID: assetA.id)
+        XCTAssertTrue(store.hasTransactionCapacity(for: assetA))
     }
 
     func testImportedOverflowTransactionsStayIntactButBlockNewAdds() throws {
@@ -164,6 +193,7 @@ final class EventTransactionLimitTests: XCTestCase {
         let first = assetA.transactions[0]
         XCTAssertNoThrow(try store.updateTransaction(id: first.id, onAssetID: assetA.id, details: "Renamed", amount: first.amount, date: first.date, kind: first.kind, payeeContactID: nil, notes: "", recurrence: nil))
         XCTAssertNoThrow(try store.removeTransaction(id: first.id, fromAssetID: assetA.id))
-        XCTAssertEqual(assetA.transactions.count, 7)
+        XCTAssertEqual(assetA.transactions.count, 8, "the tombstone stays until purge")
+        XCTAssertEqual(assetA.liveTransactions.count, 7)
     }
 }

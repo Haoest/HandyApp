@@ -17,7 +17,14 @@ final class Transaction: Identifiable, Equatable {
     var notes: String
     var recurrence: RecurrenceInterval?
 
-    init(id: UUID = UUID(), details: String, amount: Decimal, date: Date, kind: TransactionKind, payeeContactID: String? = nil, notes: String = "", recurrence: RecurrenceInterval? = nil) {
+    /// Absolute instant of the last edit to this transaction, including its tombstoning.
+    /// `Date` is timezone-free; persisted as ISO-8601 UTC.
+    var modifyDate: Date
+
+    var isDeleted: Bool = false
+    var deletedAt: Date? = nil
+
+    init(id: UUID = UUID(), details: String, amount: Decimal, date: Date, kind: TransactionKind, payeeContactID: String? = nil, notes: String = "", recurrence: RecurrenceInterval? = nil, modifyDate: Date = Date()) {
         self.id = id
         self.details = details
         self.amount = abs(amount)
@@ -26,6 +33,12 @@ final class Transaction: Identifiable, Equatable {
         self.payeeContactID = payeeContactID
         self.notes = notes
         self.recurrence = recurrence
+        self.modifyDate = modifyDate
+    }
+
+    /// Stamps the transaction as edited now. Called from AssetStore after any write.
+    func touch(_ date: Date = Date()) {
+        modifyDate = date
     }
 
     static func == (lhs: Transaction, rhs: Transaction) -> Bool { lhs.id == rhs.id }

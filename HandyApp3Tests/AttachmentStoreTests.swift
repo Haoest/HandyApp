@@ -42,8 +42,12 @@ final class AttachmentStoreTests: XCTestCase {
         XCTAssertEqual(store.assets[assetID]!.photos.count, 1)
         let before = store.assets[assetID]!.modifiedDate
         try store.removePhoto(id: photo.id, fromAssetID: assetID)
-        XCTAssertEqual(store.assets[assetID]!.photos.count, 0)
-        XCTAssertGreaterThan(store.assets[assetID]!.modifiedDate, before)
+        let asset = store.assets[assetID]!
+        XCTAssertEqual(asset.photos.count, 1, "the tombstone stays until purge")
+        XCTAssertEqual(asset.livePhotos.count, 0)
+        XCTAssertTrue(asset.photos[0].isDeleted)
+        XCTAssertNotNil(asset.photos[0].deletedAt)
+        XCTAssertGreaterThan(asset.modifiedDate, before)
     }
 
     func testAddPhotoUnknownAssetThrows() {
@@ -54,6 +58,22 @@ final class AttachmentStoreTests: XCTestCase {
 
     func testRemovePhotoUnknownPhotoThrows() throws {
         XCTAssertThrowsError(try store.removePhoto(id: UUID(), fromAssetID: assetID)) { error in
+            guard case AssetStoreError.photoNotFound = error else { return XCTFail("Expected photoNotFound") }
+        }
+    }
+
+    func testRemovePhotoTwiceThrowsPhotoNotFound() throws {
+        let photo = try store.addPhoto(imageData: Data([1]), thumbnailData: Data([2]), toAssetID: assetID)
+        try store.removePhoto(id: photo.id, fromAssetID: assetID)
+        XCTAssertThrowsError(try store.removePhoto(id: photo.id, fromAssetID: assetID)) { error in
+            guard case AssetStoreError.photoNotFound = error else { return XCTFail("Expected photoNotFound") }
+        }
+    }
+
+    func testUpdatePhotoCaptionOnTombstonedPhotoThrows() throws {
+        let photo = try store.addPhoto(imageData: Data([1]), thumbnailData: Data([2]), toAssetID: assetID)
+        try store.removePhoto(id: photo.id, fromAssetID: assetID)
+        XCTAssertThrowsError(try store.updatePhotoCaption("New", forPhotoID: photo.id, onAssetID: assetID)) { error in
             guard case AssetStoreError.photoNotFound = error else { return XCTFail("Expected photoNotFound") }
         }
     }
@@ -94,8 +114,12 @@ final class AttachmentStoreTests: XCTestCase {
         let event = try store.addEvent(title: "X", date: Date(), toAssetID: assetID)
         let before = store.assets[assetID]!.modifiedDate
         try store.removeEvent(id: event.id, fromAssetID: assetID)
-        XCTAssertEqual(store.assets[assetID]!.events.count, 0)
-        XCTAssertGreaterThan(store.assets[assetID]!.modifiedDate, before)
+        let asset = store.assets[assetID]!
+        XCTAssertEqual(asset.events.count, 1, "the tombstone stays until purge")
+        XCTAssertEqual(asset.liveEvents.count, 0)
+        XCTAssertTrue(asset.events[0].isDeleted)
+        XCTAssertNotNil(asset.events[0].deletedAt)
+        XCTAssertGreaterThan(asset.modifiedDate, before)
     }
 
     func testAddEventUnknownAssetThrows() {
@@ -106,6 +130,22 @@ final class AttachmentStoreTests: XCTestCase {
 
     func testRemoveEventUnknownEventThrows() {
         XCTAssertThrowsError(try store.removeEvent(id: UUID(), fromAssetID: assetID)) { error in
+            guard case AssetStoreError.eventNotFound = error else { return XCTFail("Expected eventNotFound") }
+        }
+    }
+
+    func testRemoveEventTwiceThrowsEventNotFound() throws {
+        let event = try store.addEvent(title: "X", date: Date(), toAssetID: assetID)
+        try store.removeEvent(id: event.id, fromAssetID: assetID)
+        XCTAssertThrowsError(try store.removeEvent(id: event.id, fromAssetID: assetID)) { error in
+            guard case AssetStoreError.eventNotFound = error else { return XCTFail("Expected eventNotFound") }
+        }
+    }
+
+    func testUpdateEventOnTombstonedEventThrows() throws {
+        let event = try store.addEvent(title: "X", date: Date(), toAssetID: assetID)
+        try store.removeEvent(id: event.id, fromAssetID: assetID)
+        XCTAssertThrowsError(try store.updateEvent(id: event.id, onAssetID: assetID, title: "Y", date: Date(), notes: "", recurrence: nil)) { error in
             guard case AssetStoreError.eventNotFound = error else { return XCTFail("Expected eventNotFound") }
         }
     }
@@ -149,8 +189,12 @@ final class AttachmentStoreTests: XCTestCase {
         let txn = try store.addTransaction(details: "X", amount: 5, date: Date(), kind: .expense, toAssetID: assetID)
         let before = store.assets[assetID]!.modifiedDate
         try store.removeTransaction(id: txn.id, fromAssetID: assetID)
-        XCTAssertEqual(store.assets[assetID]!.transactions.count, 0)
-        XCTAssertGreaterThan(store.assets[assetID]!.modifiedDate, before)
+        let asset = store.assets[assetID]!
+        XCTAssertEqual(asset.transactions.count, 1, "the tombstone stays until purge")
+        XCTAssertEqual(asset.liveTransactions.count, 0)
+        XCTAssertTrue(asset.transactions[0].isDeleted)
+        XCTAssertNotNil(asset.transactions[0].deletedAt)
+        XCTAssertGreaterThan(asset.modifiedDate, before)
     }
 
     func testAddTransactionUnknownAssetThrows() {
@@ -161,6 +205,22 @@ final class AttachmentStoreTests: XCTestCase {
 
     func testRemoveTransactionUnknownTransactionThrows() {
         XCTAssertThrowsError(try store.removeTransaction(id: UUID(), fromAssetID: assetID)) { error in
+            guard case AssetStoreError.transactionNotFound = error else { return XCTFail("Expected transactionNotFound") }
+        }
+    }
+
+    func testRemoveTransactionTwiceThrowsTransactionNotFound() throws {
+        let txn = try store.addTransaction(details: "X", amount: 5, date: Date(), kind: .expense, toAssetID: assetID)
+        try store.removeTransaction(id: txn.id, fromAssetID: assetID)
+        XCTAssertThrowsError(try store.removeTransaction(id: txn.id, fromAssetID: assetID)) { error in
+            guard case AssetStoreError.transactionNotFound = error else { return XCTFail("Expected transactionNotFound") }
+        }
+    }
+
+    func testUpdateTransactionOnTombstonedTransactionThrows() throws {
+        let txn = try store.addTransaction(details: "X", amount: 5, date: Date(), kind: .expense, toAssetID: assetID)
+        try store.removeTransaction(id: txn.id, fromAssetID: assetID)
+        XCTAssertThrowsError(try store.updateTransaction(id: txn.id, onAssetID: assetID, details: "Y", amount: 1, date: Date(), kind: .expense, payeeContactID: nil, notes: "", recurrence: nil)) { error in
             guard case AssetStoreError.transactionNotFound = error else { return XCTFail("Expected transactionNotFound") }
         }
     }

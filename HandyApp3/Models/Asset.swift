@@ -74,6 +74,15 @@ final class Asset: Identifiable, Equatable {
         customProperties.first { $0.definition.id == definitionID }
     }
 
+    // MARK: - Inline record convenience
+
+    /// Inline records excluding tombstones. Deleted events/transactions/photos stay in the
+    /// arrays until `AssetStore.purgeHardDeleted` reaps them, so every read site — display,
+    /// lookup, notification planning, paywall counting — must go through these.
+    var livePhotos: [Photo] { photos.filter { !$0.isDeleted } }
+    var liveEvents: [Event] { events.filter { !$0.isDeleted } }
+    var liveTransactions: [Transaction] { transactions.filter { !$0.isDeleted } }
+
     // MARK: - Hierarchy traversal
 
     /// Ordered chain from the root ancestor down to (but not including) this asset.

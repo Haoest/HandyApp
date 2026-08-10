@@ -2,7 +2,7 @@ import Foundation
 
 // MARK: - Schema version
 
-let storeSchemaVersion = 1
+let storeSchemaVersion = 2
 
 // MARK: - StoredValueDTO
 
@@ -118,6 +118,11 @@ struct PhotoDTO: Codable {
     var addedDate: Date
     var fullImage: Data?
     var thumbnail: Data?
+    /// Optional: absent in files written before inline records carried tombstones.
+    /// Decoders substitute — see `photo(from:)`.
+    var modifyDate: Date?
+    var isDeleted: Bool?
+    var deletedAt: Date?
 }
 
 // MARK: - EventDTO
@@ -128,6 +133,13 @@ struct EventDTO: Codable {
     var date: Date
     var notes: String
     var recurrence: String?     // RecurrenceInterval.rawValue
+    /// Optional: absent in files written before inline records carried tombstones.
+    /// `modifyDate` falls back to the owning asset's `modifiedDate` — `date` is the event's
+    /// scheduled day and may be in the future, so it is not a record timestamp.
+    /// Decoders substitute — see `event(from:fallbackModifyDate:)`.
+    var modifyDate: Date?
+    var isDeleted: Bool?
+    var deletedAt: Date?
 }
 
 // MARK: - TransactionDTO
@@ -141,6 +153,13 @@ struct TransactionDTO: Codable {
     var payeeContactID: String?
     var notes: String
     var recurrence: String?     // RecurrenceInterval.rawValue
+    /// Optional: absent in files written before inline records carried tombstones.
+    /// `modifyDate` falls back to the owning asset's `modifiedDate` — `date` is the
+    /// transaction's occurrence day, not a record timestamp.
+    /// Decoders substitute — see `transaction(from:fallbackModifyDate:)`.
+    var modifyDate: Date?
+    var isDeleted: Bool?
+    var deletedAt: Date?
 }
 
 // MARK: - AssetDTO

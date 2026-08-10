@@ -32,11 +32,11 @@ struct PhotosSection: View {
     // the event/transaction sheets live at the Form level.
     @Binding var selectedPhoto: Photo?
 
-    private var sorted: [Photo] { asset.photos.sorted { $0.addedDate > $1.addedDate } }
+    private var sorted: [Photo] { asset.livePhotos.sorted { $0.addedDate > $1.addedDate } }
 
     var body: some View {
         Section("Photos") {
-            if asset.photos.isEmpty {
+            if sorted.isEmpty {
                 Text("None").foregroundStyle(.secondary)
             } else {
                 ScrollView(.horizontal, showsIndicators: false) {

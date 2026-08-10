@@ -239,4 +239,87 @@ final class RecordTimestampTests: XCTestCase {
         XCTAssertEqual(loadedChild.parentageModifyDate, stamp)
         XCTAssertEqual(loadedChild.baseProperties[0].modifyDate, stamp)
     }
+
+    // MARK: - Event / Transaction / Photo modifyDate and tombstones
+
+    func testUpdateEventAdvancesEventModifyDate() throws {
+        let cat = try store.createCategory(name: "Storage")
+        let asset = try store.createAsset(name: "Garage", categoryID: cat.id)
+        let event = try store.addEvent(title: "Old", date: Date(), toAssetID: asset.id)
+        event.modifyDate = .distantPast
+
+        try store.updateEvent(id: event.id, onAssetID: asset.id, title: "New", date: Date(), notes: "", recurrence: nil)
+
+        XCTAssertGreaterThan(event.modifyDate, .distantPast)
+    }
+
+    func testUpdateTransactionAdvancesTransactionModifyDate() throws {
+        let cat = try store.createCategory(name: "Storage")
+        let asset = try store.createAsset(name: "Garage", categoryID: cat.id)
+        let txn = try store.addTransaction(details: "Old", amount: 10, date: Date(), kind: .expense, toAssetID: asset.id)
+        txn.modifyDate = .distantPast
+
+        try store.updateTransaction(id: txn.id, onAssetID: asset.id, details: "New", amount: 20, date: Date(), kind: .income, payeeContactID: nil, notes: "", recurrence: nil)
+
+        XCTAssertGreaterThan(txn.modifyDate, .distantPast)
+    }
+
+    func testUpdatePhotoCaptionAdvancesPhotoModifyDate() throws {
+        let cat = try store.createCategory(name: "Storage")
+        let asset = try store.createAsset(name: "Garage", categoryID: cat.id)
+        let photo = try store.addPhoto(imageData: Data([1]), thumbnailData: Data([2]), toAssetID: asset.id)
+        photo.modifyDate = .distantPast
+
+        try store.updatePhotoCaption("New caption", forPhotoID: photo.id, onAssetID: asset.id)
+
+        XCTAssertGreaterThan(photo.modifyDate, .distantPast)
+    }
+
+    func testRemoveEventStampsModifyDateAndDeletedAt() throws {
+        let cat = try store.createCategory(name: "Storage")
+        let asset = try store.createAsset(name: "Garage", categoryID: cat.id)
+        let event = try store.addEvent(title: "X", date: Date(), toAssetID: asset.id)
+        event.modifyDate = .distantPast
+
+        try store.removeEvent(id: event.id, fromAssetID: asset.id)
+
+        XCTAssertGreaterThan(event.modifyDate, .distantPast)
+        XCTAssertTrue(event.isDeleted)
+        XCTAssertNotNil(event.deletedAt)
+    }
+
+    func testEditingOneEventLeavesSiblingModifyDateUntouched() throws {
+        let cat = try store.createCategory(name: "Storage")
+        let asset = try store.createAsset(name: "Garage", categoryID: cat.id)
+        let keep = try store.addEvent(title: "Keep", date: Date(), toAssetID: asset.id)
+        let edit = try store.addEvent(title: "Edit", date: Date(), toAssetID: asset.id)
+        keep.modifyDate = .distantPast
+
+        try store.updateEvent(id: edit.id, onAssetID: asset.id, title: "Edited", date: Date(), notes: "", recurrence: nil)
+
+        XCTAssertEqual(keep.modifyDate, .distantPast,
+                       "a sibling event must not be stamped — per-record freshness is the point of the field")
+    }
+
+    func testSaveLoadPreservesInlineTombstonesAndTimestamps() throws {
+        let cat = try store.createCategory(name: "Storage")
+        let asset = try store.createAsset(name: "Garage", categoryID: cat.id)
+        let event = try store.addEvent(title: "X", date: Date(), toAssetID: asset.id)
+        try store.removeEvent(id: event.id, fromAssetID: asset.id)
+
+        let stamp = Date(timeIntervalSince1970: 1_500_000_000)
+        event.modifyDate = stamp
+        event.deletedAt = stamp
+        store.save()
+
+        let reloaded = AssetStore()
+        XCTAssertTrue(reloaded.load())
+
+        let loadedAsset = try XCTUnwrap(reloaded.assets[asset.id])
+        let loadedEvent = try XCTUnwrap(loadedAsset.events.first { $0.id == event.id })
+        XCTAssertTrue(loadedEvent.isDeleted)
+        XCTAssertEqual(loadedEvent.deletedAt, stamp)
+        XCTAssertEqual(loadedEvent.modifyDate, stamp)
+        XCTAssertEqual(loadedAsset.liveEvents.count, 0)
+    }
 }

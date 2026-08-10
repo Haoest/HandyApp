@@ -314,7 +314,10 @@ extension AssetStore {
     // MARK: - Migration
 
     private func migrate(_ s: StoreSnapshotDTO) -> StoreSnapshotDTO {
-        // Future: if s.schemaVersion < 2 { var s = s; /* transform */; return s }
+        // v1 → v2 added modifyDate/isDeleted/deletedAt to Event/Transaction/Photo; the fields
+        // are optional with a decode-time fallback (see event/transaction/photo(from:)), so no
+        // transform is needed here.
+        // Future: if s.schemaVersion < 3 { var s = s; /* transform */; return s }
         return s
     }
 
@@ -383,18 +386,9 @@ extension AssetStore {
             )
             asset.isDeleted = dto.isDeleted
             asset.deletedAt = dto.deletedAt
-            asset.photos = dto.photos.map { Photo(id: $0.id, caption: $0.caption, addedDate: $0.addedDate) }
-            asset.events = dto.events.map {
-                Event(id: $0.id, title: $0.title, date: $0.date, notes: $0.notes,
-                      recurrence: $0.recurrence.flatMap(RecurrenceInterval.init))
-            }
-            asset.transactions = dto.transactions.map {
-                Transaction(id: $0.id, details: $0.details,
-                            amount: Decimal(string: $0.amount) ?? 0,
-                            date: $0.date, kind: TransactionKind(rawValue: $0.kind) ?? .expense,
-                            payeeContactID: $0.payeeContactID, notes: $0.notes,
-                            recurrence: $0.recurrence.flatMap(RecurrenceInterval.init))
-            }
+            asset.photos = dto.photos.map { photo(from: $0) }
+            asset.events = dto.events.map { event(from: $0, fallbackModifyDate: dto.modifiedDate) }
+            asset.transactions = dto.transactions.map { transaction(from: $0, fallbackModifyDate: dto.modifiedDate) }
             assetMap[asset.id] = asset
         }
 
@@ -500,7 +494,7 @@ extension AssetStore {
                     changed += 1
                 }
                 if changed > 0 { local.modifiedDate = Date() }
-                for p in dto.photos { photoIDsToMaterialize.insert(p.id) }
+                for p in dto.photos where !(p.isDeleted ?? false) { photoIDsToMaterialize.insert(p.id) }
                 continue
             }
 
@@ -519,21 +513,12 @@ extension AssetStore {
                 parentID: dto.parentID, createdDate: dto.createdDate, modifiedDate: dto.modifiedDate,
                 parentageModifyDate: dto.parentageModifyDate ?? dto.createdDate
             )
-            asset.photos = dto.photos.map { Photo(id: $0.id, caption: $0.caption, addedDate: $0.addedDate) }
-            asset.events = dto.events.map {
-                Event(id: $0.id, title: $0.title, date: $0.date, notes: $0.notes,
-                      recurrence: $0.recurrence.flatMap(RecurrenceInterval.init))
-            }
-            asset.transactions = dto.transactions.map {
-                Transaction(id: $0.id, details: $0.details,
-                            amount: Decimal(string: $0.amount) ?? 0,
-                            date: $0.date, kind: TransactionKind(rawValue: $0.kind) ?? .expense,
-                            payeeContactID: $0.payeeContactID, notes: $0.notes,
-                            recurrence: $0.recurrence.flatMap(RecurrenceInterval.init))
-            }
+            asset.photos = dto.photos.map { photo(from: $0) }
+            asset.events = dto.events.map { event(from: $0, fallbackModifyDate: dto.modifiedDate) }
+            asset.transactions = dto.transactions.map { transaction(from: $0, fallbackModifyDate: dto.modifiedDate) }
             assetMap[asset.id] = asset
             newAssets.append((asset, dto))
-            for p in dto.photos { photoIDsToMaterialize.insert(p.id) }
+            for p in dto.photos where !(p.isDeleted ?? false) { photoIDsToMaterialize.insert(p.id) }
         }
 
         // 6. Wire parent→child hierarchy for newly added assets only. Existing local
@@ -650,27 +635,25 @@ extension AssetStore {
             fallbackModifyDate: dto.modifiedDate
         )
 
+        // Records already present locally are left untouched, tombstone or not: an incoming
+        // tombstone for a record still live here does NOT propagate the delete yet. Fixing
+        // that needs last-writer-wins on modifyDate, which is the follow-up sync work — this
+        // change only guarantees the fields exist and survive the round trip.
         let seenEventIDs = Set(local.events.map(\.id))
         for edto in dto.events where !seenEventIDs.contains(edto.id) {
-            local.events.append(Event(id: edto.id, title: edto.title, date: edto.date, notes: edto.notes,
-                                      recurrence: edto.recurrence.flatMap(RecurrenceInterval.init)))
+            local.events.append(event(from: edto, fallbackModifyDate: dto.modifiedDate))
             added += 1
         }
 
         let seenTxnIDs = Set(local.transactions.map(\.id))
         for tdto in dto.transactions where !seenTxnIDs.contains(tdto.id) {
-            local.transactions.append(Transaction(
-                id: tdto.id, details: tdto.details, amount: Decimal(string: tdto.amount) ?? 0,
-                date: tdto.date, kind: TransactionKind(rawValue: tdto.kind) ?? .expense,
-                payeeContactID: tdto.payeeContactID, notes: tdto.notes,
-                recurrence: tdto.recurrence.flatMap(RecurrenceInterval.init)
-            ))
+            local.transactions.append(transaction(from: tdto, fallbackModifyDate: dto.modifiedDate))
             added += 1
         }
 
         let seenPhotoIDs = Set(local.photos.map(\.id))
         for pdto in dto.photos where !seenPhotoIDs.contains(pdto.id) {
-            local.photos.append(Photo(id: pdto.id, caption: pdto.caption, addedDate: pdto.addedDate))
+            local.photos.append(photo(from: pdto))
             added += 1
         }
 
@@ -796,23 +779,9 @@ extension AssetStore {
                     id: asset.id, name: asset.name, categoryID: asset.category.id,
                     baseProperties: asset.baseProperties.map { assetPropertyDTO($0) },
                     customProperties: asset.customProperties.map { assetPropertyDTO($0) },
-                    photos: asset.photos.map { p in
-                        PhotoDTO(
-                            id: p.id, caption: p.caption, addedDate: p.addedDate,
-                            fullImage: includePhotoData ? PhotoStorage.loadFull(id: p.id) : nil,
-                            thumbnail: includePhotoData ? PhotoStorage.loadThumb(id: p.id) : nil
-                        )
-                    },
-                    events: asset.events.map {
-                        EventDTO(id: $0.id, title: $0.title, date: $0.date,
-                                 notes: $0.notes, recurrence: $0.recurrence?.rawValue)
-                    },
-                    transactions: asset.transactions.map { txn in
-                        TransactionDTO(id: txn.id, details: txn.details, amount: txn.amount.description,
-                                       date: txn.date, kind: txn.kind.rawValue,
-                                       payeeContactID: txn.payeeContactID, notes: txn.notes,
-                                       recurrence: txn.recurrence?.rawValue)
-                    },
+                    photos: asset.photos.map { photoDTO($0, includeData: includePhotoData) },
+                    events: asset.events.map { eventDTO($0) },
+                    transactions: asset.transactions.map { transactionDTO($0) },
                     parentID: asset.parentID, isDeleted: asset.isDeleted, deletedAt: asset.deletedAt,
                     createdDate: asset.createdDate, modifiedDate: asset.modifiedDate,
                     parentageModifyDate: asset.parentageModifyDate
@@ -877,6 +846,42 @@ extension AssetStore {
                              modifyDate: dto.modifyDate ?? fallbackModifyDate)
     }
 
+    /// `fallbackModifyDate` stands in for files written before inline records carried
+    /// tombstones: the owning asset's `modifiedDate`. `Event.date` is the scheduled day and
+    /// may be in the future, so it is never used as the timestamp fallback.
+    private func event(from dto: EventDTO, fallbackModifyDate: Date) -> Event {
+        let event = Event(id: dto.id, title: dto.title, date: dto.date, notes: dto.notes,
+                          recurrence: dto.recurrence.flatMap(RecurrenceInterval.init),
+                          modifyDate: dto.modifyDate ?? fallbackModifyDate)
+        event.isDeleted = dto.isDeleted ?? false
+        event.deletedAt = dto.deletedAt
+        return event
+    }
+
+    /// See `event(from:fallbackModifyDate:)` — same fallback rule.
+    private func transaction(from dto: TransactionDTO, fallbackModifyDate: Date) -> Transaction {
+        let txn = Transaction(id: dto.id, details: dto.details,
+                              amount: Decimal(string: dto.amount) ?? 0,
+                              date: dto.date, kind: TransactionKind(rawValue: dto.kind) ?? .expense,
+                              payeeContactID: dto.payeeContactID, notes: dto.notes,
+                              recurrence: dto.recurrence.flatMap(RecurrenceInterval.init),
+                              modifyDate: dto.modifyDate ?? fallbackModifyDate)
+        txn.isDeleted = dto.isDeleted ?? false
+        txn.deletedAt = dto.deletedAt
+        return txn
+    }
+
+    /// `imageData`/`thumbnailData` are omitted so they default to nil — views populate them
+    /// lazily via `PhotoStorage`. A photo carries its own creation instant, so unlike events
+    /// and transactions its modify-date fallback needs nothing from the owning asset.
+    private func photo(from dto: PhotoDTO) -> Photo {
+        let photo = Photo(id: dto.id, caption: dto.caption, addedDate: dto.addedDate,
+                          modifyDate: dto.modifyDate ?? dto.addedDate)
+        photo.isDeleted = dto.isDeleted ?? false
+        photo.deletedAt = dto.deletedAt
+        return photo
+    }
+
     // MARK: - Live object → DTO helpers
 
     private func propertyTypeDTO(_ type: PropertyType) -> PropertyTypeDTO {
@@ -908,5 +913,28 @@ extension AssetStore {
         AssetPropertyDTO(id: prop.id, definition: propertyDefinitionDTO(prop.definition),
                          value: prop.value.map { storedValueDTO($0) }, sortOrder: prop.sortOrder,
                          modifyDate: prop.modifyDate)
+    }
+
+    private func eventDTO(_ e: Event) -> EventDTO {
+        EventDTO(id: e.id, title: e.title, date: e.date, notes: e.notes,
+                 recurrence: e.recurrence?.rawValue,
+                 modifyDate: e.modifyDate, isDeleted: e.isDeleted, deletedAt: e.deletedAt)
+    }
+
+    private func transactionDTO(_ t: Transaction) -> TransactionDTO {
+        TransactionDTO(id: t.id, details: t.details, amount: t.amount.description,
+                       date: t.date, kind: t.kind.rawValue, payeeContactID: t.payeeContactID,
+                       notes: t.notes, recurrence: t.recurrence?.rawValue,
+                       modifyDate: t.modifyDate, isDeleted: t.isDeleted, deletedAt: t.deletedAt)
+    }
+
+    /// A tombstoned photo's bytes are never embedded in an export — the peer is being told to
+    /// delete the record, not to recreate the image.
+    private func photoDTO(_ p: Photo, includeData: Bool) -> PhotoDTO {
+        let embed = includeData && !p.isDeleted
+        return PhotoDTO(id: p.id, caption: p.caption, addedDate: p.addedDate,
+                        fullImage: embed ? PhotoStorage.loadFull(id: p.id) : nil,
+                        thumbnail: embed ? PhotoStorage.loadThumb(id: p.id) : nil,
+                        modifyDate: p.modifyDate, isDeleted: p.isDeleted, deletedAt: p.deletedAt)
     }
 }

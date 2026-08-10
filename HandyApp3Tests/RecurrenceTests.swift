@@ -141,4 +141,18 @@ final class NotificationPlannerTests: XCTestCase {
         let plan = NotificationPlanner.plan(for: store.allAssets, now: date(2026, 1, 2), calendar: calendar)
         XCTAssertTrue(plan.isEmpty)
     }
+
+    func testSoftDeletedEventExcludedFromPlan() throws {
+        let event = try store.addEvent(title: "X", date: date(2026, 1, 1), recurrence: .monthly, toAssetID: assetID)
+        try store.removeEvent(id: event.id, fromAssetID: assetID)
+        let plan = NotificationPlanner.plan(for: store.allAssets, now: date(2026, 1, 2), calendar: calendar)
+        XCTAssertTrue(plan.isEmpty)
+    }
+
+    func testSoftDeletedRecurringTransactionExcludedFromPlan() throws {
+        let txn = try store.addTransaction(details: "X", amount: 5, date: date(2026, 1, 1), kind: .expense, recurrence: .monthly, toAssetID: assetID)
+        try store.removeTransaction(id: txn.id, fromAssetID: assetID)
+        let plan = NotificationPlanner.plan(for: store.allAssets, now: date(2026, 1, 2), calendar: calendar)
+        XCTAssertTrue(plan.isEmpty)
+    }
 }

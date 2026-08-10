@@ -37,7 +37,7 @@ struct EventsSection: View {
     @AppStorage(AppPreference.eventLimitKey)
     private var nonRecurringLimit = AppPreference.nonRecurringLimitDefault
 
-    private var sorted: [Event] { asset.events.recurringFirstDateDescending() }
+    private var sorted: [Event] { asset.liveEvents.recurringFirstDateDescending() }
 
     private var displayed: [Event] {
         var remaining = nonRecurringLimit
@@ -55,7 +55,7 @@ struct EventsSection: View {
 
     var body: some View {
         Section("Events") {
-            if asset.events.isEmpty {
+            if sorted.isEmpty {
                 Text("None").foregroundStyle(.secondary)
             } else {
                 ForEach(displayed) { event in
@@ -79,7 +79,7 @@ struct EventListView: View {
     @Binding var sheetMode: EventSheetMode?
     let onLimitReached: () -> Void
 
-    private var sorted: [Event] { asset.events.recurringFirstDateDescending() }
+    private var sorted: [Event] { asset.liveEvents.recurringFirstDateDescending() }
 
     var body: some View {
         List {

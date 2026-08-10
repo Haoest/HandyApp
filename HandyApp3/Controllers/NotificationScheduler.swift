@@ -35,7 +35,7 @@ enum NotificationPlanner {
         let cutoff = calendar.startOfDay(for: now).addingTimeInterval(-1)
         var candidates: [PlannedNotification] = []
         for asset in assets {
-            for event in asset.events {
+            for event in asset.liveEvents {
                 guard let recurrence = event.recurrence else { continue }
                 for (index, date) in recurrence.occurrences(from: event.date, after: cutoff, count: perItemLimit, calendar: calendar) {
                     if let planned = makePlanned(
@@ -47,7 +47,7 @@ enum NotificationPlanner {
                     }
                 }
             }
-            for txn in asset.transactions {
+            for txn in asset.liveTransactions {
                 guard let recurrence = txn.recurrence else { continue }
                 let amount = txn.amount.formatted(.currency(code: Locale.current.currency?.identifier ?? "USD"))
                 let body = "\(txn.details) — \(amount) (\(txn.kind.rawValue))"

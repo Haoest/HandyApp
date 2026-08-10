@@ -123,12 +123,12 @@ final class AssetStore {
 
     /// Whether adding another event to `asset` is currently allowed under `eventCreationLimit`.
     func hasEventCapacity(for asset: Asset) -> Bool {
-        eventCreationLimit.map { asset.events.count < $0 } ?? true
+        eventCreationLimit.map { asset.liveEvents.count < $0 } ?? true
     }
 
     /// Whether adding another transaction to `asset` is currently allowed under `transactionCreationLimit`.
     func hasTransactionCapacity(for asset: Asset) -> Bool {
-        transactionCreationLimit.map { asset.transactions.count < $0 } ?? true
+        transactionCreationLimit.map { asset.liveTransactions.count < $0 } ?? true
     }
 
     // MARK: - AssetCategory CRUD
@@ -677,25 +677,32 @@ final class AssetStore {
 
     func updatePhotoCaption(_ caption: String, forPhotoID photoID: UUID, onAssetID assetID: UUID) throws {
         guard let asset = assets[assetID] else { throw AssetStoreError.assetNotFound(assetID) }
-        guard let photo = asset.photos.first(where: { $0.id == photoID }) else { throw AssetStoreError.photoNotFound(photoID) }
+        guard let photo = asset.livePhotos.first(where: { $0.id == photoID }) else { throw AssetStoreError.photoNotFound(photoID) }
+        let now = Date()
         photo.caption = caption
-        asset.modifiedDate = Date()
+        photo.touch(now)
+        asset.modifiedDate = now
         markDirty()
     }
 
+    /// Tombstones the photo. The JPEG files stay on disk until `purgeHardDeleted` reaps the
+    /// tombstone — deleting bytes now would destroy them while the tombstone is still syncing,
+    /// and a peer that hasn't seen the delete yet would render a photo with no image.
     func removePhoto(id photoID: UUID, fromAssetID assetID: UUID) throws {
         guard let asset = assets[assetID] else { throw AssetStoreError.assetNotFound(assetID) }
-        guard asset.photos.contains(where: { $0.id == photoID }) else { throw AssetStoreError.photoNotFound(photoID) }
-        PhotoStorage.delete(id: photoID)
-        asset.photos.removeAll { $0.id == photoID }
-        asset.modifiedDate = Date()
+        guard let photo = asset.livePhotos.first(where: { $0.id == photoID }) else { throw AssetStoreError.photoNotFound(photoID) }
+        let now = Date()
+        photo.isDeleted = true
+        photo.deletedAt = now
+        photo.touch(now)
+        asset.modifiedDate = now
         markDirty()
     }
 
     @discardableResult
     func addEvent(title: String, date: Date, notes: String = "", recurrence: RecurrenceInterval? = nil, toAssetID assetID: UUID) throws -> Event {
         guard let asset = assets[assetID] else { throw AssetStoreError.assetNotFound(assetID) }
-        if let limit = eventCreationLimit, asset.events.count >= limit {
+        if let limit = eventCreationLimit, asset.liveEvents.count >= limit {
             throw AssetStoreError.freeEventLimitReached(limit: limit)
         }
         let event = Event(title: title, date: date, notes: notes, recurrence: recurrence)
@@ -709,21 +716,26 @@ final class AssetStore {
 
     func updateEvent(id eventID: UUID, onAssetID assetID: UUID, title: String, date: Date, notes: String, recurrence: RecurrenceInterval?) throws {
         guard let asset = assets[assetID] else { throw AssetStoreError.assetNotFound(assetID) }
-        guard let event = asset.events.first(where: { $0.id == eventID }) else { throw AssetStoreError.eventNotFound(eventID) }
+        guard let event = asset.liveEvents.first(where: { $0.id == eventID }) else { throw AssetStoreError.eventNotFound(eventID) }
+        let now = Date()
         event.title = title
         event.date = date
         event.notes = notes
         event.recurrence = recurrence
-        asset.modifiedDate = Date()
+        event.touch(now)
+        asset.modifiedDate = now
         notificationScheduler?.requestResync(assets: allAssets)
         markDirty()
     }
 
     func removeEvent(id eventID: UUID, fromAssetID assetID: UUID) throws {
         guard let asset = assets[assetID] else { throw AssetStoreError.assetNotFound(assetID) }
-        guard asset.events.contains(where: { $0.id == eventID }) else { throw AssetStoreError.eventNotFound(eventID) }
-        asset.events.removeAll { $0.id == eventID }
-        asset.modifiedDate = Date()
+        guard let event = asset.liveEvents.first(where: { $0.id == eventID }) else { throw AssetStoreError.eventNotFound(eventID) }
+        let now = Date()
+        event.isDeleted = true
+        event.deletedAt = now
+        event.touch(now)
+        asset.modifiedDate = now
         notificationScheduler?.requestResync(assets: allAssets)
         markDirty()
     }
@@ -731,7 +743,7 @@ final class AssetStore {
     @discardableResult
     func addTransaction(details: String, amount: Decimal, date: Date, kind: TransactionKind, payeeContactID: String? = nil, notes: String = "", recurrence: RecurrenceInterval? = nil, toAssetID assetID: UUID) throws -> Transaction {
         guard let asset = assets[assetID] else { throw AssetStoreError.assetNotFound(assetID) }
-        if let limit = transactionCreationLimit, asset.transactions.count >= limit {
+        if let limit = transactionCreationLimit, asset.liveTransactions.count >= limit {
             throw AssetStoreError.freeTransactionLimitReached(limit: limit)
         }
         let txn = Transaction(details: details, amount: amount, date: date, kind: kind, payeeContactID: payeeContactID, notes: notes, recurrence: recurrence)
@@ -745,7 +757,8 @@ final class AssetStore {
 
     func updateTransaction(id txnID: UUID, onAssetID assetID: UUID, details: String, amount: Decimal, date: Date, kind: TransactionKind, payeeContactID: String?, notes: String, recurrence: RecurrenceInterval?) throws {
         guard let asset = assets[assetID] else { throw AssetStoreError.assetNotFound(assetID) }
-        guard let txn = asset.transactions.first(where: { $0.id == txnID }) else { throw AssetStoreError.transactionNotFound(txnID) }
+        guard let txn = asset.liveTransactions.first(where: { $0.id == txnID }) else { throw AssetStoreError.transactionNotFound(txnID) }
+        let now = Date()
         txn.details = details
         txn.amount = abs(amount)
         txn.date = date
@@ -753,16 +766,20 @@ final class AssetStore {
         txn.payeeContactID = payeeContactID
         txn.notes = notes
         txn.recurrence = recurrence
-        asset.modifiedDate = Date()
+        txn.touch(now)
+        asset.modifiedDate = now
         notificationScheduler?.requestResync(assets: allAssets)
         markDirty()
     }
 
     func removeTransaction(id txnID: UUID, fromAssetID assetID: UUID) throws {
         guard let asset = assets[assetID] else { throw AssetStoreError.assetNotFound(assetID) }
-        guard asset.transactions.contains(where: { $0.id == txnID }) else { throw AssetStoreError.transactionNotFound(txnID) }
-        asset.transactions.removeAll { $0.id == txnID }
-        asset.modifiedDate = Date()
+        guard let txn = asset.liveTransactions.first(where: { $0.id == txnID }) else { throw AssetStoreError.transactionNotFound(txnID) }
+        let now = Date()
+        txn.isDeleted = true
+        txn.deletedAt = now
+        txn.touch(now)
+        asset.modifiedDate = now
         notificationScheduler?.requestResync(assets: allAssets)
         markDirty()
     }
@@ -820,11 +837,14 @@ final class AssetStore {
         self.backgroundTheme = backgroundTheme
     }
 
-    /// Permanently removes soft-deleted assets and categories whose deletedAt is older than `seconds`.
-    /// Assets are purged first (photo files deleted, inline events/transactions discarded with them).
-    /// Categories are evaluated after — a category kept alive only by a now-purged asset is eligible
-    /// for removal in the same sweep. Categories still referenced by any surviving asset are retained
-    /// regardless of age to avoid dangling categoryIDs.
+    /// Permanently removes soft-deleted assets and categories whose deletedAt is older than
+    /// `seconds`, then the same for tombstoned events/transactions/photos inside the assets
+    /// that survived. Assets are purged first (photo files deleted, inline records discarded
+    /// with them). Surviving assets — live, or soft-deleted but not yet expired — keep their
+    /// own inline tombstones until those individually age out. Categories are evaluated after
+    /// — a category kept alive only by a now-purged asset is eligible for removal in the same
+    /// sweep. Categories still referenced by any surviving asset are retained regardless of
+    /// age to avoid dangling categoryIDs.
     func purgeHardDeleted(olderThan seconds: TimeInterval = 90 * 86_400) {
         let cutoff = Date().addingTimeInterval(-seconds)
         assets = assets.filter { _, a in
@@ -832,11 +852,27 @@ final class AssetStore {
             for photo in a.photos { PhotoStorage.delete(id: photo.id) }
             return false
         }
+        // Photo bytes are freed here rather than at removePhoto time so a peer that hasn't
+        // seen the delete can still resolve the file for the life of the tombstone.
+        for asset in assets.values {
+            for photo in asset.photos where Self.isExpiredTombstone(photo.isDeleted, photo.deletedAt, before: cutoff) {
+                PhotoStorage.delete(id: photo.id)
+            }
+            asset.photos.removeAll { Self.isExpiredTombstone($0.isDeleted, $0.deletedAt, before: cutoff) }
+            asset.events.removeAll { Self.isExpiredTombstone($0.isDeleted, $0.deletedAt, before: cutoff) }
+            asset.transactions.removeAll { Self.isExpiredTombstone($0.isDeleted, $0.deletedAt, before: cutoff) }
+        }
         let referencedCategoryIDs = Set(assets.values.map { $0.category.id })
         categories = categories.filter { id, c in
             referencedCategoryIDs.contains(id)
                 || !(c.isDeleted && (c.deletedAt ?? .distantFuture) < cutoff)
         }
         notificationScheduler?.requestResync(assets: allAssets)
+    }
+
+    /// A tombstone with no `deletedAt` is never expired — the same guard the asset and
+    /// category sweeps above have always used.
+    private static func isExpiredTombstone(_ isDeleted: Bool, _ deletedAt: Date?, before cutoff: Date) -> Bool {
+        isDeleted && (deletedAt ?? .distantFuture) < cutoff
     }
 }

@@ -279,6 +279,67 @@ final class DeletionHygieneTests: XCTestCase {
         XCTAssertFalse(FileManager.default.fileExists(atPath: thumbURL.path),
                        "purge must remove thumbnail file for expired asset")
     }
+
+    func testRemovePhotoKeepsFilesOnDiskUntilPurge() throws {
+        let cat = try store.createCategory(name: "Vehicles")
+        let asset = try store.createAsset(name: "Bike", categoryID: cat.id)
+        let photo = try store.addPhoto(imageData: Data("full".utf8),
+                                       thumbnailData: Data("thumb".utf8), toAssetID: asset.id)
+        let fullURL = PhotoStorage.fullURL(id: photo.id)
+        let thumbURL = PhotoStorage.thumbURL(id: photo.id)
+
+        try store.removePhoto(id: photo.id, fromAssetID: asset.id)
+
+        XCTAssertTrue(FileManager.default.fileExists(atPath: fullURL.path),
+                      "removePhoto must not delete bytes — a peer that hasn't seen the delete still needs them")
+        XCTAssertTrue(FileManager.default.fileExists(atPath: thumbURL.path))
+    }
+
+    func testPurgeRemovesExpiredPhotoTombstoneFilesFromLiveAsset() throws {
+        let cat = try store.createCategory(name: "Vehicles")
+        let asset = try store.createAsset(name: "Bike", categoryID: cat.id)
+        let photo = try store.addPhoto(imageData: Data("full".utf8),
+                                       thumbnailData: Data("thumb".utf8), toAssetID: asset.id)
+        let fullURL = PhotoStorage.fullURL(id: photo.id)
+        let thumbURL = PhotoStorage.thumbURL(id: photo.id)
+
+        try store.removePhoto(id: photo.id, fromAssetID: asset.id)
+        photo.deletedAt = Date().addingTimeInterval(-15 * 86_400)
+        store.purgeHardDeleted(olderThan: TimeInterval(AppPreference.DaysToRetainDeletedItems) * 86_400)
+
+        XCTAssertFalse(FileManager.default.fileExists(atPath: fullURL.path),
+                       "purge must remove full-image file for an expired photo tombstone on a live asset")
+        XCTAssertFalse(FileManager.default.fileExists(atPath: thumbURL.path))
+        XCTAssertEqual(asset.photos.count, 0, "the expired tombstone itself must be reaped")
+    }
+
+    func testPurgeRemovesExpiredEventAndTransactionTombstones() throws {
+        let cat = try store.createCategory(name: "Vehicles")
+        let asset = try store.createAsset(name: "Bike", categoryID: cat.id)
+        let event = try store.addEvent(title: "X", date: Date(), toAssetID: asset.id)
+        let txn = try store.addTransaction(details: "X", amount: 5, date: Date(), kind: .expense, toAssetID: asset.id)
+
+        try store.removeEvent(id: event.id, fromAssetID: asset.id)
+        try store.removeTransaction(id: txn.id, fromAssetID: asset.id)
+        event.deletedAt = Date().addingTimeInterval(-15 * 86_400)
+        txn.deletedAt = Date().addingTimeInterval(-15 * 86_400)
+        store.purgeHardDeleted(olderThan: TimeInterval(AppPreference.DaysToRetainDeletedItems) * 86_400)
+
+        XCTAssertEqual(asset.events.count, 0)
+        XCTAssertEqual(asset.transactions.count, 0)
+    }
+
+    func testPurgeKeepsUnexpiredInlineTombstones() throws {
+        let cat = try store.createCategory(name: "Vehicles")
+        let asset = try store.createAsset(name: "Bike", categoryID: cat.id)
+        let event = try store.addEvent(title: "X", date: Date(), toAssetID: asset.id)
+
+        try store.removeEvent(id: event.id, fromAssetID: asset.id)
+        store.purgeHardDeleted(olderThan: TimeInterval(AppPreference.DaysToRetainDeletedItems) * 86_400)
+
+        XCTAssertEqual(asset.events.count, 1, "a fresh tombstone must survive to keep syncing")
+        XCTAssertEqual(asset.liveEvents.count, 0)
+    }
 }
 
 // MARK: - Phase 4: photo download trigger

@@ -37,7 +37,7 @@ struct TransactionsSection: View {
     @AppStorage(AppPreference.transactionLimitKey)
     private var nonRecurringLimit = AppPreference.nonRecurringLimitDefault
 
-    private var sorted: [Transaction] { asset.transactions.recurringFirstDateDescending() }
+    private var sorted: [Transaction] { asset.liveTransactions.recurringFirstDateDescending() }
 
     private var displayed: [Transaction] {
         var remaining = nonRecurringLimit
@@ -55,7 +55,7 @@ struct TransactionsSection: View {
 
     var body: some View {
         Section("Transactions") {
-            if asset.transactions.isEmpty {
+            if sorted.isEmpty {
                 Text("None").foregroundStyle(.secondary)
             } else {
                 ForEach(displayed) { txn in
@@ -79,7 +79,7 @@ struct TransactionListView: View {
     @Binding var sheetMode: TransactionSheetMode?
     let onLimitReached: () -> Void
 
-    private var sorted: [Transaction] { asset.transactions.recurringFirstDateDescending() }
+    private var sorted: [Transaction] { asset.liveTransactions.recurringFirstDateDescending() }
 
     var body: some View {
         List {

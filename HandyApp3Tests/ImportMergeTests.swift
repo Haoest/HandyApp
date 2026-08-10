@@ -860,4 +860,120 @@ final class ImportMergeTests: XCTestCase {
         let merged = try XCTUnwrap(store2.assets[asset.id])
         XCTAssertEqual(merged.baseProperties.first?.modifyDate, stamp)
     }
+
+    // MARK: - Inline record tombstones
+
+    /// A record absent locally that arrives already tombstoned must be adopted as a
+    /// tombstone, not materialized as live — otherwise a peer that never saw the delete
+    /// would resurrect it on the next merge.
+    func testMergeAdoptsIncomingTombstonedEventAsTombstone() throws {
+        let cat = try store.createCategory(name: "Garage")
+        let asset = try store.createAsset(name: "Camry", categoryID: cat.id)
+        let event = try store.addEvent(title: "X", date: Date(), toAssetID: asset.id)
+        try store.removeEvent(id: event.id, fromAssetID: asset.id)
+        let stamp = Date(timeIntervalSince1970: 1_600_000_000)
+        event.deletedAt = stamp
+        event.modifyDate = stamp
+
+        let export = try XCTUnwrap(store.exportJSON())
+        let store2 = makeSecondStore()
+        try store2.importJSON(data: export)
+
+        let mergedAsset = try XCTUnwrap(store2.assets[asset.id])
+        XCTAssertEqual(mergedAsset.events.count, 1)
+        XCTAssertEqual(mergedAsset.liveEvents.count, 0)
+        let mergedEvent = try XCTUnwrap(mergedAsset.events.first)
+        XCTAssertTrue(mergedEvent.isDeleted)
+        XCTAssertEqual(mergedEvent.deletedAt, stamp)
+        XCTAssertEqual(mergedEvent.modifyDate, stamp)
+    }
+
+    /// A tombstoned photo's bytes must never be written to disk — the incoming file is
+    /// telling the peer to delete the record, not recreate the image.
+    func testMergeSkipsMaterializingTombstonedPhotoBytes() throws {
+        let cat = try store.createCategory(name: "Garage")
+        let asset = try store.createAsset(name: "Camry", categoryID: cat.id)
+
+        let export = try XCTUnwrap(store.exportJSON())
+        let photoID = UUID()
+        let doctored = try mutatingAsset(id: asset.id, in: export) { dict in
+            var photoJSON = fabricatedPhotoJSON(id: photoID, fullBytes: Data("full".utf8), thumbBytes: Data("thumb".utf8))
+            photoJSON["isDeleted"] = true
+            photoJSON["deletedAt"] = ISO8601DateFormatter().string(from: Date())
+            dict["photos"] = [photoJSON]
+        }
+
+        try store.importJSON(data: doctored)
+
+        let merged = try XCTUnwrap(store.assets[asset.id])
+        XCTAssertEqual(merged.photos.count, 1)
+        XCTAssertTrue(merged.photos.first?.isDeleted ?? false)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: PhotoStorage.fullURL(id: photoID).path),
+                       "a tombstoned incoming photo must not have its bytes written to disk")
+        XCTAssertFalse(FileManager.default.fileExists(atPath: PhotoStorage.thumbURL(id: photoID).path))
+    }
+
+    /// Files written before inline records carried tombstones have none of the three new
+    /// keys. Decoding must substitute live/fallback values rather than throwing.
+    func testLegacyInlineRecordsWithoutTombstoneFieldsDecodeAsLive() throws {
+        let cat = try store.createCategory(name: "Garage")
+        let asset = try store.createAsset(name: "Camry", categoryID: cat.id)
+        let modified = Date(timeIntervalSince1970: 1_500_000_000)
+        let eventID = UUID()
+        let photoID = UUID()
+        let iso = ISO8601DateFormatter()
+
+        let export = try XCTUnwrap(store.exportJSON())
+        let doctored = try mutatingAsset(id: asset.id, in: export) { dict in
+            dict["modifiedDate"] = iso.string(from: modified)
+            dict["events"] = [[
+                "id": eventID.uuidString, "title": "Legacy Event",
+                "date": iso.string(from: Date()), "notes": "",
+            ]]
+            dict["photos"] = [[
+                "id": photoID.uuidString, "caption": "",
+                "addedDate": iso.string(from: Date()),
+            ]]
+        }
+
+        try store.importJSON(data: doctored)
+
+        let merged = try XCTUnwrap(store.assets[asset.id])
+        let mergedEvent = try XCTUnwrap(merged.events.first { $0.id == eventID })
+        XCTAssertFalse(mergedEvent.isDeleted)
+        XCTAssertNil(mergedEvent.deletedAt)
+        XCTAssertEqual(mergedEvent.modifyDate, modified,
+                       "a legacy event with no recorded edit falls back to the owning asset's modifiedDate")
+        let mergedPhoto = try XCTUnwrap(merged.photos.first { $0.id == photoID })
+        XCTAssertFalse(mergedPhoto.isDeleted)
+        XCTAssertNil(mergedPhoto.deletedAt)
+        XCTAssertEqual(mergedPhoto.modifyDate, mergedPhoto.addedDate,
+                       "a legacy photo with no recorded edit falls back to its own addedDate")
+    }
+
+    /// Known gap: an incoming tombstone for a record still live locally does not yet
+    /// propagate the delete — the union sees the id as already present and skips it.
+    /// Closing this needs last-writer-wins on modifyDate, which is the follow-up sync
+    /// work. Delete and flip this assertion when that lands.
+    func testMergeDoesNotYetPropagateIncomingTombstoneOverLiveLocalRecord() throws {
+        let cat = try store.createCategory(name: "Garage")
+        let asset = try store.createAsset(name: "Camry", categoryID: cat.id)
+        let event = try store.addEvent(title: "X", date: Date(), toAssetID: asset.id)
+
+        let export = try XCTUnwrap(store.exportJSON())
+        let doctored = try mutatingAsset(id: asset.id, in: export) { dict in
+            guard var events = dict["events"] as? [[String: Any]] else { return }
+            for i in events.indices where (events[i]["id"] as? String) == event.id.uuidString {
+                events[i]["isDeleted"] = true
+                events[i]["deletedAt"] = ISO8601DateFormatter().string(from: Date())
+            }
+            dict["events"] = events
+        }
+
+        try store.importJSON(data: doctored)
+
+        let merged = try XCTUnwrap(store.assets[asset.id])
+        let mergedEvent = try XCTUnwrap(merged.events.first { $0.id == event.id })
+        XCTAssertFalse(mergedEvent.isDeleted, "documents the current gap — this is not yet the desired behavior")
+    }
 }

@@ -198,7 +198,7 @@ struct HomeTab: View {
 
         case .event:
             let asset = entry.owningAssetID.flatMap(liveAsset)
-            let event = asset?.events.first { $0.id == entry.recordID }
+            let event = asset?.liveEvents.first { $0.id == entry.recordID }
             let time = entry.timestamp.formatted(date: .omitted, time: .shortened)
             return plain("Event ")
                 + linked(event?.title ?? "(deleted)", to: zip2(asset, event).flatMap { recordURL("event", $0.id, $1.id) })
@@ -208,7 +208,7 @@ struct HomeTab: View {
 
         case .transaction:
             let asset = entry.owningAssetID.flatMap(liveAsset)
-            let txn = asset?.transactions.first { $0.id == entry.recordID }
+            let txn = asset?.liveTransactions.first { $0.id == entry.recordID }
             let assetPart = linked(asset?.name ?? "(deleted)", to: asset.flatMap { assetURL($0.id, section: .transactions) })
             let time = entry.timestamp.formatted(date: .omitted, time: .shortened)
             guard let txn else {
@@ -223,7 +223,7 @@ struct HomeTab: View {
 
         case .photo:
             let asset = entry.owningAssetID.flatMap(liveAsset)
-            let photo = asset?.photos.first { $0.id == entry.recordID }
+            let photo = asset?.livePhotos.first { $0.id == entry.recordID }
             let time = entry.timestamp.formatted(date: .omitted, time: .shortened)
             let caption = photo?.caption.trimmingCharacters(in: .whitespaces) ?? ""
             let label = caption.isEmpty ? "Photo" : "Photo “\(caption)”"
@@ -284,12 +284,12 @@ struct HomeTab: View {
             }
         case "event":
             if ids.count == 2, let asset = liveAsset(ids[0]),
-               let event = asset.events.first(where: { $0.id == ids[1] }) {
+               let event = asset.liveEvents.first(where: { $0.id == ids[1] }) {
                 eventToEdit = ResolvedEvent(event: event, assetID: asset.id)
             }
         case "transaction":
             if ids.count == 2, let asset = liveAsset(ids[0]),
-               let txn = asset.transactions.first(where: { $0.id == ids[1] }) {
+               let txn = asset.liveTransactions.first(where: { $0.id == ids[1] }) {
                 transactionToEdit = ResolvedTransaction(transaction: txn, assetID: asset.id)
             }
         default:
