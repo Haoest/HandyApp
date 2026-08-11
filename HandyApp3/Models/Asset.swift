@@ -66,22 +66,23 @@ final class Asset: Identifiable, Equatable {
     /// Returns the stored value for a given definition id, checking base then custom properties.
     func value(for definitionID: UUID) -> StoredValue? {
         if let bp = baseProperties.first(where: { $0.definition.id == definitionID }) { return bp.value }
-        return customProperties.first(where: { $0.definition.id == definitionID })?.value
+        return liveCustomProperties.first(where: { $0.definition.id == definitionID })?.value
     }
 
     /// Returns the custom AssetProperty for a given definition id, if it exists.
     func customProperty(for definitionID: UUID) -> AssetProperty? {
-        customProperties.first { $0.definition.id == definitionID }
+        liveCustomProperties.first { $0.definition.id == definitionID }
     }
 
     // MARK: - Inline record convenience
 
-    /// Inline records excluding tombstones. Deleted events/transactions/photos stay in the
-    /// arrays until `AssetStore.purgeHardDeleted` reaps them, so every read site — display,
-    /// lookup, notification planning, paywall counting — must go through these.
+    /// Inline records excluding tombstones. Deleted events/transactions/photos/custom
+    /// properties stay in the arrays until `AssetStore.purgeHardDeleted` reaps them, so every
+    /// read site — display, lookup, notification planning, paywall counting — must go through these.
     var livePhotos: [Photo] { photos.filter { !$0.isDeleted } }
     var liveEvents: [Event] { events.filter { !$0.isDeleted } }
     var liveTransactions: [Transaction] { transactions.filter { !$0.isDeleted } }
+    var liveCustomProperties: [AssetProperty] { customProperties.filter { !$0.isDeleted } }
 
     // MARK: - Hierarchy traversal
 

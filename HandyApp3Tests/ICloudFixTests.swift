@@ -340,6 +340,30 @@ final class DeletionHygieneTests: XCTestCase {
         XCTAssertEqual(asset.events.count, 1, "a fresh tombstone must survive to keep syncing")
         XCTAssertEqual(asset.liveEvents.count, 0)
     }
+
+    func testPurgeRemovesExpiredCustomPropertyTombstone() throws {
+        let cat = try store.createCategory(name: "Vehicles")
+        let asset = try store.createAsset(name: "Bike", categoryID: cat.id)
+        let prop = try store.addCustomProperty(definition: PropertyDefinition(name: "Paint", type: .basic(.text)), toAssetID: asset.id)
+
+        try store.removeCustomProperty(id: prop.id, fromAssetID: asset.id)
+        prop.deletedAt = Date().addingTimeInterval(-15 * 86_400)
+        store.purgeHardDeleted(olderThan: TimeInterval(AppPreference.DaysToRetainDeletedItems) * 86_400)
+
+        XCTAssertEqual(asset.customProperties.count, 0, "the expired tombstone must be reaped")
+    }
+
+    func testPurgeKeepsUnexpiredCustomPropertyTombstone() throws {
+        let cat = try store.createCategory(name: "Vehicles")
+        let asset = try store.createAsset(name: "Bike", categoryID: cat.id)
+        let prop = try store.addCustomProperty(definition: PropertyDefinition(name: "Paint", type: .basic(.text)), toAssetID: asset.id)
+
+        try store.removeCustomProperty(id: prop.id, fromAssetID: asset.id)
+        store.purgeHardDeleted(olderThan: TimeInterval(AppPreference.DaysToRetainDeletedItems) * 86_400)
+
+        XCTAssertEqual(asset.customProperties.count, 1, "a fresh tombstone must survive to keep syncing")
+        XCTAssertEqual(asset.liveCustomProperties.count, 0)
+    }
 }
 
 // MARK: - Phase 4: photo download trigger

@@ -9,17 +9,15 @@ icould sync hold when on ceullar network
 
 break up store.json
 
-data import needs refining, maybe do a merge instead of complete replacement
-
 need to refine how notification works. have it open the transaction / event screen with information filled? post event or transaction to home for quick action?
 
 data import should merge with live data instead of replace
 
-category, asset, properties, transaction, event, photos, all need to have a modifiedDate field
 
 revisit paywall ensure transaction and event has a limited free count
 
 -improve asset navigation, especially in tree mode, when going into details view. 
+-rework purging, need to count days-to-retain-deleted items, in addition, icloud sync must be live at the time.
 
 == completed ==
 
@@ -33,3 +31,4 @@ siri intergration
     
 -- when a field is editted and user hit back to navigate away, value is lost
 ~homepage provide "more" to show more log entries~
+--category, asset, properties, transaction, event, photos, all need to have a modifiedDate field

@@ -322,4 +322,45 @@ final class RecordTimestampTests: XCTestCase {
         XCTAssertEqual(loadedEvent.modifyDate, stamp)
         XCTAssertEqual(loadedAsset.liveEvents.count, 0)
     }
+
+    func testRemoveCustomPropertyStampsModifyDateAndDeletedAt() throws {
+        let (asset, _, _) = try makeAssetWithTwoProperties()
+        let prop = try store.addCustomProperty(
+            definition: PropertyDefinition(name: "Paint", type: .basic(.text), isRequired: false),
+            toAssetID: asset.id
+        )
+        prop.modifyDate = .distantPast
+        asset.modifiedDate = .distantPast
+
+        try store.removeCustomProperty(id: prop.id, fromAssetID: asset.id)
+
+        XCTAssertGreaterThan(prop.modifyDate, .distantPast)
+        XCTAssertGreaterThan(asset.modifiedDate, .distantPast)
+        XCTAssertTrue(prop.isDeleted)
+        XCTAssertNotNil(prop.deletedAt)
+    }
+
+    func testSaveLoadPreservesCustomPropertyTombstoneAndTimestamps() throws {
+        let (asset, _, _) = try makeAssetWithTwoProperties()
+        let prop = try store.addCustomProperty(
+            definition: PropertyDefinition(name: "Paint", type: .basic(.text), isRequired: false),
+            toAssetID: asset.id
+        )
+        try store.removeCustomProperty(id: prop.id, fromAssetID: asset.id)
+
+        let stamp = Date(timeIntervalSince1970: 1_500_000_000)
+        prop.modifyDate = stamp
+        prop.deletedAt = stamp
+        store.save()
+
+        let reloaded = AssetStore()
+        XCTAssertTrue(reloaded.load())
+
+        let loadedAsset = try XCTUnwrap(reloaded.assets[asset.id])
+        let loadedProp = try XCTUnwrap(loadedAsset.customProperties.first { $0.id == prop.id })
+        XCTAssertTrue(loadedProp.isDeleted)
+        XCTAssertEqual(loadedProp.deletedAt, stamp)
+        XCTAssertEqual(loadedProp.modifyDate, stamp)
+        XCTAssertEqual(loadedAsset.liveCustomProperties.count, 0)
+    }
 }

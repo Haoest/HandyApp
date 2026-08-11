@@ -317,7 +317,9 @@ extension AssetStore {
         // v1 → v2 added modifyDate/isDeleted/deletedAt to Event/Transaction/Photo; the fields
         // are optional with a decode-time fallback (see event/transaction/photo(from:)), so no
         // transform is needed here.
-        // Future: if s.schemaVersion < 3 { var s = s; /* transform */; return s }
+        // v2 → v3 added isDeleted/deletedAt to AssetPropertyDTO (custom properties); same
+        // optional-with-fallback treatment in assetProperty(from:), no transform needed.
+        // Future: if s.schemaVersion < 4 { var s = s; /* transform */; return s }
         return s
     }
 
@@ -615,6 +617,9 @@ extension AssetStore {
         clMap: [UUID: ComboListDefinition]
     ) -> Int {
         var added = 0
+        // Seen-sets are built from the raw arrays, tombstoned or not, so a locally deleted
+        // custom property blocks the peer's still-live copy from being re-added by
+        // appendMissingProperties below — this is what makes the delete stick across a merge.
         var seenPropIDs = Set(local.baseProperties.map(\.id) + local.customProperties.map(\.id))
         var seenDefIDs = Set(local.baseProperties.map(\.definition.id) + local.customProperties.map(\.definition.id))
 
@@ -840,10 +845,13 @@ extension AssetStore {
         fallbackModifyDate: Date
     ) -> AssetProperty? {
         guard let def = propertyDefinition(from: dto.definition, ctMap: ctMap, clMap: clMap) else { return nil }
-        return AssetProperty(id: dto.id, definition: def,
-                             value: dto.value.map { storedValue(from: $0) },
-                             sortOrder: dto.sortOrder,
-                             modifyDate: dto.modifyDate ?? fallbackModifyDate)
+        let prop = AssetProperty(id: dto.id, definition: def,
+                                 value: dto.value.map { storedValue(from: $0) },
+                                 sortOrder: dto.sortOrder,
+                                 modifyDate: dto.modifyDate ?? fallbackModifyDate)
+        prop.isDeleted = dto.isDeleted ?? false
+        prop.deletedAt = dto.deletedAt
+        return prop
     }
 
     /// `fallbackModifyDate` stands in for files written before inline records carried
@@ -912,7 +920,7 @@ extension AssetStore {
     private func assetPropertyDTO(_ prop: AssetProperty) -> AssetPropertyDTO {
         AssetPropertyDTO(id: prop.id, definition: propertyDefinitionDTO(prop.definition),
                          value: prop.value.map { storedValueDTO($0) }, sortOrder: prop.sortOrder,
-                         modifyDate: prop.modifyDate)
+                         modifyDate: prop.modifyDate, isDeleted: prop.isDeleted, deletedAt: prop.deletedAt)
     }
 
     private func eventDTO(_ e: Event) -> EventDTO {

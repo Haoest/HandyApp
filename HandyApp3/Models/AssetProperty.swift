@@ -10,9 +10,12 @@ final class AssetProperty: Identifiable, Equatable {
     var value: StoredValue?
     var sortOrder: Double
 
-    /// Absolute instant of the last edit to this property's definition or value.
-    /// `Date` is timezone-free; persisted as ISO-8601 UTC.
+    /// Absolute instant of the last edit to this property's definition or value,
+    /// including its tombstoning. `Date` is timezone-free; persisted as ISO-8601 UTC.
     var modifyDate: Date
+
+    var isDeleted: Bool = false
+    var deletedAt: Date? = nil
 
     static let sortOrderIncrement: Double = 10
 

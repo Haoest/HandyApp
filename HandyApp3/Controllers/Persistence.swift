@@ -2,7 +2,7 @@ import Foundation
 
 // MARK: - Schema version
 
-let storeSchemaVersion = 2
+let storeSchemaVersion = 3
 
 // MARK: - StoredValueDTO
 
@@ -75,6 +75,9 @@ struct AssetPropertyDTO: Codable {
     /// Optional: absent in files written before per-property timestamps existed.
     /// Decoders substitute the owning record's date — see `assetProperty(from:)`.
     var modifyDate: Date?
+    /// Optional: absent in files written before custom properties carried tombstones.
+    var isDeleted: Bool?
+    var deletedAt: Date?
 }
 
 // MARK: - CompositeTypeDTO

@@ -225,7 +225,7 @@ private struct AssetDetailContent: View {
 
     private var sortedCustom: [AssetProperty] {
         _ = asset.modifiedDate
-        return asset.customProperties.sorted { $0.sortOrder < $1.sortOrder }
+        return asset.liveCustomProperties.sorted { $0.sortOrder < $1.sortOrder }
     }
 
     private var sortedChildren: [Asset] {

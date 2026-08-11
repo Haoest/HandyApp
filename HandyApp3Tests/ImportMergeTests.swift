@@ -976,4 +976,82 @@ final class ImportMergeTests: XCTestCase {
         let mergedEvent = try XCTUnwrap(merged.events.first { $0.id == event.id })
         XCTAssertFalse(mergedEvent.isDeleted, "documents the current gap — this is not yet the desired behavior")
     }
+
+    // MARK: - Custom property tombstones
+
+    /// A locally deleted custom property must not be resurrected by a peer's still-live copy:
+    /// the seen-sets in `mergeAsset` are built from the raw (tombstoned-or-not) arrays, so the
+    /// id and definition id are already "seen" and `appendMissingProperties` skips them.
+    func testMergeDoesNotResurrectLocallyTombstonedCustomProperty() throws {
+        let cat = try store.createCategory(name: "Garage")
+        let asset = try store.createAsset(name: "Camry", categoryID: cat.id)
+        let prop = try store.addCustomProperty(definition: PropertyDefinition(name: "Paint", type: .basic(.text)), toAssetID: asset.id)
+
+        // A peer still has the property live.
+        let liveExport = try XCTUnwrap(store.exportJSON())
+        let store2 = makeSecondStore()
+        try store2.importJSON(data: liveExport)
+
+        // Locally, the property gets deleted.
+        try store.removeCustomProperty(id: prop.id, fromAssetID: asset.id)
+
+        // Importing the peer's still-live snapshot must not bring the property back.
+        try store.importJSON(data: liveExport)
+
+        let merged = try XCTUnwrap(store.assets[asset.id])
+        XCTAssertEqual(merged.customProperties.count, 1, "no duplicate should be appended")
+        XCTAssertTrue(merged.liveCustomProperties.isEmpty)
+        XCTAssertTrue(merged.customProperties.first?.isDeleted ?? false)
+    }
+
+    /// A record absent locally that arrives already tombstoned must be adopted as a
+    /// tombstone, not materialized as live — same rule as events/transactions/photos.
+    func testMergeAdoptsIncomingTombstonedCustomPropertyAsTombstone() throws {
+        let cat = try store.createCategory(name: "Garage")
+        let asset = try store.createAsset(name: "Camry", categoryID: cat.id)
+        let prop = try store.addCustomProperty(definition: PropertyDefinition(name: "Paint", type: .basic(.text)), toAssetID: asset.id)
+        try store.removeCustomProperty(id: prop.id, fromAssetID: asset.id)
+        let stamp = Date(timeIntervalSince1970: 1_600_000_000)
+        prop.deletedAt = stamp
+        prop.modifyDate = stamp
+
+        let export = try XCTUnwrap(store.exportJSON())
+        let store2 = makeSecondStore()
+        try store2.importJSON(data: export)
+
+        let mergedAsset = try XCTUnwrap(store2.assets[asset.id])
+        XCTAssertEqual(mergedAsset.customProperties.count, 1)
+        XCTAssertEqual(mergedAsset.liveCustomProperties.count, 0)
+        let mergedProp = try XCTUnwrap(mergedAsset.customProperties.first)
+        XCTAssertTrue(mergedProp.isDeleted)
+        XCTAssertEqual(mergedProp.deletedAt, stamp)
+        XCTAssertEqual(mergedProp.modifyDate, stamp)
+    }
+
+    /// Files written before custom properties carried tombstones have neither key. Decoding
+    /// must substitute live values rather than throwing.
+    func testLegacyCustomPropertiesWithoutTombstoneFieldsDecodeAsLive() throws {
+        let cat = try store.createCategory(name: "Garage")
+        let asset = try store.createAsset(name: "Camry", categoryID: cat.id)
+        let defID = UUID()
+
+        let export = try XCTUnwrap(store.exportJSON())
+        let doctored = try mutatingAsset(id: asset.id, in: export) { dict in
+            dict["customProperties"] = [[
+                "id": UUID().uuidString,
+                "definition": [
+                    "id": defID.uuidString, "name": "Legacy",
+                    "type": ["kind": "basic", "basicType": "text"], "isRequired": false,
+                ],
+                "sortOrder": 0,
+            ]]
+        }
+
+        try store.importJSON(data: doctored)
+
+        let merged = try XCTUnwrap(store.assets[asset.id])
+        let mergedProp = try XCTUnwrap(merged.customProperties.first { $0.definition.id == defID })
+        XCTAssertFalse(mergedProp.isDeleted)
+        XCTAssertNil(mergedProp.deletedAt)
+    }
 }

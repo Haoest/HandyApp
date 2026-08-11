@@ -360,7 +360,7 @@ final class AssetStore {
             markDirty()
             return prop
         }
-        if let prop = asset.customProperties.first(where: { $0.definition.id == definitionID }) {
+        if let prop = asset.liveCustomProperties.first(where: { $0.definition.id == definitionID }) {
             try validate(stored: stored, against: prop.definition.type, definitionName: prop.definition.name)
             handleComboListAutoAdd(stored: stored, type: prop.definition.type)
             let now = Date()
@@ -384,7 +384,7 @@ final class AssetStore {
             markDirty()
             return
         }
-        if let prop = asset.customProperties.first(where: { $0.definition.id == definitionID }) {
+        if let prop = asset.liveCustomProperties.first(where: { $0.definition.id == definitionID }) {
             let now = Date()
             prop.value = nil
             prop.touch(now)
@@ -423,7 +423,7 @@ final class AssetStore {
         onAssetID assetID: UUID
     ) throws -> AssetProperty {
         guard let asset = assets[assetID] else { throw AssetStoreError.assetNotFound(assetID) }
-        guard let prop = asset.customProperties.first(where: { $0.id == propID }) else {
+        guard let prop = asset.liveCustomProperties.first(where: { $0.id == propID }) else {
             throw AssetStoreError.propertyNotFound(propID)
         }
         try validate(stored: stored, against: prop.definition.type, definitionName: prop.definition.name)
@@ -445,7 +445,7 @@ final class AssetStore {
         isRequired: Bool? = nil
     ) throws {
         guard let asset = assets[assetID] else { throw AssetStoreError.assetNotFound(assetID) }
-        guard let prop = asset.customProperties.first(where: { $0.id == propID }) else {
+        guard let prop = asset.liveCustomProperties.first(where: { $0.id == propID }) else {
             throw AssetStoreError.propertyNotFound(propID)
         }
         if let name { prop.definition.name = name }
@@ -460,14 +460,19 @@ final class AssetStore {
         markDirty()
     }
 
-    /// Removes a custom property and its value from an asset.
+    /// Tombstones a custom property. The record stays in `customProperties` until
+    /// `purgeHardDeleted` reaps it — deleting it outright would make the delete invisible to
+    /// sync and let a peer's copy resurrect it on the next merge.
     func removeCustomProperty(id propID: UUID, fromAssetID assetID: UUID) throws {
         guard let asset = assets[assetID] else { throw AssetStoreError.assetNotFound(assetID) }
-        guard asset.customProperties.contains(where: { $0.id == propID }) else {
+        guard let prop = asset.liveCustomProperties.first(where: { $0.id == propID }) else {
             throw AssetStoreError.propertyNotFound(propID)
         }
-        asset.customProperties.removeAll { $0.id == propID }
-        asset.modifiedDate = Date()
+        let now = Date()
+        prop.isDeleted = true
+        prop.deletedAt = now
+        prop.touch(now)
+        asset.modifiedDate = now
         markDirty()
     }
 
@@ -838,8 +843,8 @@ final class AssetStore {
     }
 
     /// Permanently removes soft-deleted assets and categories whose deletedAt is older than
-    /// `seconds`, then the same for tombstoned events/transactions/photos inside the assets
-    /// that survived. Assets are purged first (photo files deleted, inline records discarded
+    /// `seconds`, then the same for tombstoned events/transactions/photos/custom properties
+    /// inside the assets that survived. Assets are purged first (photo files deleted, inline records discarded
     /// with them). Surviving assets — live, or soft-deleted but not yet expired — keep their
     /// own inline tombstones until those individually age out. Categories are evaluated after
     /// — a category kept alive only by a now-purged asset is eligible for removal in the same
@@ -861,6 +866,7 @@ final class AssetStore {
             asset.photos.removeAll { Self.isExpiredTombstone($0.isDeleted, $0.deletedAt, before: cutoff) }
             asset.events.removeAll { Self.isExpiredTombstone($0.isDeleted, $0.deletedAt, before: cutoff) }
             asset.transactions.removeAll { Self.isExpiredTombstone($0.isDeleted, $0.deletedAt, before: cutoff) }
+            asset.customProperties.removeAll { Self.isExpiredTombstone($0.isDeleted, $0.deletedAt, before: cutoff) }
         }
         let referencedCategoryIDs = Set(assets.values.map { $0.category.id })
         categories = categories.filter { id, c in

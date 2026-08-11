@@ -215,7 +215,57 @@ final class HandyApp3Tests: XCTestCase {
         let prop = try store.addCustomProperty(definition: def, toAssetID: asset.id)
 
         try store.removeCustomProperty(id: prop.id, fromAssetID: asset.id)
-        XCTAssertTrue(asset.customProperties.isEmpty)
+        XCTAssertEqual(asset.customProperties.count, 1, "the tombstone stays until purge")
+        XCTAssertTrue(asset.liveCustomProperties.isEmpty)
+        XCTAssertTrue(asset.customProperties[0].isDeleted)
+        XCTAssertNotNil(asset.customProperties[0].deletedAt)
+    }
+
+    func testRemoveCustomPropertyTwiceThrowsPropertyNotFound() throws {
+        let cat = try store.createCategory(name: "Car")
+        let asset = try store.createAsset(name: "My Car", categoryID: cat.id)
+        let def = PropertyDefinition(name: "Notes", type: .basic(.text))
+        let prop = try store.addCustomProperty(definition: def, toAssetID: asset.id)
+
+        try store.removeCustomProperty(id: prop.id, fromAssetID: asset.id)
+        XCTAssertThrowsError(try store.removeCustomProperty(id: prop.id, fromAssetID: asset.id)) { error in
+            guard case AssetStoreError.propertyNotFound = error else { return XCTFail("Expected propertyNotFound") }
+        }
+    }
+
+    func testSetValueOnTombstonedCustomPropertyThrows() throws {
+        let cat = try store.createCategory(name: "Car")
+        let asset = try store.createAsset(name: "My Car", categoryID: cat.id)
+        let def = PropertyDefinition(name: "Notes", type: .basic(.text))
+        let prop = try store.addCustomProperty(definition: def, toAssetID: asset.id)
+        try store.removeCustomProperty(id: prop.id, fromAssetID: asset.id)
+
+        XCTAssertThrowsError(try store.setCustomPropertyValue(.text("x"), forCustomPropertyID: prop.id, onAssetID: asset.id)) { error in
+            guard case AssetStoreError.propertyNotFound = error else { return XCTFail("Expected propertyNotFound") }
+        }
+    }
+
+    func testUpdateTombstonedCustomPropertyThrows() throws {
+        let cat = try store.createCategory(name: "Car")
+        let asset = try store.createAsset(name: "My Car", categoryID: cat.id)
+        let def = PropertyDefinition(name: "Notes", type: .basic(.text))
+        let prop = try store.addCustomProperty(definition: def, toAssetID: asset.id)
+        try store.removeCustomProperty(id: prop.id, fromAssetID: asset.id)
+
+        XCTAssertThrowsError(try store.updateCustomProperty(id: prop.id, onAssetID: asset.id, name: "Renamed")) { error in
+            guard case AssetStoreError.propertyNotFound = error else { return XCTFail("Expected propertyNotFound") }
+        }
+    }
+
+    func testTombstonedCustomPropertyExcludedFromValueLookup() throws {
+        let cat = try store.createCategory(name: "Car")
+        let asset = try store.createAsset(name: "My Car", categoryID: cat.id)
+        let def = PropertyDefinition(name: "Notes", type: .basic(.text))
+        let prop = try store.addCustomProperty(definition: def, value: .text("hi"), toAssetID: asset.id)
+        try store.removeCustomProperty(id: prop.id, fromAssetID: asset.id)
+
+        XCTAssertNil(asset.value(for: prop.definition.id))
+        XCTAssertNil(asset.customProperty(for: prop.definition.id))
     }
 
     func testUpdateCustomPropertyClearsValueOnTypeChange() throws {
