@@ -1,4 +1,9 @@
 import Foundation
+import os
+
+private let persistenceLogger = Logger(
+    subsystem: Bundle.main.bundleIdentifier ?? "HandyApp3", category: "Persistence"
+)
 
 // MARK: - Photo file storage
 
@@ -30,6 +35,18 @@ enum PhotoStorage {
     }
 }
 
+// MARK: - Import errors
+
+/// Thrown by `importJSON` for well-formed JSON that isn't an exported snapshot — most commonly
+/// the app's own on-disk manifest (`store.json`), which decodes cleanly but isn't an export.
+enum ImportError: LocalizedError {
+    case notAnExport
+
+    var errorDescription: String? {
+        "This file isn't an exported backup — it looks like the app's own internal store file, not something created by Export. Use Tools > Export Data to create a file that can be imported."
+    }
+}
+
 // MARK: - AssetStore persistence
 
 extension AssetStore {
@@ -46,19 +63,28 @@ extension AssetStore {
 
     static var baseDir: URL {
         if let override = baseDirOverride {
-            try? FileManager.default.createDirectory(
-                at: override.appendingPathComponent("Photos", isDirectory: true),
-                withIntermediateDirectories: true)
+            createStoreSubdirectories(in: override)
             return override
         }
         return resolvedBaseDir
+    }
+
+    /// Creates every subdirectory the multi-file layout needs (`StoreFileLayout` also creates
+    /// `Definitions`/`Assets`/`Activity` lazily on write, but doing it here too means they exist
+    /// even before the first save — e.g. for a `read()` on a directory nothing has written to yet).
+    private static func createStoreSubdirectories(in dir: URL) {
+        let fm = FileManager.default
+        for sub in ["Photos", "Definitions", "Assets", "Activity"] {
+            try? fm.createDirectory(at: dir.appendingPathComponent(sub, isDirectory: true),
+                                    withIntermediateDirectories: true)
+        }
     }
 
     /// Base directory for all store files. When `iCloudSyncEnabled` is true and the
     /// ubiquity container is available, uses the iCloud Documents directory (migrating
     /// any existing local store on first run). Otherwise uses local Documents.
     /// Resolved once per launch — `url(forUbiquityContainerIdentifier:)` can block.
-    /// Creates the Photos/ subdirectory as a side effect.
+    /// Creates the store subdirectories as a side effect.
     private static let resolvedBaseDir: URL = {
         let fm = FileManager.default
         let localDocs = fm.urls(for: .documentDirectory, in: .userDomainMask)[0]
@@ -70,8 +96,7 @@ extension AssetStore {
         } else {
             dir = localDocs
         }
-        let photosDir = dir.appendingPathComponent("Photos", isDirectory: true)
-        try? fm.createDirectory(at: photosDir, withIntermediateDirectories: true)
+        createStoreSubdirectories(in: dir)
         return dir
     }()
 
@@ -81,24 +106,33 @@ extension AssetStore {
     /// remain as a frozen fallback if the app is ever built without iCloud entitlements again.
     /// Never overwrites cloud data: if the container already has a store (downloaded or still
     /// a placeholder), another device got there first and its copy wins.
+    ///
+    /// Copies the whole subtree — `Definitions/`, `Assets/`, `Activity/`, `Photos/`, plus a
+    /// legacy `store.json` if one is still present — not just the single manifest file. Leaving
+    /// this as a single-file copy would make the first sync-enabled launch look like data loss.
     private static func migrateLocalStoreIfNeeded(from localDocs: URL, to cloudDocs: URL) {
         let fm = FileManager.default
         let localStore = localDocs.appendingPathComponent("store.json")
         let cloudStore = cloudDocs.appendingPathComponent("store.json")
         let cloudPlaceholder = cloudDocs.appendingPathComponent(".store.json.icloud")
-        guard fm.fileExists(atPath: localStore.path),
+        guard fm.fileExists(atPath: localStore.path) || fm.fileExists(atPath: localDocs.appendingPathComponent("Assets").path),
               !fm.fileExists(atPath: cloudStore.path),
               !fm.fileExists(atPath: cloudPlaceholder.path) else { return }
 
         try? fm.createDirectory(at: cloudDocs, withIntermediateDirectories: true)
-        try? fm.copyItem(at: localStore, to: cloudStore)
-
-        let localPhotos = localDocs.appendingPathComponent("Photos", isDirectory: true)
-        let cloudPhotos = cloudDocs.appendingPathComponent("Photos", isDirectory: true)
-        try? fm.createDirectory(at: cloudPhotos, withIntermediateDirectories: true)
-        if let files = try? fm.contentsOfDirectory(at: localPhotos, includingPropertiesForKeys: nil) {
-            for file in files {
-                try? fm.copyItem(at: file, to: cloudPhotos.appendingPathComponent(file.lastPathComponent))
+        for entry in ["store.json", StoreFileLayout.legacyBackupFilename] {
+            let src = localDocs.appendingPathComponent(entry)
+            guard fm.fileExists(atPath: src.path) else { continue }
+            try? fm.copyItem(at: src, to: cloudDocs.appendingPathComponent(entry))
+        }
+        for sub in ["Photos", "Definitions", "Assets", "Activity"] {
+            let localSub = localDocs.appendingPathComponent(sub, isDirectory: true)
+            let cloudSub = cloudDocs.appendingPathComponent(sub, isDirectory: true)
+            try? fm.createDirectory(at: cloudSub, withIntermediateDirectories: true)
+            if let files = try? fm.contentsOfDirectory(at: localSub, includingPropertiesForKeys: nil) {
+                for file in files {
+                    try? fm.copyItem(at: file, to: cloudSub.appendingPathComponent(file.lastPathComponent))
+                }
             }
         }
     }
@@ -108,17 +142,25 @@ extension AssetStore {
     // MARK: - Public API
 
     /// Loads persisted state from disk. File I/O runs on a background thread internally;
-    /// safe to call from the main thread. Returns false if no file exists or decoding fails.
+    /// safe to call from the main thread. Returns false if no store exists or a structural
+    /// shard (composite types, combo lists, or categories) can't be read — see
+    /// `StoreFileLayout`'s failure policy for why those two cases are treated the same.
     @discardableResult
     func load() -> Bool {
-        var data: Data? = nil
+        var result: StoreFileLayout.ReadResult?
         DispatchQueue.global(qos: .userInitiated).sync {
             Self.waitForCloudStore(timeout: 10)
-            data = readStoreData()
+            result = fileLayout.read(baseDir: Self.baseDir)
         }
-        guard let data, let snap = decodeSnapshot(data) else { return false }
-        lastPersistedData = data
-        applySnapshot(migrate(snap))
+        guard let result else { return false }
+        lastPersistedData = fileLayout.storeDigest
+        applySnapshot(migrate(result.snapshot))
+        if result.wasMigratedFromLegacy {
+            persistenceLogger.notice("load: migrated a legacy single-file store to the multi-file layout")
+            // Must be durable before anything else runs: the in-memory state now reflects the
+            // new layout, and store.legacy-v3.json is the only remaining copy of the old one.
+            DispatchQueue.global(qos: .userInitiated).sync { self.save() }
+        }
         return true
     }
 
@@ -148,8 +190,12 @@ extension AssetStore {
         if let files = try? FileManager.default.contentsOfDirectory(at: photosDir, includingPropertiesForKeys: nil) {
             for file in files { try? FileManager.default.removeItem(at: file) }
         }
+        try? FileManager.default.removeItem(
+            at: Self.baseDir.appendingPathComponent(StoreFileLayout.legacyBackupFilename))
         // Do NOT removeItem on storeURL — overwriting via save() propagates as content
         // (a "tombstone by overwrite") so other devices apply it, rather than ignoring a deletion.
+        // Stale Assets/*.json files from before the reset are cleared by the orphan sweep inside
+        // the save() below — the same mechanism that makes an ordinary hard delete stick.
         _applyLoaded(compositeTypes: [:], comboLists: [:], categories: [:], assets: [:],
                      activityLog: [], backgroundTheme: .mist)
         seedBuiltInComboLists()
@@ -180,7 +226,19 @@ extension AssetStore {
     func importJSON(data: Data) throws {
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
-        let incoming = try decoder.decode(StoreSnapshotDTO.self, from: data)
+        let incoming: StoreSnapshotDTO
+        do {
+            incoming = try decoder.decode(StoreSnapshotDTO.self, from: data)
+        } catch {
+            // A manifest (store.json under the new layout) is valid JSON that decodes
+            // successfully as StoreManifestDTO but not as a full snapshot — give a clearer
+            // error than the raw decode failure rather than leaving the user to guess why
+            // their own store.json won't import.
+            if (try? decoder.decode(StoreManifestDTO.self, from: data)) != nil {
+                throw ImportError.notAnExport
+            }
+            throw error
+        }
 
         let photoIDsToMaterialize = mergeSnapshot(migrate(incoming))
 
@@ -208,27 +266,22 @@ extension AssetStore {
         DispatchQueue.global(qos: .userInitiated).sync { self.save() }
     }
 
-    /// Encodes the current store state to disk via NSFileCoordinator.
+    /// Encodes the current store state and writes only the shards that changed.
     /// Must be called on a background thread.
     func save() {
         guard !savesSuspended else { return }
-        let encoder = JSONEncoder()
-        encoder.dateEncodingStrategy = .iso8601
-        guard let data = try? encoder.encode(buildSnapshot()) else { return }
-        let url = Self.storeURL
-        var written = false
-        var coordinatorError: NSError?
-        NSFileCoordinator().coordinate(writingItemAt: url, options: .forReplacing,
-                                       error: &coordinatorError) { dest in
-            written = (try? data.write(to: dest, options: .atomic)) != nil
+        let snap = buildSnapshot()
+        let report = fileLayout.write(snap, baseDir: Self.baseDir)
+        lastPersistedData = fileLayout.storeDigest
+        resolveConflicts()
+        if !report.allDataShardsSucceeded {
+            persistenceLogger.error("save: one or more shards failed to write — store.json was left pointing at the previous, still-consistent tree")
         }
-        if written {
-            lastPersistedData = data
-            resolveConflicts()
-        }
-        if let err = coordinatorError { print("[AssetStore] save error: \(err)") }
     }
 
+    /// Resolves conflicts on the manifest file only. `Definitions/*.json` and `Assets/*.json`
+    /// conflicts are not handled here — per-shard conflict resolution is deferred (see
+    /// `StoreFileLayout.write`'s doc comment) and untestable while `iCloudSyncEnabled` is false.
     private func resolveConflicts() {
         guard Self.baseDirOverride == nil else { return }
         if let conflicts = NSFileVersion.unresolvedConflictVersionsOfItem(at: Self.storeURL),
@@ -243,7 +296,7 @@ extension AssetStore {
     func startCloudMonitor() {
         guard Self.iCloudSyncEnabled else { return }
         let query = NSMetadataQuery()
-        query.predicate = NSPredicate(format: "%K == 'store.json'", NSMetadataItemFSNameKey)
+        query.predicate = NSPredicate(format: "%K LIKE '*.json'", NSMetadataItemFSNameKey)
         query.searchScopes = [NSMetadataQueryUbiquitousDocumentsScope]
 
         let handleEvent: (Notification) -> Void = { [weak self] notification in
@@ -265,50 +318,29 @@ extension AssetStore {
         query.disableUpdates()
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             guard let self else { return }
-            let data = self.readStoreData()
+            let result = self.fileLayout.read(baseDir: Self.baseDir)
             DispatchQueue.main.async {
                 defer { query.enableUpdates() }
                 if isGather && query.resultCount == 0 {
-                    // Gather finished with no store.json in cloud — seeds are safe to persist.
+                    // Gather finished with no store in cloud — seeds are safe to persist.
                     if self.savesSuspended {
                         self.savesSuspended = false
                         self.markDirty()
                     }
                     return
                 }
-                // Upload-progress events echo our own saves back at us. Applying an
-                // echo (or any bytes we already persisted) would clobber in-memory
-                // mutations made since that write — only foreign content may apply.
-                guard let data, data != self.lastPersistedData else { return }
-                if let snap = self.decodeSnapshot(data) {
-                    self.lastPersistedData = data
-                    self.applySnapshot(self.migrate(snap))
-                    self.savesSuspended = false
-                    self.resolveConflicts()
-                }
+                // Upload-progress events echo our own saves back at us. Applying an echo (or
+                // any state we already persisted) would clobber in-memory mutations made since
+                // that write — only foreign content may apply. storeDigest is a digest of every
+                // shard's digest (see StoreFileLayout), so this is the same echo check the
+                // single-file version did, just keyed on the whole tree instead of one file.
+                guard let result, self.fileLayout.storeDigest != self.lastPersistedData else { return }
+                self.lastPersistedData = self.fileLayout.storeDigest
+                self.applySnapshot(self.migrate(result.snapshot))
+                self.savesSuspended = false
+                self.resolveConflicts()
             }
         }
-    }
-
-    // MARK: - File I/O (background thread)
-
-    private func readStoreData() -> Data? {
-        let url = Self.storeURL
-        try? FileManager.default.startDownloadingUbiquitousItem(at: url)
-        var result: Data? = nil
-        var coordinatorError: NSError?
-        NSFileCoordinator().coordinate(readingItemAt: url, options: .withoutChanges,
-                                       error: &coordinatorError) { src in
-            result = try? Data(contentsOf: src)
-        }
-        if let err = coordinatorError { print("[AssetStore] load error: \(err)") }
-        return result
-    }
-
-    private func decodeSnapshot(_ data: Data) -> StoreSnapshotDTO? {
-        let decoder = JSONDecoder()
-        decoder.dateDecodingStrategy = .iso8601
-        return try? decoder.decode(StoreSnapshotDTO.self, from: data)
     }
 
     // MARK: - Migration

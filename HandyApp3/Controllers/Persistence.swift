@@ -4,6 +4,21 @@ import Foundation
 
 let storeSchemaVersion = 3
 
+/// File layout version, independent of `storeSchemaVersion` (which versions the DTO shapes).
+/// Bump this when the on-disk file/directory structure changes, not when a DTO field is added.
+let storeLayoutVersion = 1
+
+// MARK: - StoreManifestDTO
+
+/// Root of the multi-file layout: `store.json` decodes as this once a store has been migrated.
+/// `layoutVersion` is non-optional specifically so decoding this type is what disambiguates a
+/// manifest from a legacy single-file `StoreSnapshotDTO` (which has no such field).
+struct StoreManifestDTO: Codable {
+    var layoutVersion: Int
+    var schemaVersion: Int
+    var backgroundTheme: String     // BackgroundTheme.rawValue
+}
+
 // MARK: - StoredValueDTO
 
 indirect enum StoredValueDTO: Codable {

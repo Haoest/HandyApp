@@ -197,23 +197,33 @@ final class DeletionHygieneTests: XCTestCase {
 
         XCTAssertTrue(FileManager.default.fileExists(atPath: AssetStore.storeURL.path),
                       "factoryReset must persist synchronously before returning")
-        let diskData = try Data(contentsOf: AssetStore.storeURL)
-        let decoder = JSONDecoder()
-        decoder.dateDecodingStrategy = .iso8601
-        let snap = try decoder.decode(StoreSnapshotDTO.self, from: diskData)
-        XCTAssertGreaterThan(snap.categories.count, 0,
+
+        // Assert the invariant, not the on-disk layout: store.json is a manifest now, not a
+        // full snapshot, so what matters is that a fresh load() can read the reset store back.
+        let reloaded = AssetStore()
+        XCTAssertTrue(reloaded.load(), "factoryReset's save must leave a store a fresh load() can read")
+        XCTAssertGreaterThan(reloaded.categories.count, 0,
                              "persisted snapshot after factoryReset must contain seeded categories")
     }
 
     func testFactoryResetDoesNotDeleteStoreFile() throws {
         // Perform an initial save so the file exists before reset.
+        let cat = try store.createCategory(name: "Pre-reset")
+        let asset = try store.createAsset(name: "Should be swept", categoryID: cat.id)
         store.save()
         XCTAssertTrue(FileManager.default.fileExists(atPath: AssetStore.storeURL.path))
+        let preResetAssetFile = AssetStore.baseDir
+            .appendingPathComponent("Assets/\(asset.id.uuidString).json")
+        XCTAssertTrue(FileManager.default.fileExists(atPath: preResetAssetFile.path))
 
         store.factoryReset()
 
         XCTAssertTrue(FileManager.default.fileExists(atPath: AssetStore.storeURL.path),
                       "factoryReset must overwrite store.json, not delete it — deletions are ignored by other devices")
+        XCTAssertFalse(
+            FileManager.default.fileExists(atPath: preResetAssetFile.path),
+            "factoryReset's orphan sweep must clear asset files from before the reset, the multi-file equivalent of the old single-file overwrite"
+        )
     }
 
     func testDeleteAssetRemovesPhotoFilesFromDisk() throws {

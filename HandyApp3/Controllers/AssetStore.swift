@@ -80,6 +80,12 @@ final class AssetStore {
     @ObservationIgnored
     var cloudQuery: NSMetadataQuery?
 
+    /// Shards the store across many files on disk (one per asset, plus a few shared shards) and
+    /// reassembles a snapshot on read. See `StoreFileLayout` for the on-disk shape and the
+    /// failure policy that keeps a partial read from becoming a permanent deletion.
+    @ObservationIgnored
+    let fileLayout = StoreFileLayout()
+
     /// Pending debounced save task. Cancelled and replaced on each mutation.
     @ObservationIgnored
     private var saveTask: Task<Void, Never>?
@@ -90,9 +96,10 @@ final class AssetStore {
     @ObservationIgnored
     var savesSuspended = false
 
-    /// The exact bytes last written to (or read from) store.json by this process.
-    /// The cloud monitor compares against this to tell foreign changes from echoes
-    /// of our own saves — applying an echo would clobber newer in-memory mutations.
+    /// The whole-store digest (see `StoreFileLayout.storeDigest`) last written to, or read from,
+    /// disk by this process — no longer literal bytes now that the store is many files, but the
+    /// same role: the cloud monitor compares against this to tell foreign changes from echoes of
+    /// our own saves — applying an echo would clobber newer in-memory mutations.
     /// Guarded by `persistLock`: written on background save threads, read on main.
     @ObservationIgnored
     private let persistLock = NSLock()

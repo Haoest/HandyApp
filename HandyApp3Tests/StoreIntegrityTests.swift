@@ -145,10 +145,13 @@ final class StoreIntegrityTests: XCTestCase {
 
         try store.importJSON(data: export)
 
-        let disk = try Data(contentsOf: AssetStore.storeURL)
-        let text = try XCTUnwrap(String(data: disk, encoding: .utf8))
+        // Assert the invariant, not the on-disk layout: a completely fresh store, reading from
+        // the same directory, must already see the probe asset. Reading AssetStore.storeURL's
+        // bytes directly would only prove the manifest was written, not the asset shard.
+        let reloaded = AssetStore()
+        XCTAssertTrue(reloaded.load())
         XCTAssertTrue(
-            text.contains(unique),
+            reloaded.allAssets.contains { $0.name == unique },
             "importJSON must persist synchronously — an async save lets a relaunch or cloud-monitor refresh resurrect the pre-import store"
         )
     }
