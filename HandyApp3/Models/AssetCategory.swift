@@ -15,6 +15,13 @@ final class AssetCategory: Identifiable, Equatable {
     var isDeleted: Bool = false
     var deletedAt: Date? = nil
 
+    /// Set once `AssetStore.purgeHardDeleted`/`hardDeleteCategory` has stripped this record to
+    /// a minimal tombstone (`name`/`iconName` blanked, `propertyTemplates` emptied). Monotone —
+    /// never goes back to false. The record itself is kept forever specifically so this stays
+    /// visible to every peer: a stale device that still holds the full category must see the
+    /// strip and re-apply it, not resurrect the payload by unioning it back in on the next sync.
+    var isPurged: Bool = false
+
     /// Absolute instant `name`, `iconName`, or the tombstone last changed. `AssetCategory` has
     /// no rollup field the way `Asset.modifiedDate` does, so this covers the whole header as
     /// one record.

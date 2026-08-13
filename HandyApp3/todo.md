@@ -16,9 +16,11 @@ revisit paywall ensure transaction and event has a limited free count
 -improve asset navigation, especially in tree mode, when going into details view. 
 -rework purging, need to count days-to-retain-deleted items, in addition, icloud sync must be live at the time.
 -rework category purge
-- handle offline edit of an asset deleted on the cloud
+- handle offline edit of an asset deleted on the cloud, prompt coming online device for resurrection?
 - reorganize categories, remove specific appliances
-- rework combo list
+- rework combo list, allow custom text values to be entered, and the new values becomes pre-selectable for the next combo list field
+- build on recurring event/transaction notification
+- add + buttons to event/transaction/photo fields
 
 == completed ==
 

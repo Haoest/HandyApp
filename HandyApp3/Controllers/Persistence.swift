@@ -132,6 +132,10 @@ struct CategoryDTO: Codable {
     /// Optional: absent in files written before categories carried a timestamp.
     /// Decoders substitute `.distantPast`.
     var modifyDate: Date?
+    /// Optional: absent in files written before purge stopped removing the category record.
+    /// Decoders fall back to `false`. See `AssetCategory.isPurged`. Defaulted to `nil` so every
+    /// existing `CategoryDTO(...)` construction site keeps compiling unchanged.
+    var isPurged: Bool? = nil
 }
 
 // MARK: - PhotoDTO

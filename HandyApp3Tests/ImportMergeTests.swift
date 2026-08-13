@@ -246,6 +246,36 @@ final class ImportMergeTests: XCTestCase {
         XCTAssertTrue(store2.deletedCategories.contains { $0.id == cat.id })
     }
 
+    /// A surviving asset whose category has been purged (not merely soft-deleted) must land
+    /// in a "Recovered" placeholder rather than a blank-named category — nothing about a
+    /// purged tombstone (`name`/`iconName` blanked, per `AssetCategory.isPurged`) is fit to
+    /// show the user. Doctors the exported category to a purged tombstone directly, since
+    /// `purgeHardDeleted` itself would refuse to purge a category still referenced by a live
+    /// asset; the scenario this guards is a category purged while its only asset was ALSO
+    /// deleted, followed by that asset being independently resurrected via a later merge —
+    /// purge is monotone, so the category tombstone can't follow it back.
+    func testMergeRecoversPurgedCategoryForSurvivingAssetAsPlaceholderNotBlankName() throws {
+        let cat = try store.createCategory(name: "Trailer Types", iconName: "car.2")
+        let asset = try store.createAsset(name: "Utility Trailer", categoryID: cat.id)
+
+        let export = try XCTUnwrap(store.exportJSON())
+        let doctored = try mutatingCategory(id: cat.id, in: export) { json in
+            json["isDeleted"] = true
+            json["isPurged"] = true
+            json["name"] = ""
+            json["iconName"] = ""
+            json["propertyTemplates"] = []
+        }
+        let store2 = makeSecondStore()
+        try store2.importJSON(data: doctored)
+
+        let mergedAsset = try XCTUnwrap(store2.assets[asset.id])
+        XCTAssertEqual(mergedAsset.category.id, cat.id)
+        XCTAssertEqual(mergedAsset.category.name, "Recovered",
+                       "a purged category's blank name must never be surfaced — fall back to the generic placeholder")
+        XCTAssertFalse(mergedAsset.category.isDeleted, "the placeholder is a fresh live category, not the purged tombstone")
+    }
+
     func testMergeSkipsIncomingSoftDeletedCategory() throws {
         let cat = try store.createCategory(name: "Gone")
         try store.softDeleteCategory(id: cat.id)

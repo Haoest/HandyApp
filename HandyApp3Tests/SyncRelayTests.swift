@@ -374,6 +374,35 @@ final class SyncRelayTests: XCTestCase {
         XCTAssertTrue(storeA.assets[asset.id]?.photos.isEmpty ?? false, "a second round must not un-strip the asset")
     }
 
+    /// Same scenario as `testOfflineDeviceWithFullCopyEndsUpStrippedAfterSyncingAPurge`, for a
+    /// category instead of an asset — the resurrection hole this rework was extended to close.
+    func testOfflineDeviceWithFullCategoryEndsUpStrippedAfterSyncingAPurge() throws {
+        let cat = try storeA.createCategory(name: "Appliances", propertyTemplates: [
+            AssetProperty(definition: PropertyDefinition(name: "Brand", type: .basic(.text)))
+        ])
+        storeA.save(to: rootA)
+        relay.push("A"); relay.pull("B")
+        XCTAssertTrue(storeB.load(from: rootB), "B has the full category, offline from here on")
+
+        try storeA.softDeleteCategory(id: cat.id)
+        cat.deletedAt = Date().addingTimeInterval(-15 * 86_400)
+        storeA.purgeHardDeleted(olderThan: TimeInterval(AppPreference.DaysToRetainDeletedItems) * 86_400)
+        XCTAssertTrue(storeA.categories[cat.id]?.isPurged ?? false, "sanity check: A actually purged it")
+        storeA.save(to: rootA)
+        relay.push("A"); relay.pull("B")
+        merge(storeB, from: rootB)
+
+        let strippedOnB = try XCTUnwrap(storeB.categories[cat.id])
+        XCTAssertTrue(strippedOnB.isPurged, "B must apply the strip, not additively keep its own full copy")
+        XCTAssertEqual(strippedOnB.name, "")
+        XCTAssertTrue(strippedOnB.propertyTemplates.isEmpty)
+
+        // Second round: B pushes its now-stripped state back; nothing resurrects.
+        relay.push("B"); relay.pull("A")
+        merge(storeA, from: rootA)
+        XCTAssertEqual(storeA.categories[cat.id]?.name, "", "a second round must not un-strip the category")
+    }
+
     // MARK: - Seed-vs-real-store: guarded by hasAuthoritativeLocalState, not exercised here
 
     func testFreshSeededStoreReplacesRatherThanMerges() throws {

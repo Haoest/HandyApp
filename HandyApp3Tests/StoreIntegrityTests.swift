@@ -67,10 +67,16 @@ final class StoreIntegrityTests: XCTestCase {
 
         store.purgeHardDeleted(olderThan: 90 * 86_400)
 
-        XCTAssertNil(
+        let purged = try XCTUnwrap(
             store.categories[category.id],
-            "an aged-out soft-deleted category with no referencing assets should still be purged"
+            "the record must survive purge — see AssetCategory.isPurged — or a peer that still holds it would union it back on the next sync"
         )
+        XCTAssertTrue(purged.isPurged)
+        XCTAssertEqual(purged.name, "")
+        XCTAssertEqual(purged.iconName, "")
+        XCTAssertTrue(purged.propertyTemplates.isEmpty)
+        XCTAssertFalse(store.deletedCategories.contains { $0.id == category.id },
+                       "a purged category must not appear in the Deleted Categories list")
     }
 
     // MARK: - Merge must not silently drop orphaned assets

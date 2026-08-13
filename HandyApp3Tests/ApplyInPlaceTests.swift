@@ -32,9 +32,12 @@ final class ApplyInPlaceTests: XCTestCase {
             value: value, sortOrder: sortOrder, modifyDate: modifyDate, isDeleted: false, deletedAt: nil)
     }
 
-    private func categoryDTO(id: UUID, name: String = "Cat", propertyTemplates: [AssetPropertyDTO] = []) -> CategoryDTO {
+    private func categoryDTO(
+        id: UUID, name: String = "Cat", propertyTemplates: [AssetPropertyDTO] = [],
+        isDeleted: Bool = false, deletedAt: Date? = nil, isPurged: Bool? = nil
+    ) -> CategoryDTO {
         CategoryDTO(id: id, name: name, iconName: "tray", propertyTemplates: propertyTemplates,
-                   isDeleted: false, deletedAt: nil, modifyDate: Date())
+                   isDeleted: isDeleted, deletedAt: deletedAt, modifyDate: Date(), isPurged: isPurged)
     }
 
     private func assetDTO(
@@ -232,6 +235,28 @@ final class ApplyInPlaceTests: XCTestCase {
         // Round-trips with the original categoryID intact — buildSnapshot mustn't rewrite it.
         let reencoded = store.buildSnapshot()
         XCTAssertEqual(reencoded.assets.first { $0.id == newID }?.categoryID, missingCategoryID)
+    }
+
+    func testIncomingPurgedCategoryReplacesRatherThanAdditivelyMergesLocalContent() throws {
+        // Mirrors testIncomingPurgedAssetReplacesRatherThanAdditivelyMergesLocalContent: the
+        // additive-only upsertAssetProperties applyInPlace normally uses for an existing
+        // category's templates would never clear content this device still holds locally if a
+        // stripped incoming DTO were run through it — this is the case that makes applyInPlace
+        // call `purgeCategoryInPlace` instead when the incoming record is purged.
+        let cat = try store.createCategory(name: "Appliances", propertyTemplates: [
+            AssetProperty(definition: PropertyDefinition(name: "Brand", type: .basic(.text))),
+        ])
+        XCTAssertFalse(cat.propertyTemplates.isEmpty, "sanity check")
+
+        let snap = snapshot(categories: [
+            categoryDTO(id: cat.id, name: "", isDeleted: true, deletedAt: Date(), isPurged: true),
+        ])
+        store.applyInPlace(snap)
+
+        XCTAssertTrue(store.categories[cat.id] === cat, "still the same object — mutated, not replaced")
+        XCTAssertTrue(cat.isPurged)
+        XCTAssertTrue(cat.propertyTemplates.isEmpty, "purge must replace local content, not additively keep it")
+        XCTAssertEqual(cat.name, "")
     }
 
     // MARK: - No-op self-merge produces zero churn

@@ -52,10 +52,10 @@ final class SnapshotReconcilerTests: XCTestCase {
     private func category(
         id: UUID = UUID(), name: String = "Category", iconName: String = "tray",
         propertyTemplates: [AssetPropertyDTO] = [], isDeleted: Bool = false, deletedAt: Date? = nil,
-        modifyDate: Date? = Date()
+        modifyDate: Date? = Date(), isPurged: Bool? = nil
     ) -> CategoryDTO {
         CategoryDTO(id: id, name: name, iconName: iconName, propertyTemplates: propertyTemplates,
-                   isDeleted: isDeleted, deletedAt: deletedAt, modifyDate: modifyDate)
+                   isDeleted: isDeleted, deletedAt: deletedAt, modifyDate: modifyDate, isPurged: isPurged)
     }
 
     private func asset(
@@ -427,8 +427,14 @@ final class SnapshotReconcilerTests: XCTestCase {
         let snap = snapshot(categories: [agedCategory], assets: [purgedAsset])
 
         let reaped = SnapshotReconciler.reap(snap, cutoff: cutoff)
-        XCTAssertEqual(reaped.categories.count, 0,
-                       "an aged category referenced only by a now-purged asset must not be kept alive")
+        guard let reapedCategory = reaped.categories.first(where: { $0.id == catID }) else {
+            return XCTFail("the category record must survive purge")
+        }
+        XCTAssertEqual(reapedCategory.isPurged, true,
+                       "an aged category referenced only by a now-purged asset must be purged, not kept alive")
+        XCTAssertEqual(reapedCategory.name, "")
+        XCTAssertEqual(reapedCategory.iconName, "")
+        XCTAssertTrue(reapedCategory.propertyTemplates.isEmpty)
     }
 
     // MARK: - Purge (isPurged)
@@ -498,6 +504,73 @@ final class SnapshotReconcilerTests: XCTestCase {
         // not un-strip it either — idempotence is what makes this converge instead of flap.
         let mergedAgain = SnapshotReconciler.merge(merged, stalePeerSnap)
         XCTAssertEqual(mergedAgain.assets.first { $0.id == id }?.baseProperties.count, 0)
+    }
+
+    func testStripPurgedCategoryIsAFixedPoint() {
+        let full = category(name: "Appliances", iconName: "washer",
+                            propertyTemplates: [property()], isDeleted: true, deletedAt: Date())
+        let strippedOnce = SnapshotReconciler.stripPurgedCategory(full)
+        let strippedTwice = SnapshotReconciler.stripPurgedCategory(strippedOnce)
+        XCTAssertEqual(bytes(snapshot(categories: [strippedOnce])), bytes(snapshot(categories: [strippedTwice])),
+                       "stripping an already-stripped category must change nothing")
+        XCTAssertEqual(strippedOnce.name, "")
+        XCTAssertEqual(strippedOnce.iconName, "")
+        XCTAssertTrue(strippedOnce.propertyTemplates.isEmpty)
+        XCTAssertEqual(strippedOnce.id, full.id)
+    }
+
+    func testJoinCategoryPurgeIsMonotoneAndCommutative() {
+        let id = UUID()
+        let t0 = Date(timeIntervalSince1970: 1_700_000_000)
+        let purged = category(id: id, isDeleted: true, deletedAt: t0, modifyDate: t0, isPurged: true)
+        // The stale peer's copy is still full and even carries a LATER modifyDate — purge must
+        // win regardless of which side's timestamp is newer, since it's OR'd, not LWW'd.
+        let stillFull = category(id: id, name: "Appliances", propertyTemplates: [property()],
+                                 isDeleted: true, deletedAt: t0, modifyDate: t0.addingTimeInterval(1000))
+
+        let ab = SnapshotReconciler.joinCategory(purged, stillFull)
+        let ba = SnapshotReconciler.joinCategory(stillFull, purged)
+        for merged in [ab, ba] {
+            XCTAssertEqual(merged.isPurged, true)
+            XCTAssertEqual(merged.name, "")
+            XCTAssertTrue(merged.propertyTemplates.isEmpty)
+        }
+    }
+
+    func testMergeWithStalePeersFullCopyDoesNotResurrectAPurgedCategory() {
+        let id = UUID()
+        let purgedSnap = snapshot(categories: [category(id: id, isDeleted: true, isPurged: true)])
+        let stalePeerSnap = snapshot(categories: [category(id: id, name: "Appliances",
+                                                            propertyTemplates: [property()], isDeleted: true)])
+
+        let merged = SnapshotReconciler.merge(purgedSnap, stalePeerSnap)
+        let mergedCategory = merged.categories.first { $0.id == id }
+        XCTAssertEqual(mergedCategory?.isPurged, true)
+        XCTAssertEqual(mergedCategory?.name, "")
+        XCTAssertEqual(mergedCategory?.propertyTemplates.count, 0)
+
+        let mergedAgain = SnapshotReconciler.merge(merged, stalePeerSnap)
+        XCTAssertEqual(mergedAgain.categories.first { $0.id == id }?.propertyTemplates.count, 0)
+    }
+
+    func testReapSkipsCategoryPurgeWhenAssetsMayBeIncomplete() {
+        // A partial asset read (see `StoreFileLayout.ReadResult.isComplete`) must not be
+        // mistaken for "no asset references this category" — that would purge a category a
+        // not-yet-downloaded asset still needs, and purging can't be undone once written.
+        let catID = UUID()
+        let t0 = Date(timeIntervalSince1970: 1_700_000_000)
+        let cutoff = t0.addingTimeInterval(100)
+        let agedCategory = category(id: catID, isDeleted: true, deletedAt: t0)
+        let agedAsset = asset(id: UUID(), categoryID: UUID(), isDeleted: true, deletedAt: t0)
+        let snap = snapshot(categories: [agedCategory], assets: [agedAsset])
+
+        let reaped = SnapshotReconciler.reap(snap, cutoff: cutoff, assetsMayBeIncomplete: true)
+        let reapedCategory = reaped.categories.first { $0.id == catID }
+        XCTAssertNotEqual(reapedCategory?.isPurged, true,
+                          "category purging must be skipped entirely when the asset set may be incomplete")
+
+        // Asset purging is unaffected — it depends only on the asset's own tombstone.
+        XCTAssertEqual(reaped.assets.first?.isPurged, true)
     }
 
     // MARK: - Composite type: whole-record LWW, fields never merged element-wise

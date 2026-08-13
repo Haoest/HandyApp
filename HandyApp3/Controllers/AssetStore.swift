@@ -140,7 +140,7 @@ final class AssetStore {
     var allAssets: [Asset] { assets.values.filter { !$0.isDeleted } }
     var allCategories: [AssetCategory] { categories.values.filter { !$0.isDeleted } }
     var deletedAssets: [Asset] { assets.values.filter { $0.isDeleted && !$0.isPurged } }
-    var deletedCategories: [AssetCategory] { categories.values.filter { $0.isDeleted } }
+    var deletedCategories: [AssetCategory] { categories.values.filter { $0.isDeleted && !$0.isPurged } }
     var allCompositeTypes: [CompositeTypeDefinition] { Array(compositeTypes.values) }
     var allComboListDefinitions: [ComboListDefinition] { Array(comboListDefinitions.values) }
 
@@ -167,7 +167,7 @@ final class AssetStore {
     @discardableResult
     func createCategory(id: UUID = UUID(), name: String, iconName: String = "square.grid.2x2", propertyTemplates: [AssetProperty] = []) throws -> AssetCategory {
         let trimmed = name.trimmingCharacters(in: .whitespaces)
-        if categories.values.contains(where: { $0.name.caseInsensitiveCompare(trimmed) == .orderedSame }) {
+        if categories.values.contains(where: { !$0.isPurged && $0.name.caseInsensitiveCompare(trimmed) == .orderedSame }) {
             throw AssetStoreError.duplicateCategoryName(trimmed)
         }
         let cat = AssetCategory(id: id, name: trimmed, iconName: iconName, propertyTemplates: propertyTemplates)
@@ -190,6 +190,9 @@ final class AssetStore {
         markDirty()
     }
 
+    /// True removal — leaves no tombstone, so a peer that still has this category will union it
+    /// straight back on the next sync. Not sync-safe; unused by app code, kept for tests only.
+    /// See `hardDeleteCategory` for the sync-safe purge path.
     func deleteCategory(id: UUID) throws {
         guard categories[id] != nil else { throw AssetStoreError.categoryNotFound(id) }
         categories.removeValue(forKey: id)
@@ -370,9 +373,18 @@ final class AssetStore {
 
     func restoreCategory(id: UUID) throws {
         guard let cat = categories[id] else { throw AssetStoreError.categoryNotFound(id) }
+        guard !cat.isPurged else { return }
         cat.isDeleted = false
         cat.deletedAt = nil
         cat.modifyDate = Date()
+        markDirty()
+    }
+
+    /// Immediately purges a soft-deleted category to a minimal tombstone, ignoring the
+    /// retention window `purgeHardDeleted` normally waits out. See `purgeCategoryInPlace`.
+    func hardDeleteCategory(id: UUID) throws {
+        guard let cat = categories[id] else { throw AssetStoreError.categoryNotFound(id) }
+        purgeCategoryInPlace(cat)
         markDirty()
     }
 
@@ -952,12 +964,32 @@ final class AssetStore {
         asset.isPurged = true
     }
 
+    /// Strips a category down to a minimal tombstone — `id`, tombstone, and `modifyDate`
+    /// survive; `name` and `iconName` are blanked to `""` and `propertyTemplates` emptied.
+    /// The record itself is never removed, for the same reason `purgeInPlace` keeps the asset
+    /// record: `applyInPlace`/`_upsertLoaded` can only insert, never delete, so a real removal
+    /// here would be silently resurrected the next time a peer that still has the full category
+    /// syncs. Blanking rather than keeping the name (unlike `purgeInPlace`) is safe because
+    /// nothing ever displays a purged category — `deletedCategories` filters them out.
+    /// Idempotent — safe to call on an already-purged category. Called only on categories
+    /// already soft-deleted; see `purgeHardDeleted` and `hardDeleteCategory`. Not `private`:
+    /// `applyInPlace` (`AssetStore+Persistence.swift`) also calls it, to replace rather than
+    /// additively merge templates on a local category a peer has already purged.
+    func purgeCategoryInPlace(_ category: AssetCategory) {
+        guard !category.isPurged else { return }
+        category.name = ""
+        category.iconName = ""
+        category.propertyTemplates = []
+        category.isPurged = true
+    }
+
     /// Purges soft-deleted assets and categories whose deletedAt is older than `seconds` to
-    /// minimal tombstones (see `purgeInPlace`) — never removes the record — then the same
-    /// age-based reaping as before for tombstoned events/transactions/photos/custom properties
-    /// inside assets that are not (yet) purged, and for aged-out category property-template
-    /// tombstones. Categories are evaluated after assets — a category kept alive only by a
-    /// now-purged asset is eligible for removal in the same sweep, since a purged asset no
+    /// minimal tombstones (see `purgeInPlace`/`purgeCategoryInPlace`) — never removes the
+    /// record — then the same age-based reaping as before for tombstoned
+    /// events/transactions/photos/custom properties inside assets that are not (yet) purged,
+    /// and for aged-out category property-template tombstones on categories that are not (yet)
+    /// purged. Categories are evaluated after assets — a category kept alive only by a
+    /// now-purged asset is eligible for purging in the same sweep, since a purged asset no
     /// longer counts as a reference. Categories still referenced by any non-purged asset are
     /// retained regardless of age to avoid dangling categoryIDs. Old activity-log entries whose
     /// owning asset is gone or purged are dropped once their own timestamp ages past cutoff —
@@ -979,15 +1011,16 @@ final class AssetStore {
             asset.transactions.removeAll { Self.isExpiredTombstone($0.isDeleted, $0.deletedAt, before: cutoff) }
             asset.customProperties.removeAll { Self.isExpiredTombstone($0.isDeleted, $0.deletedAt, before: cutoff) }
         }
-        for category in categories.values {
+        for category in categories.values where !category.isPurged {
             category.propertyTemplates.removeAll {
                 Self.isExpiredTombstone($0.isDeleted, $0.deletedAt, before: cutoff)
             }
         }
         let referencedCategoryIDs = Set(assets.values.filter { !$0.isPurged }.map { $0.category.id })
-        categories = categories.filter { id, c in
-            referencedCategoryIDs.contains(id)
-                || !(c.isDeleted && (c.deletedAt ?? .distantFuture) < cutoff)
+        for category in categories.values
+        where category.isDeleted && (category.deletedAt ?? .distantFuture) < cutoff
+            && !referencedCategoryIDs.contains(category.id) {
+            purgeCategoryInPlace(category)
         }
         activityLog.removeAll { entry in
             let referenced = entry.owningAssetID ?? (entry.kind == .asset ? entry.recordID : nil)

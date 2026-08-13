@@ -422,7 +422,10 @@ extension AssetStore {
                 }
 
                 let cutoff = Date().addingTimeInterval(-TimeInterval(AppPreference.DaysToRetainDeletedItems) * 86_400)
-                let merged = SnapshotReconciler.merge(self.buildSnapshot(), disk, options: .init(purgeCutoff: cutoff))
+                let merged = SnapshotReconciler.merge(
+                    self.buildSnapshot(), disk,
+                    options: .init(purgeCutoff: cutoff, assetsMayBeIncomplete: !result.isComplete)
+                )
                 self.applyInPlace(merged)
                 self.savesSuspended = false
                 self.lastSyncDate = Date()
@@ -487,6 +490,7 @@ extension AssetStore {
                                     modifyDate: dto.modifyDate ?? .distantPast)
             cat.isDeleted = dto.isDeleted
             cat.deletedAt = dto.deletedAt
+            cat.isPurged = dto.isPurged ?? false
             catMap[dto.id] = cat
         }
 
@@ -720,7 +724,7 @@ extension AssetStore {
     ) -> AssetCategory {
         if let existing = catMap[categoryID] { return existing }
         if let placeholder = recoveredPlaceholders[categoryID] { return placeholder }
-        if let catDTO = incomingCategoriesByID[categoryID], catDTO.isDeleted {
+        if let catDTO = incomingCategoriesByID[categoryID], catDTO.isDeleted, !(catDTO.isPurged ?? false) {
             let templates = catDTO.propertyTemplates.compactMap {
                 assetProperty(from: $0, ctMap: ctMap, clMap: clMap, fallbackModifyDate: .distantPast)
             }
@@ -936,7 +940,8 @@ extension AssetStore {
             categories: categories.values.map { cat in
                 CategoryDTO(id: cat.id, name: cat.name, iconName: cat.iconName,
                             propertyTemplates: cat.propertyTemplates.map { assetPropertyDTO($0) },
-                            isDeleted: cat.isDeleted, deletedAt: cat.deletedAt, modifyDate: cat.modifyDate)
+                            isDeleted: cat.isDeleted, deletedAt: cat.deletedAt, modifyDate: cat.modifyDate,
+                            isPurged: cat.isPurged)
             },
             assets: assets.values.map { asset in
                 AssetDTO(
@@ -1172,14 +1177,24 @@ extension AssetStore {
         // 4. Categories — mutate existing header + upsert templates element-wise; insert new.
         var newCategories: [AssetCategory] = []
         for dto in snap.categories {
+            let isPurged = dto.isPurged ?? false
             if let existing = categories[dto.id] {
-                existing.name = dto.name
-                existing.iconName = dto.iconName
                 existing.isDeleted = dto.isDeleted
                 existing.deletedAt = dto.deletedAt
                 existing.modifyDate = dto.modifyDate ?? .distantPast
-                upsertAssetProperties(dto.propertyTemplates, into: &existing.propertyTemplates,
-                                      ctMap: ctMap, clMap: clMap, fallbackModifyDate: .distantPast)
+                if isPurged {
+                    // The merged snapshot already stripped this category
+                    // (`SnapshotReconciler.joinCategory` ran before `applyInPlace` is called) —
+                    // `upsertAssetProperties` is an additive-only union and would never clear
+                    // templates this device still holds locally, so a purge replaces rather
+                    // than merges. Mirrors the asset branch below.
+                    purgeCategoryInPlace(existing)
+                } else {
+                    existing.name = dto.name
+                    existing.iconName = dto.iconName
+                    upsertAssetProperties(dto.propertyTemplates, into: &existing.propertyTemplates,
+                                          ctMap: ctMap, clMap: clMap, fallbackModifyDate: .distantPast)
+                }
             } else {
                 let templates = dto.propertyTemplates.compactMap {
                     assetProperty(from: $0, ctMap: ctMap, clMap: clMap, fallbackModifyDate: .distantPast)
@@ -1188,6 +1203,7 @@ extension AssetStore {
                                         propertyTemplates: templates, modifyDate: dto.modifyDate ?? .distantPast)
                 cat.isDeleted = dto.isDeleted
                 cat.deletedAt = dto.deletedAt
+                cat.isPurged = isPurged
                 newCategories.append(cat)
             }
         }

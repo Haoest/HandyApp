@@ -131,6 +131,27 @@ final class ConflictResolutionTests: XCTestCase {
         XCTAssertTrue(merged.photos.isEmpty, "purge must win even though the other version has a later headModifyDate")
     }
 
+    func testConflictingCategoryVersionsFoldToPurgedWhenEitherSideIsPurged() throws {
+        // `Definitions/categories.json` conflicts fold through `joinCategory` directly — this
+        // is what makes it inherit the same "purge always wins" rule without any extra
+        // plumbing in `ShardConflictMerger`.
+        let catID = UUID()
+        let t0 = Date(timeIntervalSince1970: 1_700_000_000)
+        let purgedVersion = CategoryDTO(id: catID, name: "", iconName: "", propertyTemplates: [],
+                                        isDeleted: true, deletedAt: t0, modifyDate: t0, isPurged: true)
+        let stillFullVersion = CategoryDTO(id: catID, name: "Appliances", iconName: "washer",
+                                           propertyTemplates: [], isDeleted: true, deletedAt: t0,
+                                           modifyDate: t0.addingTimeInterval(10))
+        let encoder = CanonicalCodec.makeEncoder()
+        let mergedBytes = try XCTUnwrap(ShardConflictMerger.mergeShardBytes(
+            relativePath: "Definitions/categories.json",
+            current: try encoder.encode([stillFullVersion]), conflicts: [try encoder.encode([purgedVersion])]))
+        let merged = try CanonicalCodec.makeDecoder().decode([CategoryDTO].self, from: mergedBytes)
+        XCTAssertEqual(merged.count, 1)
+        XCTAssertEqual(merged[0].isPurged, true)
+        XCTAssertEqual(merged[0].name, "", "purge must win even though the other version has a later modifyDate")
+    }
+
     func testUnknownShardPathReturnsNil() {
         XCTAssertNil(ShardConflictMerger.mergeShardBytes(relativePath: "nonsense.json", current: Data(), conflicts: [Data()]))
     }

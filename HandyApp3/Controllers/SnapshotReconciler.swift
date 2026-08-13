@@ -19,6 +19,15 @@ enum SnapshotReconciler {
         /// converges in one round instead of oscillating between devices that purge at
         /// different times. `.distantPast` (the default) never drops anything.
         var purgeCutoff: Date = .distantPast
+        /// Set when `snap`'s asset shards may not have finished downloading (see
+        /// `StoreFileLayout.ReadResult.isComplete`). Category purging in `reap` decides "no
+        /// surviving asset references this category" from `snap.assets` — on an incomplete
+        /// read that's not a fact, it's an artifact of files not being here yet. Purging is
+        /// monotone and can't be undone once written, so unlike ordinary reaping (which
+        /// self-heals if wrong, since a missing record is just re-added), an incomplete read
+        /// must skip category purging entirely rather than risk it. Asset purging is unaffected
+        /// — it depends only on the asset's own tombstone, never on what else is present.
+        var assetsMayBeIncomplete: Bool = false
     }
 
     // MARK: - The join primitive
@@ -113,9 +122,34 @@ enum SnapshotReconciler {
     /// timestamp finer than the whole record, so a rename and an icon change are one unit.
     static func joinCategory(_ a: CategoryDTO, _ b: CategoryDTO) -> CategoryDTO {
         var merged = pick(a, b, stamp: { $0.modifyDate ?? .distantPast })
+        // Purge is monotone and OR's across sides, the same rule `joinAsset` uses for
+        // `isPurged` — once either device has stripped this category, the strip must win even
+        // over a later rename `pick` would otherwise have chosen, or a peer that hasn't purged
+        // yet would keep resurrecting the templates every time its still-full copy joins
+        // against the stripped one. Written only in the purged case — unconditionally writing
+        // `false` would coerce a `nil` (an un-migrated on-disk record that predates this field)
+        // into an explicit `false`, changing the encoded bytes and breaking
+        // `merge(a,a) == canonical(a)`.
+        if (a.isPurged ?? false) || (b.isPurged ?? false) {
+            merged.isPurged = true
+            return stripPurgedCategory(merged)
+        }
         merged.propertyTemplates = joinKeyed(a.propertyTemplates, b.propertyTemplates,
                                              id: { $0.id }, join: joinAssetProperty)
         return merged
+    }
+
+    /// Strips a category DTO down to the minimal tombstone `AssetStore.purgeCategoryInPlace`
+    /// produces — `name`/`iconName` blanked, `propertyTemplates` emptied. `id`/timestamps/
+    /// tombstone survive untouched. A fixed point: applying it to already-stripped input
+    /// changes nothing, which is what makes a stale peer's still-full copy of a purged category
+    /// get re-stripped on every merge instead of resurrecting the templates.
+    static func stripPurgedCategory(_ dto: CategoryDTO) -> CategoryDTO {
+        var stripped = dto
+        stripped.name = ""
+        stripped.iconName = ""
+        stripped.propertyTemplates = []
+        return stripped
     }
 
     /// Composite join across four independent stamps — this is the one join that must never
@@ -201,7 +235,7 @@ enum SnapshotReconciler {
             backgroundTheme: a.backgroundTheme
         )
         merged.assets = normalizeHierarchy(merged.assets)
-        merged = reap(merged, cutoff: options.purgeCutoff)
+        merged = reap(merged, cutoff: options.purgeCutoff, assetsMayBeIncomplete: options.assetsMayBeIncomplete)
         return merged.canonicalized()
     }
 
@@ -265,16 +299,22 @@ enum SnapshotReconciler {
         isDeleted && (deletedAt ?? .distantFuture) < cutoff
     }
 
-    /// Strips assets whose tombstone has aged past `cutoff` down to a minimal record (see
-    /// `stripPurged`) rather than removing them — the record must survive so the strip is
-    /// visible to a peer that still holds the full asset, or the next merge would union the
-    /// payload straight back in. Also drops categories no longer referenced by any non-purged
-    /// asset, inline photos/events/transactions/custom properties/templates aged past cutoff on
-    /// non-purged assets, and activity log entries whose owning asset is purged (or absent) and
+    /// Strips assets and categories whose tombstone has aged past `cutoff` down to a minimal
+    /// record (see `stripPurged`/`stripPurgedCategory`) rather than removing them — the record
+    /// must survive so the strip is visible to a peer that still holds the full asset/category,
+    /// or the next merge would union the payload straight back in. A category kept alive only
+    /// by a now-purged asset is eligible for purging in the same pass, since a purged asset no
+    /// longer counts as a reference; categories still referenced by any non-purged asset are
+    /// retained regardless of age. Category purging is skipped entirely when
+    /// `assetsMayBeIncomplete` is set, since "no surviving asset references this" isn't a fact
+    /// derivable from a partial `snap.assets` (see `Options.assetsMayBeIncomplete`) — asset
+    /// purging is unaffected, as it depends only on the asset's own tombstone. Also reaps inline
+    /// photos/events/transactions/custom properties/templates aged past cutoff on non-purged
+    /// assets/categories, and activity log entries whose owning asset is purged (or absent) and
     /// whose own timestamp predates cutoff. Mirrors `AssetStore.purgeHardDeleted`'s rules
     /// exactly, so a merge and a local purge converge to the same result. `deletedAt == nil` is
     /// never expired.
-    static func reap(_ snap: StoreSnapshotDTO, cutoff: Date) -> StoreSnapshotDTO {
+    static func reap(_ snap: StoreSnapshotDTO, cutoff: Date, assetsMayBeIncomplete: Bool = false) -> StoreSnapshotDTO {
         var result = snap
 
         for i in result.assets.indices {
@@ -291,11 +331,20 @@ enum SnapshotReconciler {
             result.assets[i].customProperties.removeAll { isExpired($0.isDeleted ?? false, $0.deletedAt, before: cutoff) }
         }
 
-        let nonPurgedCategoryIDs = Set(result.assets.filter { $0.isPurged != true }.map(\.categoryID))
-        result.categories = result.categories.filter { cat in
-            nonPurgedCategoryIDs.contains(cat.id) || !isExpired(cat.isDeleted, cat.deletedAt, before: cutoff)
+        if !assetsMayBeIncomplete {
+            let nonPurgedCategoryIDs = Set(result.assets.filter { $0.isPurged != true }.map(\.categoryID))
+            for i in result.categories.indices {
+                if isExpired(result.categories[i].isDeleted, result.categories[i].deletedAt, before: cutoff)
+                    && !nonPurgedCategoryIDs.contains(result.categories[i].id) {
+                    result.categories[i].isPurged = true
+                }
+            }
         }
         for i in result.categories.indices {
+            guard result.categories[i].isPurged != true else {
+                result.categories[i] = stripPurgedCategory(result.categories[i])
+                continue
+            }
             result.categories[i].propertyTemplates.removeAll {
                 isExpired($0.isDeleted ?? false, $0.deletedAt, before: cutoff)
             }

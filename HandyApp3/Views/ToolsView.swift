@@ -355,7 +355,7 @@ private struct DeletedCategoryRow: View {
         .swipeActions(edge: .trailing) {
             if count == 0 {
                 Button(role: .destructive) {
-                    try? store.deleteCategory(id: category.id)
+                    try? store.hardDeleteCategory(id: category.id)
                 } label: {
                     Label("Delete now", systemImage: "trash")
                 }

@@ -64,6 +64,12 @@ final class CategoryDeletionTests: XCTestCase {
         cat.deletedAt = Date().addingTimeInterval(-15 * 86_400) // 15 days ago
         store.purgeHardDeleted(olderThan: TimeInterval(AppPreference.DaysToRetainDeletedItems) * 86_400)
         XCTAssertFalse(store.deletedCategories.contains { $0.id == cat.id })
+        // The record survives as a minimal tombstone — never removed, so a peer that still
+        // holds the full category can't resurrect it on the next sync.
+        XCTAssertNotNil(store.categories[cat.id])
+        XCTAssertTrue(store.categories[cat.id]?.isPurged ?? false)
+        XCTAssertEqual(store.categories[cat.id]?.name, "")
+        XCTAssertEqual(store.categories[cat.id]?.iconName, "")
     }
 
     func testPurgeKeepsUnreferencedCategoryWithinRetention() throws {
@@ -136,6 +142,32 @@ final class CategoryDeletionTests: XCTestCase {
         XCTAssertTrue(store.assets[child.id]?.isPurged ?? false)
         XCTAssertNil(store.assets[parent.id]?.parentID)
         XCTAssertNil(store.assets[child.id]?.parentID)
+    }
+
+    // MARK: - hardDeleteCategory (immediate "Delete now" path)
+
+    func testHardDeleteCategoryPurgesImmediately() throws {
+        let cat = try makeCategory(name: "Appliances")
+        try store.softDeleteCategory(id: cat.id)
+
+        try store.hardDeleteCategory(id: cat.id)
+
+        XCTAssertFalse(store.deletedCategories.contains { $0.id == cat.id })
+        // Record survives as a minimal tombstone — never removed, so a peer can't resurrect it.
+        XCTAssertNotNil(store.categories[cat.id])
+        XCTAssertTrue(store.categories[cat.id]?.isPurged ?? false)
+        XCTAssertEqual(store.categories[cat.id]?.name, "")
+        XCTAssertTrue(store.categories[cat.id]?.propertyTemplates.isEmpty ?? false)
+    }
+
+    func testCreateCategoryAllowsNameReuseAfterPurge() throws {
+        let cat = try makeCategory(name: "Appliances")
+        try store.softDeleteCategory(id: cat.id)
+        try store.hardDeleteCategory(id: cat.id)
+
+        // A purged category's blanked "" name must never hold the original name hostage, and
+        // the original name itself must be reusable once its category is purged.
+        XCTAssertNoThrow(try store.createCategory(name: "Appliances"))
     }
 
     // MARK: - deleteCategory (hard delete — "Delete now" path)
