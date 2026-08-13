@@ -32,18 +32,25 @@ final class ComboListDefinition: Identifiable, Equatable {
     /// When `false`, only the options already present in `allOptions` are accepted.
     let isUserExtensible: Bool
 
+    /// Absolute instant `name` last changed. `userOptions` merges as a grow-only set rather
+    /// than by timestamp — see `SnapshotReconciler` — but the header still needs one so a
+    /// rename can be ordered against a peer's rename.
+    var modifyDate: Date
+
     init(
         id: UUID = UUID(),
         name: String,
         systemOptions: [String] = [],
         userOptions: [String] = [],
-        isUserExtensible: Bool = true
+        isUserExtensible: Bool = true,
+        modifyDate: Date = Date()
     ) {
         self.id = id
         self.name = name
         self.systemOptions = systemOptions
         self.userOptions = userOptions
         self.isUserExtensible = isUserExtensible
+        self.modifyDate = modifyDate
     }
 
     static func == (lhs: ComboListDefinition, rhs: ComboListDefinition) -> Bool {

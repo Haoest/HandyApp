@@ -81,7 +81,12 @@ final class HandyApp3Tests: XCTestCase {
         let template = AssetProperty(definition: def)
         try store.addTemplateProperty(template, toCategoryID: cat.id)
         try store.removeTemplateProperty(id: template.id, fromCategoryID: cat.id)
-        XCTAssertTrue(cat.propertyTemplates.isEmpty)
+        // Tombstoned, not hard-removed — the record survives (so a sync/import can see the
+        // removal and it doesn't resurrect from a peer) until the retention sweep reaps it.
+        XCTAssertTrue(cat.liveTemplates.isEmpty)
+        XCTAssertEqual(cat.propertyTemplates.count, 1)
+        XCTAssertTrue(cat.propertyTemplates[0].isDeleted)
+        XCTAssertNotNil(cat.propertyTemplates[0].deletedAt)
     }
 
     // MARK: - Asset creation from category

@@ -290,6 +290,33 @@ final class DeletionHygieneTests: XCTestCase {
                        "purge must remove thumbnail file for expired asset")
     }
 
+    func testPurgeStripsExpiredAssetToMinimalTombstoneInsteadOfRemovingIt() throws {
+        let cat = try store.createCategory(name: "Vehicles")
+        let asset = try store.createAsset(name: "Bike", categoryID: cat.id)
+        _ = try store.addPhoto(imageData: Data("full".utf8), thumbnailData: Data("thumb".utf8), toAssetID: asset.id)
+        _ = try store.addEvent(title: "Checkup", date: Date(), toAssetID: asset.id)
+        _ = try store.addTransaction(details: "Repair", amount: 5, date: Date(), kind: .expense, toAssetID: asset.id)
+        _ = try store.addCustomProperty(definition: PropertyDefinition(name: "Color", type: .basic(.text)), toAssetID: asset.id)
+        let hadBaseProperties = !asset.baseProperties.isEmpty
+        let createdDate = asset.createdDate
+
+        try store.softDeleteAsset(id: asset.id)
+        asset.deletedAt = Date().addingTimeInterval(-15 * 86_400)
+        store.purgeHardDeleted(olderThan: TimeInterval(AppPreference.DaysToRetainDeletedItems) * 86_400)
+
+        let survivor = try XCTUnwrap(store.assets[asset.id], "purge must never remove the asset record — a peer that still has the full asset would resurrect it")
+        XCTAssertTrue(survivor.isPurged)
+        XCTAssertEqual(survivor.name, "Bike", "name survives the strip")
+        XCTAssertEqual(survivor.createdDate, createdDate, "purge must not touch timestamps")
+        XCTAssertEqual(survivor.category.id, cat.id, "categoryID survives the strip")
+        XCTAssertTrue(survivor.photos.isEmpty)
+        XCTAssertTrue(survivor.events.isEmpty)
+        XCTAssertTrue(survivor.transactions.isEmpty)
+        XCTAssertTrue(survivor.customProperties.isEmpty)
+        if hadBaseProperties { XCTAssertTrue(survivor.baseProperties.isEmpty) }
+        XCTAssertNil(survivor.parentID)
+    }
+
     func testRemovePhotoKeepsFilesOnDiskUntilPurge() throws {
         let cat = try store.createCategory(name: "Vehicles")
         let asset = try store.createAsset(name: "Bike", categoryID: cat.id)

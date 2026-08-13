@@ -291,4 +291,57 @@ final class StoreFileLayoutTests: XCTestCase {
             XCTAssertEqual(bytesA, bytesB, "\(path) must encode identically across independent writes of the same snapshot")
         }
     }
+
+    // MARK: - 10. Built-in composite type / combo list ids survive save/load
+
+    /// Regression test for a bug where a built-in composite type or combo list embedded in a
+    /// category template (e.g. Appliance's "Size" field) was registered under a *different*
+    /// id than the template referenced, so the property silently vanished on the very next
+    /// `load()` — `resolvePropertyType`'s `ctMap`/`clMap` lookup failed and `compactMap`
+    /// dropped it. See `createCompositeType`/`createComboList`'s `id:` parameter and
+    /// `seedBuiltInTypes`/`seedBuiltInComboLists` passing the template's own id through.
+    func testBuiltInApplianceSizeTemplateSurvivesSaveAndLoad() throws {
+        store.seedBuiltInComboLists()
+        store.seedBuiltInCategories()
+        store.seedBuiltInTypes()
+        store.save()
+
+        let reloaded = AssetStore()
+        XCTAssertTrue(reloaded.load())
+
+        let appliance = try XCTUnwrap(reloaded.categories.values.first { $0.name == SystemCategory.appliance.rawValue })
+        XCTAssertNotNil(appliance.propertyTemplates.first { $0.definition.name == "Size" },
+                        "Appliance must keep its Size template across a save/load round trip")
+
+        let range = try XCTUnwrap(reloaded.categories.values.first { $0.name == SystemCategory.range.rawValue })
+        XCTAssertNotNil(range.propertyTemplates.first { $0.definition.name == "Power source" },
+                        "Range must keep its Power source template across a save/load round trip")
+    }
+
+    /// Seeding the same built-ins on two independent stores (simulating two devices that each
+    /// first-launch offline, before ever syncing) must register identical ids for identical
+    /// built-ins — otherwise a later merge would treat them as distinct records and duplicate
+    /// every category, composite type, and combo list.
+    func testBuiltInIdsAreDeterministicAcrossIndependentStores() {
+        let tempDirB = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: tempDirB) }
+        AssetStore.baseDirOverride = tempDirB
+        let storeB = AssetStore()
+        AssetStore.baseDirOverride = tempDir
+
+        store.seedBuiltInComboLists(); store.seedBuiltInCategories(); store.seedBuiltInTypes()
+        storeB.seedBuiltInComboLists(); storeB.seedBuiltInCategories(); storeB.seedBuiltInTypes()
+
+        XCTAssertEqual(Set(store.compositeTypes.keys), Set(storeB.compositeTypes.keys))
+        XCTAssertEqual(Set(store.comboListDefinitions.keys), Set(storeB.comboListDefinitions.keys))
+        XCTAssertEqual(Set(store.categories.keys), Set(storeB.categories.keys))
+
+        let applianceA = store.categories.values.first { $0.name == SystemCategory.appliance.rawValue }
+        let applianceB = storeB.categories.values.first { $0.name == SystemCategory.appliance.rawValue }
+        XCTAssertEqual(applianceA?.id, applianceB?.id)
+        XCTAssertEqual(
+            Set((applianceA?.propertyTemplates ?? []).map(\.definition.id)),
+            Set((applianceB?.propertyTemplates ?? []).map(\.definition.id))
+        )
+    }
 }

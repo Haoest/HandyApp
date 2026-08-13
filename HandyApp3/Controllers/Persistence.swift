@@ -2,7 +2,7 @@ import Foundation
 
 // MARK: - Schema version
 
-let storeSchemaVersion = 3
+let storeSchemaVersion = 4
 
 /// File layout version, independent of `storeSchemaVersion` (which versions the DTO shapes).
 /// Bump this when the on-disk file/directory structure changes, not when a DTO field is added.
@@ -102,6 +102,9 @@ struct CompositeTypeDTO: Codable {
     var name: String
     var fields: [PropertyDefinitionDTO]
     var labelHint: String?
+    /// Optional: absent in files written before composite types carried a timestamp.
+    /// Decoders substitute `.distantPast`.
+    var modifyDate: Date?
 }
 
 // MARK: - ComboListDTO
@@ -112,6 +115,9 @@ struct ComboListDTO: Codable {
     var systemOptions: [String]
     var userOptions: [String]
     var isUserExtensible: Bool
+    /// Optional: absent in files written before combo lists carried a timestamp.
+    /// Decoders substitute `.distantPast`.
+    var modifyDate: Date?
 }
 
 // MARK: - CategoryDTO
@@ -123,6 +129,9 @@ struct CategoryDTO: Codable {
     var propertyTemplates: [AssetPropertyDTO]
     var isDeleted: Bool
     var deletedAt: Date?
+    /// Optional: absent in files written before categories carried a timestamp.
+    /// Decoders substitute `.distantPast`.
+    var modifyDate: Date?
 }
 
 // MARK: - PhotoDTO
@@ -199,6 +208,14 @@ struct AssetDTO: Codable {
     /// Optional: absent in files written before parentage changes were timestamped.
     /// Decoders fall back to `createdDate`.
     var parentageModifyDate: Date?
+    /// Optional: absent in files written before the asset's own name/tombstone carried a
+    /// separate timestamp from the `modifiedDate` rollup. Decoders fall back to
+    /// `modifiedDate` — see `Asset.headModifyDate`'s doc comment for why the two differ.
+    var headModifyDate: Date?
+    /// Optional: absent in files written before purge stopped removing the asset record.
+    /// Decoders fall back to `false`. See `Asset.isPurged`. Defaulted to `nil` so every
+    /// existing `AssetDTO(...)` construction site keeps compiling unchanged.
+    var isPurged: Bool? = nil
 }
 
 // MARK: - ActivityLogDTO
@@ -221,4 +238,74 @@ struct StoreSnapshotDTO: Codable {
     var assets: [AssetDTO]
     var activityLog: [ActivityLogDTO]
     var backgroundTheme: String     // BackgroundTheme.rawValue
+}
+
+// MARK: - Canonicalization
+//
+// Nested-array ordering that must hold regardless of how a snapshot was assembled — from live
+// model state (`AssetStore.buildSnapshot`) or from a merge (`SnapshotReconciler`) — so the
+// encoded bytes are a pure function of content, never of construction order. Without this,
+// `merge(a,b)` and `merge(b,a)` (built from dictionary key-set unions, which have no defined
+// iteration order in Swift) would encode the same records in different array order, hence
+// different bytes, hence an endless re-upload cycle between two devices that agree on content
+// but disagree on encoding. `StoreFileLayout.writeLocked` canonicalizes before every write, so
+// on-disk files are always canonical no matter what produced the in-memory snapshot.
+//
+// Every display site already re-sorts for its own UI order — `AssetPhotosViews` by
+// `addedDate`, `AssetEventsViews`/`AssetTransactionsViews` by `recurringFirstDateDescending()`,
+// `AssetDetailView.sortedBase/sortedCustom` by `sortOrder` — so on-disk order is invisible to
+// the UI. `CompositeTypeDTO.fields` and `ComboListDTO.userOptions` are deliberately NOT
+// reordered here: field order is a semantic display order preserved by whole-record
+// last-writer-wins in the reconciler, and `userOptions`' merge order is constructed
+// deterministically by the reconciler itself (winner's array, then the loser's missing
+// options), not by sorting.
+
+extension AssetPropertyDTO {
+    /// `(sortOrder, id)` — matches the app's own display order for property rows.
+    fileprivate static func canonicalOrder(_ a: AssetPropertyDTO, _ b: AssetPropertyDTO) -> Bool {
+        a.sortOrder == b.sortOrder ? a.id.uuidString < b.id.uuidString : a.sortOrder < b.sortOrder
+    }
+}
+
+extension AssetDTO {
+    func canonicalized() -> AssetDTO {
+        var copy = self
+        copy.baseProperties = baseProperties.sorted(by: AssetPropertyDTO.canonicalOrder)
+        copy.customProperties = customProperties.sorted(by: AssetPropertyDTO.canonicalOrder)
+        copy.photos = photos.sorted {
+            $0.addedDate == $1.addedDate ? $0.id.uuidString < $1.id.uuidString : $0.addedDate < $1.addedDate
+        }
+        copy.events = events.sorted {
+            $0.date == $1.date ? $0.id.uuidString < $1.id.uuidString : $0.date < $1.date
+        }
+        copy.transactions = transactions.sorted {
+            $0.date == $1.date ? $0.id.uuidString < $1.id.uuidString : $0.date < $1.date
+        }
+        return copy
+    }
+}
+
+extension CategoryDTO {
+    func canonicalized() -> CategoryDTO {
+        var copy = self
+        copy.propertyTemplates = propertyTemplates.sorted(by: AssetPropertyDTO.canonicalOrder)
+        return copy
+    }
+}
+
+extension StoreSnapshotDTO {
+    /// Full canonicalization: every top-level collection sorted by id (or `(timestamp, id)`
+    /// for the log), every nested collection sorted per the rules above. Two snapshots with
+    /// identical content, assembled in any order, encode to identical bytes after this.
+    func canonicalized() -> StoreSnapshotDTO {
+        var copy = self
+        copy.compositeTypes = compositeTypes.sorted { $0.id.uuidString < $1.id.uuidString }
+        copy.comboLists = comboLists.sorted { $0.id.uuidString < $1.id.uuidString }
+        copy.categories = categories.map { $0.canonicalized() }.sorted { $0.id.uuidString < $1.id.uuidString }
+        copy.assets = assets.map { $0.canonicalized() }.sorted { $0.id.uuidString < $1.id.uuidString }
+        copy.activityLog = activityLog.sorted {
+            $0.timestamp == $1.timestamp ? $0.id.uuidString < $1.id.uuidString : $0.timestamp < $1.timestamp
+        }
+        return copy
+    }
 }

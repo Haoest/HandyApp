@@ -13,6 +13,13 @@ final class Asset: Identifiable, Equatable {
     /// Initialized at creation — being a root is itself a parentage state.
     var parentageModifyDate: Date
 
+    /// Absolute instant `name` or the tombstone (`isDeleted`/`deletedAt`) last changed. Separate
+    /// from `modifiedDate`, which is a rollup bumped by every child mutation (a property edit, a
+    /// photo add, ...) and so cannot serve as a merge stamp for the asset's own head fields —
+    /// whole-record last-writer-wins on `modifiedDate` would let an unrelated later child edit
+    /// on one device beat an earlier delete on another, resurrecting it.
+    var headModifyDate: Date
+
     /// The category this asset was created from.
     var category: AssetCategory
 
@@ -33,6 +40,14 @@ final class Asset: Identifiable, Equatable {
     var isDeleted: Bool = false
     var deletedAt: Date? = nil
 
+    /// Set once `AssetStore.purgeHardDeleted`/`hardDeleteAsset` has stripped this record to a
+    /// minimal tombstone (photos/events/transactions/customProperties/baseProperties emptied,
+    /// detached from its parent). Monotone — never goes back to false. The record itself is
+    /// kept forever specifically so this stays visible to every peer: a stale device that still
+    /// holds the full asset must see the strip and re-apply it, not resurrect the payload by
+    /// unioning it back in on the next sync.
+    var isPurged: Bool = false
+
     /// Resolved in-memory reference to the parent. Set by AssetStore hierarchy methods.
     weak var parent: Asset?
 
@@ -48,7 +63,8 @@ final class Asset: Identifiable, Equatable {
         parentID: UUID? = nil,
         createdDate: Date = Date(),
         modifiedDate: Date = Date(),
-        parentageModifyDate: Date = Date()
+        parentageModifyDate: Date = Date(),
+        headModifyDate: Date = Date()
     ) {
         self.id = id
         self.name = name
@@ -59,6 +75,7 @@ final class Asset: Identifiable, Equatable {
         self.createdDate = createdDate
         self.modifiedDate = modifiedDate
         self.parentageModifyDate = parentageModifyDate
+        self.headModifyDate = headModifyDate
     }
 
     // MARK: - Property value convenience

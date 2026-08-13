@@ -13,16 +13,23 @@ final class CompositeTypeDefinition: Identifiable, Equatable {
     /// When empty/nil, no hint is rendered.
     var labelHint: String?
 
+    /// Absolute instant `name`, `fields`, or `labelHint` last changed. Merges as one
+    /// whole-record last-writer-wins unit — `fields`' order is a semantic display order,
+    /// so it is never merged element-wise. See `SnapshotReconciler`.
+    var modifyDate: Date
+
     init(
         id: UUID = UUID(),
         name: String,
         fields: [PropertyDefinition] = [],
-        labelHint: String? = nil
+        labelHint: String? = nil,
+        modifyDate: Date = Date()
     ) {
         self.id = id
         self.name = name
         self.fields = fields
         self.labelHint = labelHint
+        self.modifyDate = modifyDate
     }
 
     static func == (lhs: CompositeTypeDefinition, rhs: CompositeTypeDefinition) -> Bool {

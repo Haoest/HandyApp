@@ -18,7 +18,7 @@ struct CategoryNewView: View {
     init(duplicating source: AssetCategory? = nil) {
         _name = State(initialValue: "")
         _iconName = State(initialValue: source?.iconName ?? "square.grid.2x2")
-        _properties = State(initialValue: source?.propertyTemplates.map { template in
+        _properties = State(initialValue: source?.liveTemplates.map { template in
             AssetProperty(
                 definition: template.definition,
                 value: template.value,

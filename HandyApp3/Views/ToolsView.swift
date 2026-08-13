@@ -48,6 +48,17 @@ struct ToolsTab: View {
         }
     }
 
+    /// Coarse, read-only sync status — no live probing, just what the store already knows.
+    private var iCloudStatusText: String {
+        guard AssetStore.iCloudSyncEnabled else { return "Not enabled" }
+        guard FileManager.default.url(forUbiquityContainerIdentifier: nil) != nil else { return "iCloud unavailable" }
+        if store.savesSuspended { return "Waiting for iCloud…" }
+        guard let lastSync = store.lastSyncDate else { return "On" }
+        let formatter = RelativeDateTimeFormatter()
+        formatter.unitsStyle = .abbreviated
+        return "Synced \(formatter.localizedString(for: lastSync, relativeTo: Date()))"
+    }
+
     var body: some View {
         NavigationStack {
             ZStack {
@@ -91,6 +102,8 @@ struct ToolsTab: View {
                     }
 
                     Section("System") {
+                        LabeledContent("iCloud Sync", value: iCloudStatusText)
+                            .listRowBackground(Color.white.opacity(0.5))
                         Button {
                             restorePurchases()
                         } label: {

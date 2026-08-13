@@ -8,16 +8,18 @@ private let persistenceLogger = Logger(
 // MARK: - Photo file storage
 
 enum PhotoStorage {
-    static func fullURL(id: UUID) -> URL {
-        AssetStore.baseDir.appendingPathComponent("Photos/\(id)_full.jpg")
+    /// `root` defaults to the real store directory; Tier 2 multi-device tests pass a private
+    /// per-device temp directory instead. Every call site keeps compiling unchanged.
+    static func fullURL(id: UUID, root: URL = AssetStore.baseDir) -> URL {
+        root.appendingPathComponent("Photos/\(id)_full.jpg")
     }
-    static func thumbURL(id: UUID) -> URL {
-        AssetStore.baseDir.appendingPathComponent("Photos/\(id)_thumb.jpg")
+    static func thumbURL(id: UUID, root: URL = AssetStore.baseDir) -> URL {
+        root.appendingPathComponent("Photos/\(id)_thumb.jpg")
     }
 
-    static func save(id: UUID, imageData: Data, thumbnailData: Data) {
-        try? imageData.write(to: fullURL(id: id), options: .atomic)
-        try? thumbnailData.write(to: thumbURL(id: id), options: .atomic)
+    static func save(id: UUID, imageData: Data, thumbnailData: Data, root: URL = AssetStore.baseDir) {
+        try? imageData.write(to: fullURL(id: id, root: root), options: .atomic)
+        try? thumbnailData.write(to: thumbURL(id: id, root: root), options: .atomic)
     }
 
     private static func read(_ url: URL) -> Data? {
@@ -26,12 +28,12 @@ enum PhotoStorage {
         return nil
     }
 
-    static func loadFull(id: UUID) -> Data? { read(fullURL(id: id)) }
-    static func loadThumb(id: UUID) -> Data? { read(thumbURL(id: id)) }
+    static func loadFull(id: UUID, root: URL = AssetStore.baseDir) -> Data? { read(fullURL(id: id, root: root)) }
+    static func loadThumb(id: UUID, root: URL = AssetStore.baseDir) -> Data? { read(thumbURL(id: id, root: root)) }
 
-    static func delete(id: UUID) {
-        try? FileManager.default.removeItem(at: fullURL(id: id))
-        try? FileManager.default.removeItem(at: thumbURL(id: id))
+    static func delete(id: UUID, root: URL = AssetStore.baseDir) {
+        try? FileManager.default.removeItem(at: fullURL(id: id, root: root))
+        try? FileManager.default.removeItem(at: thumbURL(id: id, root: root))
     }
 }
 
@@ -55,8 +57,17 @@ extension AssetStore {
 
     /// Master switch for iCloud document sync of the store. While false, all store files
     /// live in local Documents and no ubiquity-container access happens. iCloud Backup of
-    /// the local Documents directory is unaffected. Flip to true to re-enable sync.
-    static let iCloudSyncEnabled = false
+    /// the local Documents directory is unaffected.
+    ///
+    /// Flipped true as the final step of the sync-correctness pass: canonicalization
+    /// (StoreFileLayout/Persistence.swift), schema v4 timestamps, SnapshotReconciler,
+    /// applyInPlace, the hasAuthoritativeLocalState seed guard, per-shard NSFileVersion
+    /// conflict resolution, download priming, and NSFileCoordinator are all in place and
+    /// covered by SnapshotReconcilerTests/ApplyInPlaceTests/TwoDeviceRelayTests/
+    /// ConflictResolutionTests/SyncRelayTests. Real ubiquity-container/NSMetadataQuery/
+    /// NSFileVersion/NSFileCoordinator behavior still needs the manual pass in
+    /// docs/icloud-sync-verification.md on real devices before this ships.
+    static let iCloudSyncEnabled = true
 
     /// Tests only: points the store at a private temp directory.
     static var baseDirOverride: URL?
@@ -114,10 +125,20 @@ extension AssetStore {
         let fm = FileManager.default
         let localStore = localDocs.appendingPathComponent("store.json")
         let cloudStore = cloudDocs.appendingPathComponent("store.json")
-        let cloudPlaceholder = cloudDocs.appendingPathComponent(".store.json.icloud")
-        guard fm.fileExists(atPath: localStore.path) || fm.fileExists(atPath: localDocs.appendingPathComponent("Assets").path),
-              !fm.fileExists(atPath: cloudStore.path),
-              !fm.fileExists(atPath: cloudPlaceholder.path) else { return }
+        let hasLocalContent = fm.fileExists(atPath: localStore.path)
+            || fm.fileExists(atPath: localDocs.appendingPathComponent("Assets").path)
+        // A not-yet-downloaded ubiquitous item still reports true for fileExists under its
+        // real name on modern iOS — a `.name.icloud` dot-placeholder is a different, unrelated
+        // convention (shown after an already-downloaded file is evicted locally to save
+        // space), not a general "not yet synced from cloud" signal. So checking the real path
+        // is both correct and sufficient for "does the cloud already have something here,"
+        // downloaded or not. The manifest also covers the multi-file layout (its manifest is
+        // named store.json too); Definitions/Assets are checked as well only to tolerate the
+        // rare local state where a manifest write failed but data shards already succeeded.
+        let hasCloudContent = fm.fileExists(atPath: cloudStore.path)
+            || fm.fileExists(atPath: cloudDocs.appendingPathComponent("Definitions").path)
+            || fm.fileExists(atPath: cloudDocs.appendingPathComponent("Assets").path)
+        guard hasLocalContent, !hasCloudContent else { return }
 
         try? fm.createDirectory(at: cloudDocs, withIntermediateDirectories: true)
         for entry in ["store.json", StoreFileLayout.legacyBackupFilename] {
@@ -149,9 +170,22 @@ extension AssetStore {
     func load() -> Bool {
         var result: StoreFileLayout.ReadResult?
         DispatchQueue.global(qos: .userInitiated).sync {
-            Self.waitForCloudStore(timeout: 10)
+            Self.primeCloudDownloads(timeout: 10)
             result = fileLayout.read(baseDir: Self.baseDir)
         }
+        return applyLoadedResult(result, root: Self.baseDir)
+    }
+
+    /// Core load against any directory, run synchronously on the calling thread — no
+    /// background dispatch, no `waitForCloudStore`. `load()` is the production entry point;
+    /// this is the seam Tier 2 multi-device tests (`SyncRelay`) use to drive a store against
+    /// its own private temp directory instead of `AssetStore.baseDir`.
+    @discardableResult
+    func load(from root: URL) -> Bool {
+        applyLoadedResult(fileLayout.read(baseDir: root), root: root)
+    }
+
+    private func applyLoadedResult(_ result: StoreFileLayout.ReadResult?, root: URL) -> Bool {
         guard let result else { return false }
         lastPersistedData = fileLayout.storeDigest
         applySnapshot(migrate(result.snapshot))
@@ -159,29 +193,56 @@ extension AssetStore {
             persistenceLogger.notice("load: migrated a legacy single-file store to the multi-file layout")
             // Must be durable before anything else runs: the in-memory state now reflects the
             // new layout, and store.legacy-v3.json is the only remaining copy of the old one.
-            DispatchQueue.global(qos: .userInitiated).sync { self.save() }
+            DispatchQueue.global(qos: .userInitiated).sync { self.save(to: root) }
         }
         return true
     }
 
-    /// If iCloud sync is enabled, the ubiquity container is active, the local file is
-    /// absent, and a placeholder exists, triggers download and polls up to `timeout`
-    /// seconds for it to arrive.
-    private static func waitForCloudStore(timeout: TimeInterval) {
+    /// If iCloud sync is enabled and the ubiquity container is active, triggers download of
+    /// every `.json`/`.jpg` file under `baseDir` and blocks up to `timeout` seconds for the
+    /// *structural* set — the manifest and every `Definitions/*.json` file, what `read` hard-
+    /// fails without per `StoreFileLayout`'s failure policy — to finish downloading.
+    /// `Assets/*.json` and `Photos/*` are left to arrive opportunistically afterward;
+    /// `ReadResult.isComplete` already tolerates them arriving late.
+    ///
+    /// Checks `URLResourceValues.ubiquitousItemDownloadingStatus`, not `fileExists` — a
+    /// not-yet-downloaded ubiquitous item still reports true for `fileExists` under its real
+    /// name on modern iOS, so `fileExists` alone can never detect "still downloading."
+    private static func primeCloudDownloads(timeout: TimeInterval) {
         let fm = FileManager.default
         guard iCloudSyncEnabled,
               baseDirOverride == nil,
               fm.url(forUbiquityContainerIdentifier: nil) != nil else { return }
-        let url = storeURL
-        guard !fm.fileExists(atPath: url.path) else { return }
-        let placeholder = url.deletingLastPathComponent()
-            .appendingPathComponent(".store.json.icloud")
-        guard fm.fileExists(atPath: placeholder.path) else { return }
-        try? fm.startDownloadingUbiquitousItem(at: url)
+        let dir = baseDir
+        let structuralURLs = [
+            "store.json",
+            "Definitions/types.json",
+            "Definitions/combolists.json",
+            "Definitions/categories.json",
+        ].map { dir.appendingPathComponent($0) }
+
+        if let enumerator = fm.enumerator(at: dir, includingPropertiesForKeys: nil, options: [.skipsHiddenFiles]) {
+            for case let url as URL in enumerator where ["json", "jpg"].contains(url.pathExtension) {
+                try? fm.startDownloadingUbiquitousItem(at: url)
+            }
+        }
+        for url in structuralURLs {
+            try? fm.startDownloadingUbiquitousItem(at: url)
+        }
+
         let deadline = Date().addingTimeInterval(timeout)
-        while Date() < deadline, !fm.fileExists(atPath: url.path) {
+        while Date() < deadline, !structuralURLs.allSatisfy(isDownloaded) {
             Thread.sleep(forTimeInterval: 0.2)
         }
+    }
+
+    /// True if the item is fully downloaded, or if it can't be inspected at all — the latter
+    /// almost always means it doesn't exist yet (e.g. nothing has synced down to this device),
+    /// which is nothing to wait for rather than something stuck downloading.
+    private static func isDownloaded(_ url: URL) -> Bool {
+        guard let status = try? url.resourceValues(forKeys: [.ubiquitousItemDownloadingStatusKey])
+            .ubiquitousItemDownloadingStatus else { return true }
+        return status == .current || status == .downloaded
     }
 
     func factoryReset() {
@@ -196,8 +257,8 @@ extension AssetStore {
         // (a "tombstone by overwrite") so other devices apply it, rather than ignoring a deletion.
         // Stale Assets/*.json files from before the reset are cleared by the orphan sweep inside
         // the save() below — the same mechanism that makes an ordinary hard delete stick.
-        _applyLoaded(compositeTypes: [:], comboLists: [:], categories: [:], assets: [:],
-                     activityLog: [], backgroundTheme: .mist)
+        _applyLoaded(compositeTypes: [:], comboLists: [:], categories: [:], assets: [:], activityLog: [])
+        backgroundTheme = .mist
         seedBuiltInComboLists()
         seedBuiltInCategories()
         seedBuiltInTypes()
@@ -270,25 +331,35 @@ extension AssetStore {
     /// Must be called on a background thread.
     func save() {
         guard !savesSuspended else { return }
-        let snap = buildSnapshot()
-        let report = fileLayout.write(snap, baseDir: Self.baseDir)
-        lastPersistedData = fileLayout.storeDigest
+        save(to: Self.baseDir)
         resolveConflicts()
+    }
+
+    /// Core save against any directory — no `savesSuspended` guard, no `NSFileVersion`
+    /// conflict resolution (that's specific to the real ubiquity container, hardwired to
+    /// `Self.storeURL`). `save()` is the production entry point; this is the seam Tier 2
+    /// multi-device tests (`SyncRelay`) use to drive a store against its own private temp
+    /// directory instead of `AssetStore.baseDir`.
+    func save(to root: URL) {
+        // StoreFileLayout.writeLocked creates Definitions/Assets/Activity itself but not
+        // Photos — AssetStore.baseDir's resolution path creates it as a side effect
+        // (createStoreSubdirectories), which a caller-supplied root bypasses entirely.
+        try? FileManager.default.createDirectory(
+            at: root.appendingPathComponent("Photos", isDirectory: true), withIntermediateDirectories: true)
+        let snap = buildSnapshot()
+        let report = fileLayout.write(snap, baseDir: root)
+        lastPersistedData = fileLayout.storeDigest
+        lastSyncDate = Date()
         if !report.allDataShardsSucceeded {
             persistenceLogger.error("save: one or more shards failed to write — store.json was left pointing at the previous, still-consistent tree")
         }
     }
 
-    /// Resolves conflicts on the manifest file only. `Definitions/*.json` and `Assets/*.json`
-    /// conflicts are not handled here — per-shard conflict resolution is deferred (see
-    /// `StoreFileLayout.write`'s doc comment) and untestable while `iCloudSyncEnabled` is false.
+    /// Resolves conflicts across every shard — manifest, `Definitions/*.json`, and
+    /// `Assets/*.json` — via `resolveShardConflicts(baseDir:source:)` (`ConflictResolution.swift`).
     private func resolveConflicts() {
         guard Self.baseDirOverride == nil else { return }
-        if let conflicts = NSFileVersion.unresolvedConflictVersionsOfItem(at: Self.storeURL),
-           !conflicts.isEmpty {
-            for version in conflicts { version.isResolved = true }
-            try? NSFileVersion.removeOtherVersionsOfItem(at: Self.storeURL)
-        }
+        resolveShardConflicts(baseDir: Self.baseDir, source: FileVersionConflictSource())
     }
 
     /// Starts watching the iCloud ubiquity container for remote changes pushed by other devices.
@@ -336,9 +407,30 @@ extension AssetStore {
                 // single-file version did, just keyed on the whole tree instead of one file.
                 guard let result, self.fileLayout.storeDigest != self.lastPersistedData else { return }
                 self.lastPersistedData = self.fileLayout.storeDigest
-                self.applySnapshot(self.migrate(result.snapshot))
+                let disk = self.migrate(result.snapshot)
+
+                guard self.hasAuthoritativeLocalState else {
+                    // We've only ever seeded, never persisted or confirmed the cloud was
+                    // empty. Merging here would union our randomly-id'd seed data (categories,
+                    // sample assets — see BuiltInTypes) into the peer's real store instead of
+                    // being cleanly replaced by it, permanently duplicating it on every device.
+                    self.applySnapshot(disk)
+                    self.savesSuspended = false
+                    self.lastSyncDate = Date()
+                    self.resolveConflicts()
+                    return
+                }
+
+                let cutoff = Date().addingTimeInterval(-TimeInterval(AppPreference.DaysToRetainDeletedItems) * 86_400)
+                let merged = SnapshotReconciler.merge(self.buildSnapshot(), disk, options: .init(purgeCutoff: cutoff))
+                self.applyInPlace(merged)
                 self.savesSuspended = false
+                self.lastSyncDate = Date()
                 self.resolveConflicts()
+                // The merge may have pulled in content the peer doesn't have yet, or dropped a
+                // tombstone that expired locally but not there — write back so it reaches
+                // them. Content-diffed per shard, so an already-converged state costs nothing.
+                self.markDirty()
             }
         }
     }
@@ -351,7 +443,10 @@ extension AssetStore {
         // transform is needed here.
         // v2 → v3 added isDeleted/deletedAt to AssetPropertyDTO (custom properties); same
         // optional-with-fallback treatment in assetProperty(from:), no transform needed.
-        // Future: if s.schemaVersion < 4 { var s = s; /* transform */; return s }
+        // v3 → v4 added modifyDate to CategoryDTO/ComboListDTO/CompositeTypeDTO and
+        // headModifyDate to AssetDTO — same optional-with-fallback treatment inline in
+        // applySnapshot/mergeSnapshot, no transform needed.
+        // Future: if s.schemaVersion < 5 { var s = s; /* transform */; return s }
         return s
     }
 
@@ -361,7 +456,8 @@ extension AssetStore {
         // 1. CompositeTypeDefinition shells — fields filled in step 3
         var ctMap: [UUID: CompositeTypeDefinition] = [:]
         for dto in snap.compositeTypes {
-            let ct = CompositeTypeDefinition(id: dto.id, name: dto.name, labelHint: dto.labelHint)
+            let ct = CompositeTypeDefinition(id: dto.id, name: dto.name, labelHint: dto.labelHint,
+                                             modifyDate: dto.modifyDate ?? .distantPast)
             ctMap[dto.id] = ct
         }
 
@@ -371,7 +467,7 @@ extension AssetStore {
             clMap[dto.id] = ComboListDefinition(
                 id: dto.id, name: dto.name,
                 systemOptions: dto.systemOptions, userOptions: dto.userOptions,
-                isUserExtensible: dto.isUserExtensible
+                isUserExtensible: dto.isUserExtensible, modifyDate: dto.modifyDate ?? .distantPast
             )
         }
 
@@ -387,7 +483,8 @@ extension AssetStore {
             let templates = dto.propertyTemplates.compactMap {
                 assetProperty(from: $0, ctMap: ctMap, clMap: clMap, fallbackModifyDate: .distantPast)
             }
-            let cat = AssetCategory(id: dto.id, name: dto.name, iconName: dto.iconName, propertyTemplates: templates)
+            let cat = AssetCategory(id: dto.id, name: dto.name, iconName: dto.iconName, propertyTemplates: templates,
+                                    modifyDate: dto.modifyDate ?? .distantPast)
             cat.isDeleted = dto.isDeleted
             cat.deletedAt = dto.deletedAt
             catMap[dto.id] = cat
@@ -395,18 +492,30 @@ extension AssetStore {
 
         // 5. Assets — no hierarchy links yet; photo imageData/thumbnailData start nil (lazy load)
         // A dangling categoryID (category hard-deleted while its assets lived on) must never
-        // cost the user an asset: resurrect a placeholder category instead of dropping.
+        // cost the user an asset: resurrect a placeholder category instead of dropping. A
+        // purged asset's placeholder is the one exception — nothing displays a purged
+        // tombstone, so its placeholder is reused across every purged asset referencing the
+        // same missing category but never committed to `catMap`/`categories`, unlike the
+        // live-asset case which upserts the placeholder so the asset is never lost.
         var assetMap: [UUID: Asset] = [:]
-        for dto in snap.assets {
-            let cat: AssetCategory
-            if let existing = catMap[dto.categoryID] {
-                cat = existing
-            } else {
-                let placeholder = AssetCategory(id: dto.categoryID, name: "Recovered",
+        var purgedPlaceholders: [UUID: AssetCategory] = [:]
+        func recoverCategory(_ categoryID: UUID, isPurged: Bool) -> AssetCategory {
+            if let existing = catMap[categoryID] { return existing }
+            if isPurged {
+                if let existing = purgedPlaceholders[categoryID] { return existing }
+                let placeholder = AssetCategory(id: categoryID, name: "Recovered",
                                                 iconName: "questionmark.folder", propertyTemplates: [])
-                catMap[dto.categoryID] = placeholder
-                cat = placeholder
+                purgedPlaceholders[categoryID] = placeholder
+                return placeholder
             }
+            let placeholder = AssetCategory(id: categoryID, name: "Recovered",
+                                            iconName: "questionmark.folder", propertyTemplates: [])
+            catMap[categoryID] = placeholder
+            return placeholder
+        }
+        for dto in snap.assets {
+            let isPurged = dto.isPurged ?? false
+            let cat = recoverCategory(dto.categoryID, isPurged: isPurged)
             let asset = Asset(
                 id: dto.id, name: dto.name, category: cat,
                 baseProperties: dto.baseProperties.compactMap {
@@ -416,10 +525,12 @@ extension AssetStore {
                     assetProperty(from: $0, ctMap: ctMap, clMap: clMap, fallbackModifyDate: dto.modifiedDate)
                 },
                 parentID: dto.parentID, createdDate: dto.createdDate, modifiedDate: dto.modifiedDate,
-                parentageModifyDate: dto.parentageModifyDate ?? dto.createdDate
+                parentageModifyDate: dto.parentageModifyDate ?? dto.createdDate,
+                headModifyDate: dto.headModifyDate ?? dto.modifiedDate
             )
             asset.isDeleted = dto.isDeleted
             asset.deletedAt = dto.deletedAt
+            asset.isPurged = isPurged
             asset.photos = dto.photos.map { photo(from: $0) }
             asset.events = dto.events.map { event(from: $0, fallbackModifyDate: dto.modifiedDate) }
             asset.transactions = dto.transactions.map { transaction(from: $0, fallbackModifyDate: dto.modifiedDate) }
@@ -442,10 +553,15 @@ extension AssetStore {
         }
 
         // 8. Commit to store
-        _applyLoaded(
-            compositeTypes: ctMap, comboLists: clMap, categories: catMap, assets: assetMap,
-            activityLog: log, backgroundTheme: BackgroundTheme(rawValue: snap.backgroundTheme) ?? .mist
-        )
+        _applyLoaded(compositeTypes: ctMap, comboLists: clMap, categories: catMap, assets: assetMap, activityLog: log)
+
+        // One-time migration: backgroundTheme moved from the synced manifest to UserDefaults
+        // (schema v4+). If this device has never set its own value, adopt whatever this
+        // store's manifest carried rather than silently resetting to the default theme.
+        if UserDefaults.standard.string(forKey: Self.backgroundThemeDefaultsKey) == nil,
+           let theme = BackgroundTheme(rawValue: snap.backgroundTheme) {
+            backgroundTheme = theme
+        }
     }
 
     // MARK: - Snapshot merge (additive import)
@@ -461,7 +577,8 @@ extension AssetStore {
         var ctMap = compositeTypes
         var newCompositeIDs: Set<UUID> = []
         for dto in snap.compositeTypes where ctMap[dto.id] == nil {
-            ctMap[dto.id] = CompositeTypeDefinition(id: dto.id, name: dto.name, labelHint: dto.labelHint)
+            ctMap[dto.id] = CompositeTypeDefinition(id: dto.id, name: dto.name, labelHint: dto.labelHint,
+                                                     modifyDate: dto.modifyDate ?? .distantPast)
             newCompositeIDs.insert(dto.id)
         }
 
@@ -476,7 +593,7 @@ extension AssetStore {
                 clMap[dto.id] = ComboListDefinition(
                     id: dto.id, name: dto.name,
                     systemOptions: dto.systemOptions, userOptions: dto.userOptions,
-                    isUserExtensible: dto.isUserExtensible
+                    isUserExtensible: dto.isUserExtensible, modifyDate: dto.modifyDate ?? .distantPast
                 )
             }
         }
@@ -505,7 +622,8 @@ extension AssetStore {
                 let templates = dto.propertyTemplates.compactMap {
                     assetProperty(from: $0, ctMap: ctMap, clMap: clMap, fallbackModifyDate: .distantPast)
                 }
-                catMap[dto.id] = AssetCategory(id: dto.id, name: dto.name, iconName: dto.iconName, propertyTemplates: templates)
+                catMap[dto.id] = AssetCategory(id: dto.id, name: dto.name, iconName: dto.iconName,
+                                               propertyTemplates: templates, modifyDate: dto.modifyDate ?? .distantPast)
             }
         }
 
@@ -524,6 +642,10 @@ extension AssetStore {
                 if local.isDeleted {
                     local.isDeleted = false
                     local.deletedAt = nil
+                    // Only the resurrection touches a head field (the tombstone) — an
+                    // appended property/event/photo is not a head change and must not bump
+                    // this, or a later cloud sync could misread it as a recent rename.
+                    local.headModifyDate = Date()
                     undeletedAssets.append(local)
                     changed += 1
                 }
@@ -545,7 +667,8 @@ extension AssetStore {
                     assetProperty(from: $0, ctMap: ctMap, clMap: clMap, fallbackModifyDate: dto.modifiedDate)
                 },
                 parentID: dto.parentID, createdDate: dto.createdDate, modifiedDate: dto.modifiedDate,
-                parentageModifyDate: dto.parentageModifyDate ?? dto.createdDate
+                parentageModifyDate: dto.parentageModifyDate ?? dto.createdDate,
+                headModifyDate: dto.headModifyDate ?? dto.modifiedDate
             )
             asset.photos = dto.photos.map { photo(from: $0) }
             asset.events = dto.events.map { event(from: $0, fallbackModifyDate: dto.modifiedDate) }
@@ -575,11 +698,8 @@ extension AssetStore {
         }
         log.sort { $0.timestamp < $1.timestamp }
 
-        // 8. Commit. backgroundTheme is a per-device cosmetic preference — local wins unconditionally.
-        _applyLoaded(
-            compositeTypes: ctMap, comboLists: clMap, categories: catMap, assets: assetMap,
-            activityLog: log, backgroundTheme: backgroundTheme
-        )
+        // 8. Commit. backgroundTheme is UserDefaults-backed, not part of this commit at all.
+        _applyLoaded(compositeTypes: ctMap, comboLists: clMap, categories: catMap, assets: assetMap, activityLog: log)
         notificationScheduler?.requestResync(assets: allAssets)
 
         return photoIDsToMaterialize
@@ -604,7 +724,8 @@ extension AssetStore {
             let templates = catDTO.propertyTemplates.compactMap {
                 assetProperty(from: $0, ctMap: ctMap, clMap: clMap, fallbackModifyDate: .distantPast)
             }
-            let cat = AssetCategory(id: catDTO.id, name: catDTO.name, iconName: catDTO.iconName, propertyTemplates: templates)
+            let cat = AssetCategory(id: catDTO.id, name: catDTO.name, iconName: catDTO.iconName, propertyTemplates: templates,
+                                    modifyDate: catDTO.modifyDate ?? .distantPast)
             cat.isDeleted = true
             cat.deletedAt = catDTO.deletedAt
             catMap[categoryID] = cat
@@ -673,9 +794,11 @@ extension AssetStore {
         )
 
         // Records already present locally are left untouched, tombstone or not: an incoming
-        // tombstone for a record still live here does NOT propagate the delete yet. Fixing
-        // that needs last-writer-wins on modifyDate, which is the follow-up sync work — this
-        // change only guarantees the fields exist and survive the round trip.
+        // tombstone for a record still live here does NOT propagate the delete. Deliberate,
+        // not a gap — this is the additive/local-wins import path (`importJSON`), which must
+        // never delete something the user has since recreated. Last-writer-wins on
+        // modifyDate/headModifyDate is `SnapshotReconciler`'s job, used by the separate cloud
+        // sync path (`applyInPlace`), not this one.
         let seenEventIDs = Set(local.events.map(\.id))
         for edto in dto.events where !seenEventIDs.contains(edto.id) {
             local.events.append(event(from: edto, fallbackModifyDate: dto.modifiedDate))
@@ -794,22 +917,26 @@ extension AssetStore {
 
     // MARK: - Live objects → snapshot
 
-    private func buildSnapshot(includePhotoData: Bool = false) -> StoreSnapshotDTO {
+    /// Internal (not private): the Tier 1 in-process multi-device test harness relays
+    /// snapshots directly between two `AssetStore` instances via `buildSnapshot()` →
+    /// `SnapshotReconciler.merge` → `applyInPlace`, with no file I/O involved at all.
+    func buildSnapshot(includePhotoData: Bool = false) -> StoreSnapshotDTO {
         StoreSnapshotDTO(
             schemaVersion: storeSchemaVersion,
             compositeTypes: compositeTypes.values.map { ct in
                 CompositeTypeDTO(id: ct.id, name: ct.name,
                                  fields: ct.fields.map { propertyDefinitionDTO($0) },
-                                 labelHint: ct.labelHint)
+                                 labelHint: ct.labelHint, modifyDate: ct.modifyDate)
             },
             comboLists: comboListDefinitions.values.map { cl in
                 ComboListDTO(id: cl.id, name: cl.name, systemOptions: cl.systemOptions,
-                             userOptions: cl.userOptions, isUserExtensible: cl.isUserExtensible)
+                             userOptions: cl.userOptions, isUserExtensible: cl.isUserExtensible,
+                             modifyDate: cl.modifyDate)
             },
             categories: categories.values.map { cat in
                 CategoryDTO(id: cat.id, name: cat.name, iconName: cat.iconName,
                             propertyTemplates: cat.propertyTemplates.map { assetPropertyDTO($0) },
-                            isDeleted: cat.isDeleted, deletedAt: cat.deletedAt)
+                            isDeleted: cat.isDeleted, deletedAt: cat.deletedAt, modifyDate: cat.modifyDate)
             },
             assets: assets.values.map { asset in
                 AssetDTO(
@@ -821,14 +948,22 @@ extension AssetStore {
                     transactions: asset.transactions.map { transactionDTO($0) },
                     parentID: asset.parentID, isDeleted: asset.isDeleted, deletedAt: asset.deletedAt,
                     createdDate: asset.createdDate, modifiedDate: asset.modifiedDate,
-                    parentageModifyDate: asset.parentageModifyDate
+                    parentageModifyDate: asset.parentageModifyDate, headModifyDate: asset.headModifyDate,
+                    isPurged: asset.isPurged
                 )
             },
             activityLog: activityLog.map {
                 ActivityLogDTO(id: $0.id, recordID: $0.recordID, kind: $0.kind.rawValue,
                                owningAssetID: $0.owningAssetID, timestamp: $0.timestamp)
             },
-            backgroundTheme: backgroundTheme.rawValue
+            // A fixed placeholder, not the live per-device value: writing this device's own
+            // backgroundTheme here would mean two devices with different themes could never
+            // converge on this field — each save would carry its own value, look like a
+            // genuine foreign change to the other, and trigger another round-trip write,
+            // forever. The DTO field only exists for backward file-format compatibility and
+            // the one-time migration read in applySnapshot; it is never authoritative once
+            // that migration has run once on this device (see backgroundTheme's doc comment).
+            backgroundTheme: BackgroundTheme.mist.rawValue
         )
     }
 
@@ -976,5 +1111,283 @@ extension AssetStore {
                         fullImage: embed ? PhotoStorage.loadFull(id: p.id) : nil,
                         thumbnail: embed ? PhotoStorage.loadThumb(id: p.id) : nil,
                         modifyDate: p.modifyDate, isDeleted: p.isDeleted, deletedAt: p.deletedAt)
+    }
+
+    // MARK: - Identity-preserving apply (cloud sync)
+
+    /// Applies a snapshot to the live store IN PLACE — mutating existing objects by id rather
+    /// than rebuilding the maps, so open SwiftUI views holding a live `Asset`/`AssetCategory`/
+    /// etc. keep pointing at valid objects, and any local mutation already folded into `snap`
+    /// (the caller is expected to pass `SnapshotReconciler.merge(buildSnapshot(), foreign)`)
+    /// survives. Never removes an entry for absence — only `SnapshotReconciler.reap` removes
+    /// records, and it already ran before this snapshot was built.
+    ///
+    /// Assumes `snap`'s asset hierarchy is already free of cycles and dangling references
+    /// (`SnapshotReconciler.normalizeHierarchy` is a precondition, not something this redoes)
+    /// and that expired tombstones are already dropped (`SnapshotReconciler.reap`). Used only
+    /// by the cloud-monitor path — `load()` still uses `applySnapshot` (nothing live to
+    /// preserve at launch) and `importJSON` still uses `mergeSnapshot` (its own additive,
+    /// local-wins semantics, deliberately different from sync's last-writer-wins).
+    func applyInPlace(_ snap: StoreSnapshotDTO) {
+        // 1. Composite type shells — mutate existing, collect new for insertion. Fields filled
+        // in step 3, same two-pass reason as applySnapshot: a field can reference a composite
+        // type that hasn't been upserted yet.
+        var newCompositeTypes: [CompositeTypeDefinition] = []
+        for dto in snap.compositeTypes {
+            if let existing = compositeTypes[dto.id] {
+                existing.name = dto.name
+                existing.labelHint = dto.labelHint
+                existing.modifyDate = dto.modifyDate ?? .distantPast
+            } else {
+                newCompositeTypes.append(CompositeTypeDefinition(
+                    id: dto.id, name: dto.name, labelHint: dto.labelHint, modifyDate: dto.modifyDate ?? .distantPast))
+            }
+        }
+        _upsertLoaded(compositeTypes: newCompositeTypes)
+
+        // 2. Combo lists — mutate existing, insert new. systemOptions/isUserExtensible never
+        // change after creation, so only name/userOptions/modifyDate need updating in place.
+        var newComboLists: [ComboListDefinition] = []
+        for dto in snap.comboLists {
+            if let existing = comboListDefinitions[dto.id] {
+                existing.name = dto.name
+                existing.userOptions = dto.userOptions
+                existing.modifyDate = dto.modifyDate ?? .distantPast
+            } else {
+                newComboLists.append(ComboListDefinition(
+                    id: dto.id, name: dto.name, systemOptions: dto.systemOptions, userOptions: dto.userOptions,
+                    isUserExtensible: dto.isUserExtensible, modifyDate: dto.modifyDate ?? .distantPast))
+            }
+        }
+        _upsertLoaded(comboLists: newComboLists)
+
+        // 3. Fill/refresh composite type fields now that every composite type is resolvable.
+        let ctMap = compositeTypes
+        let clMap = comboListDefinitions
+        for dto in snap.compositeTypes {
+            guard let ct = ctMap[dto.id] else { continue }
+            ct.fields = dto.fields.compactMap { propertyDefinition(from: $0, ctMap: ctMap, clMap: clMap) }
+        }
+
+        // 4. Categories — mutate existing header + upsert templates element-wise; insert new.
+        var newCategories: [AssetCategory] = []
+        for dto in snap.categories {
+            if let existing = categories[dto.id] {
+                existing.name = dto.name
+                existing.iconName = dto.iconName
+                existing.isDeleted = dto.isDeleted
+                existing.deletedAt = dto.deletedAt
+                existing.modifyDate = dto.modifyDate ?? .distantPast
+                upsertAssetProperties(dto.propertyTemplates, into: &existing.propertyTemplates,
+                                      ctMap: ctMap, clMap: clMap, fallbackModifyDate: .distantPast)
+            } else {
+                let templates = dto.propertyTemplates.compactMap {
+                    assetProperty(from: $0, ctMap: ctMap, clMap: clMap, fallbackModifyDate: .distantPast)
+                }
+                let cat = AssetCategory(id: dto.id, name: dto.name, iconName: dto.iconName,
+                                        propertyTemplates: templates, modifyDate: dto.modifyDate ?? .distantPast)
+                cat.isDeleted = dto.isDeleted
+                cat.deletedAt = dto.deletedAt
+                newCategories.append(cat)
+            }
+        }
+        _upsertLoaded(categories: newCategories)
+        var catMap = categories
+
+        // 5. Assets — mutate existing head/child-collections; insert new. A dangling
+        // categoryID (same rationale as applySnapshot/mergeSnapshot) resurrects a placeholder
+        // rather than dropping the asset; a placeholder is reused across every asset in this
+        // batch that references the same missing category, then upserted once at the end. A
+        // purged asset's placeholder is the one exception: nothing displays a purged tombstone,
+        // so its placeholder is reused across purged assets sharing the missing categoryID but
+        // never upserted into `categories`.
+        var newAssets: [Asset] = []
+        var recoveredPlaceholders: [UUID: AssetCategory] = [:]
+        var purgedPlaceholders: [UUID: AssetCategory] = [:]
+        func recoverCategory(_ categoryID: UUID, isPurged: Bool) -> AssetCategory {
+            if let found = catMap[categoryID] { return found }
+            if isPurged {
+                if let existing = purgedPlaceholders[categoryID] { return existing }
+                let placeholder = AssetCategory(id: categoryID, name: "Recovered",
+                                                iconName: "questionmark.folder", propertyTemplates: [])
+                purgedPlaceholders[categoryID] = placeholder
+                return placeholder
+            }
+            if let existing = recoveredPlaceholders[categoryID] { return existing }
+            let placeholder = AssetCategory(id: categoryID, name: "Recovered",
+                                            iconName: "questionmark.folder", propertyTemplates: [])
+            recoveredPlaceholders[categoryID] = placeholder
+            catMap[categoryID] = placeholder
+            return placeholder
+        }
+        for dto in snap.assets {
+            let isPurged = dto.isPurged ?? false
+            if let existing = assets[dto.id] {
+                existing.name = dto.name
+                existing.isDeleted = dto.isDeleted
+                existing.deletedAt = dto.deletedAt
+                existing.modifiedDate = dto.modifiedDate
+                existing.headModifyDate = dto.headModifyDate ?? dto.modifiedDate
+                existing.parentageModifyDate = dto.parentageModifyDate ?? dto.createdDate
+                if isPurged {
+                    // The merged snapshot already stripped this asset (`SnapshotReconciler.joinAsset`
+                    // ran before `applyInPlace` is called) — the upsertX helpers below are
+                    // additive-only unions and would never clear content this device still
+                    // holds locally, so a purge replaces rather than merges.
+                    purgeInPlace(existing)
+                } else {
+                    upsertAssetProperties(dto.baseProperties, into: &existing.baseProperties,
+                                          ctMap: ctMap, clMap: clMap, fallbackModifyDate: dto.modifiedDate)
+                    upsertAssetProperties(dto.customProperties, into: &existing.customProperties,
+                                          ctMap: ctMap, clMap: clMap, fallbackModifyDate: dto.modifiedDate)
+                    upsertPhotos(dto.photos, into: &existing.photos)
+                    upsertEvents(dto.events, into: &existing.events, fallbackModifyDate: dto.modifiedDate)
+                    upsertTransactions(dto.transactions, into: &existing.transactions, fallbackModifyDate: dto.modifiedDate)
+                }
+            } else {
+                let cat = recoverCategory(dto.categoryID, isPurged: isPurged)
+                let asset = Asset(
+                    id: dto.id, name: dto.name, category: cat,
+                    baseProperties: dto.baseProperties.compactMap {
+                        assetProperty(from: $0, ctMap: ctMap, clMap: clMap, fallbackModifyDate: dto.modifiedDate)
+                    },
+                    customProperties: dto.customProperties.compactMap {
+                        assetProperty(from: $0, ctMap: ctMap, clMap: clMap, fallbackModifyDate: dto.modifiedDate)
+                    },
+                    parentID: nil, createdDate: dto.createdDate, modifiedDate: dto.modifiedDate,
+                    parentageModifyDate: dto.parentageModifyDate ?? dto.createdDate,
+                    headModifyDate: dto.headModifyDate ?? dto.modifiedDate
+                )
+                asset.isDeleted = dto.isDeleted
+                asset.deletedAt = dto.deletedAt
+                asset.isPurged = isPurged
+                asset.photos = dto.photos.map { photo(from: $0) }
+                asset.events = dto.events.map { event(from: $0, fallbackModifyDate: dto.modifiedDate) }
+                asset.transactions = dto.transactions.map { transaction(from: $0, fallbackModifyDate: dto.modifiedDate) }
+                newAssets.append(asset)
+            }
+        }
+        _upsertLoaded(categories: Array(recoveredPlaceholders.values), assets: newAssets)
+
+        // 6. Hierarchy — reconcile every asset's live parent link against the merged
+        // parentID, whether the asset is new (never wired) or existing (may already be
+        // correctly wired, in which case this is a no-op). `snap` is assumed already
+        // cycle-free, so no cycle guard is needed here, unlike `mergeHierarchy`.
+        for dto in snap.assets {
+            guard let live = assets[dto.id] else { continue }
+            guard live.parent?.id != dto.parentID else { continue }
+            if let currentParent = live.parent {
+                currentParent._removeChild(live, stampParentage: false)
+            }
+            if let targetParentID = dto.parentID, let targetParent = assets[targetParentID] {
+                targetParent._addChild(live, stampParentage: false)
+            } else {
+                live.parentID = dto.parentID
+            }
+        }
+
+        // 7. Live/deleted boundary repair — a merge (unlike a single device's own
+        // softDeleteAsset/restoreAsset, which always tombstones or restores a whole subtree
+        // atomically) can leave a live asset linked to a deleted parent or a deleted asset
+        // linked to a live parent, if the two sides' per-asset tombstones didn't move
+        // together. Either mismatch is repaired the same way: detach, making the asset a root
+        // of its own subtree — mirrors `detachAcrossDeletionBoundary`, generalized to run
+        // after any tombstone change rather than only after an undelete.
+        for dto in snap.assets {
+            guard let live = assets[dto.id], let parent = live.parent, parent.isDeleted != live.isDeleted else { continue }
+            parent._removeChild(live, stampParentage: false)
+        }
+
+        // 8. Activity log — union by id; entries are immutable, nothing to mutate in place.
+        let mergedLog: [ActivityLogEntry] = snap.activityLog.compactMap { dto in
+            guard let kind = LoggedRecordKind(rawValue: dto.kind) else { return nil }
+            return ActivityLogEntry(recordID: dto.recordID, kind: kind,
+                                    owningAssetID: dto.owningAssetID, id: dto.id, timestamp: dto.timestamp)
+        }
+        _upsertActivityLog(mergedLog)
+
+        notificationScheduler?.requestResync(assets: allAssets)
+    }
+
+    private func upsertAssetProperties(
+        _ dtos: [AssetPropertyDTO], into target: inout [AssetProperty],
+        ctMap: [UUID: CompositeTypeDefinition], clMap: [UUID: ComboListDefinition], fallbackModifyDate: Date
+    ) {
+        var byID: [UUID: AssetProperty] = [:]
+        for p in target { byID[p.id] = p }
+        for dto in dtos {
+            if let existing = byID[dto.id] {
+                guard let def = propertyDefinition(from: dto.definition, ctMap: ctMap, clMap: clMap) else { continue }
+                existing.definition = def
+                existing.value = dto.value.map { storedValue(from: $0) }
+                existing.sortOrder = dto.sortOrder
+                existing.modifyDate = dto.modifyDate ?? fallbackModifyDate
+                existing.isDeleted = dto.isDeleted ?? false
+                existing.deletedAt = dto.deletedAt
+            } else if let created = assetProperty(from: dto, ctMap: ctMap, clMap: clMap, fallbackModifyDate: fallbackModifyDate) {
+                target.append(created)
+                byID[created.id] = created
+            }
+        }
+    }
+
+    private func upsertPhotos(_ dtos: [PhotoDTO], into target: inout [Photo]) {
+        var byID: [UUID: Photo] = [:]
+        for p in target { byID[p.id] = p }
+        for dto in dtos {
+            if let existing = byID[dto.id] {
+                existing.caption = dto.caption
+                existing.modifyDate = dto.modifyDate ?? dto.addedDate
+                existing.isDeleted = dto.isDeleted ?? false
+                existing.deletedAt = dto.deletedAt
+            } else {
+                let created = photo(from: dto)
+                target.append(created)
+                byID[created.id] = created
+            }
+        }
+    }
+
+    private func upsertEvents(_ dtos: [EventDTO], into target: inout [Event], fallbackModifyDate: Date) {
+        var byID: [UUID: Event] = [:]
+        for e in target { byID[e.id] = e }
+        for dto in dtos {
+            if let existing = byID[dto.id] {
+                existing.title = dto.title
+                existing.date = dto.date
+                existing.notes = dto.notes
+                existing.recurrence = dto.recurrence.flatMap(RecurrenceInterval.init)
+                existing.modifyDate = dto.modifyDate ?? fallbackModifyDate
+                existing.isDeleted = dto.isDeleted ?? false
+                existing.deletedAt = dto.deletedAt
+            } else {
+                let created = event(from: dto, fallbackModifyDate: fallbackModifyDate)
+                target.append(created)
+                byID[created.id] = created
+            }
+        }
+    }
+
+    private func upsertTransactions(_ dtos: [TransactionDTO], into target: inout [Transaction], fallbackModifyDate: Date) {
+        var byID: [UUID: Transaction] = [:]
+        for t in target { byID[t.id] = t }
+        for dto in dtos {
+            if let existing = byID[dto.id] {
+                existing.details = dto.details
+                existing.amount = Decimal(string: dto.amount) ?? 0
+                existing.date = dto.date
+                existing.kind = TransactionKind(rawValue: dto.kind) ?? .expense
+                existing.payeeContactID = dto.payeeContactID
+                existing.notes = dto.notes
+                existing.recurrence = dto.recurrence.flatMap(RecurrenceInterval.init)
+                existing.modifyDate = dto.modifyDate ?? fallbackModifyDate
+                existing.isDeleted = dto.isDeleted ?? false
+                existing.deletedAt = dto.deletedAt
+            } else {
+                let created = transaction(from: dto, fallbackModifyDate: fallbackModifyDate)
+                target.append(created)
+                byID[created.id] = created
+            }
+        }
     }
 }

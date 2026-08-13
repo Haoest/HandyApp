@@ -96,7 +96,8 @@ final class CategoryDeletionTests: XCTestCase {
 
     func testPurgeCategoryOnceReferringAssetAlsoPurged() throws {
         // A category kept alive only by a soft-deleted asset should be purged in the same
-        // sweep once that asset's retention also expires.
+        // sweep once that asset's retention also expires — a purged asset no longer counts
+        // as a reference, even though its (now-minimal) record is never removed.
         let cat = try makeCategory()
         let asset = try store.createAsset(name: "Asset A", categoryID: cat.id)
         try store.softDeleteAsset(id: asset.id)
@@ -106,14 +107,17 @@ final class CategoryDeletionTests: XCTestCase {
 
         store.purgeHardDeleted(olderThan: TimeInterval(AppPreference.DaysToRetainDeletedItems) * 86_400)
 
-        XCTAssertFalse(store.deletedAssets.contains { $0.id == asset.id }, "asset must be purged")
+        XCTAssertFalse(store.deletedAssets.contains { $0.id == asset.id },
+                       "purged asset must drop out of the deletedAssets list")
+        XCTAssertNotNil(store.assets[asset.id], "the asset record itself must survive purge")
+        XCTAssertTrue(store.assets[asset.id]?.isPurged ?? false)
         XCTAssertFalse(store.deletedCategories.contains { $0.id == cat.id },
-                       "category must be purged once its only referencing asset is gone")
+                       "category must be purged once its only referencing asset is purged")
     }
 
     // MARK: - hardDeleteAsset (immediate "Delete now" path)
 
-    func testHardDeleteAssetRemovesSubtreeImmediately() throws {
+    func testHardDeleteAssetPurgesSubtreeImmediately() throws {
         let cat = try makeCategory()
         let parent = try store.createAsset(name: "Parent", categoryID: cat.id)
         let child = try store.createAsset(name: "Child", categoryID: cat.id)
@@ -124,8 +128,14 @@ final class CategoryDeletionTests: XCTestCase {
 
         XCTAssertFalse(store.deletedAssets.contains { $0.id == parent.id })
         XCTAssertFalse(store.deletedAssets.contains { $0.id == child.id })
-        XCTAssertNil(store.assets[parent.id])
-        XCTAssertNil(store.assets[child.id])
+        // Records survive as minimal tombstones — never removed, so a peer can't resurrect them.
+        XCTAssertNotNil(store.assets[parent.id])
+        XCTAssertNotNil(store.assets[child.id])
+        XCTAssertEqual(store.assets[parent.id]?.name, "Parent")
+        XCTAssertTrue(store.assets[parent.id]?.isPurged ?? false)
+        XCTAssertTrue(store.assets[child.id]?.isPurged ?? false)
+        XCTAssertNil(store.assets[parent.id]?.parentID)
+        XCTAssertNil(store.assets[child.id]?.parentID)
     }
 
     // MARK: - deleteCategory (hard delete — "Delete now" path)

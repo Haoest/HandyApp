@@ -109,38 +109,65 @@ final class StoreFileLayout {
 
     // MARK: - Codec
 
-    private static func makeEncoder() -> JSONEncoder {
-        let encoder = JSONEncoder()
-        // Truncates to whole seconds, which is what makes encode(decode(encode(x))) == encode(x)
-        // hold — the idempotency the whole content-diff rests on. Don't switch to a
-        // sub-second strategy without re-checking that property.
-        encoder.dateEncodingStrategy = .iso8601
-        // Required for determinism, including on asset files: StoredValueDTO.composite encodes
-        // a Swift Dictionary whose key order is randomized per process, so without sortedKeys
-        // any asset carrying a composite value (e.g. the seeded 2D/3D Size types) would churn
-        // its digest — and get rewritten — on every launch.
-        encoder.outputFormatting = [.sortedKeys]
-        return encoder
-    }
-
-    private static func makeDecoder() -> JSONDecoder {
-        let decoder = JSONDecoder()
-        decoder.dateDecodingStrategy = .iso8601
-        return decoder
-    }
+    private static func makeEncoder() -> JSONEncoder { CanonicalCodec.makeEncoder() }
+    private static func makeDecoder() -> JSONDecoder { CanonicalCodec.makeDecoder() }
 
     private static func sha256(_ data: Data) -> Data {
         Data(SHA256.hash(data: data))
     }
 
+    // MARK: - File coordination
+
+    /// True only once iCloud sync is actually on and this isn't a test run — coordinated I/O
+    /// adds real overhead and complexity the test suite doesn't need and that only matters
+    /// once files genuinely live in the ubiquity container. Computed rather than a stored,
+    /// externally-set flag so it can never drift out of sync with the two conditions it
+    /// depends on.
+    private var usesFileCoordination: Bool { AssetStore.iCloudSyncEnabled && AssetStore.baseDirOverride == nil }
+
+    /// Wraps `body` in `NSFileCoordinator` write coordination when enabled, a plain call
+    /// otherwise. One coordinated call per changed file rather than one batched call for the
+    /// whole write — simpler and safer to reason about than the async multi-item intent API,
+    /// at the cost of N round-trips instead of one; N is small in practice, since `body` is
+    /// only ever invoked for shards the digest-diff already found changed.
+    private static func coordinatedAccess(at url: URL, options: NSFileCoordinator.WritingOptions, enabled: Bool, _ body: () -> Void) {
+        guard enabled else { body(); return }
+        let coordinator = NSFileCoordinator()
+        var coordError: NSError?
+        coordinator.coordinate(writingItemAt: url, options: options, error: &coordError) { _ in body() }
+        if let coordError {
+            logger.error("coordinatedAccess: coordination failed for \(url.lastPathComponent, privacy: .public): \(String(describing: coordError), privacy: .public)")
+        }
+    }
+
     // MARK: - Read
 
     func read(baseDir: URL) -> ReadResult? {
-        queue.sync { readLocked(baseDir: baseDir) }
+        queue.sync {
+            guard usesFileCoordination else { return readLocked(baseDir: baseDir) }
+            var result: ReadResult?
+            let coordinator = NSFileCoordinator()
+            var coordError: NSError?
+            coordinator.coordinate(readingItemAt: baseDir, options: [], error: &coordError) { _ in
+                result = self.readLocked(baseDir: baseDir)
+            }
+            if let coordError {
+                Self.logger.error("read: coordination failed: \(String(describing: coordError), privacy: .public)")
+            }
+            return result
+        }
     }
 
     private func readLocked(baseDir: URL) -> ReadResult? {
         resetDigestCacheIfBaseDirChanged(baseDir)
+        // Rebuilt from scratch on every read, not merged into the previous map: under sync a
+        // peer can delete or replace a file behind this process's back between reads. A
+        // write-through cache that only ever adds entries would (a) skip recreating a file the
+        // peer deleted, since writeShard would see a stale matching digest and no-op, and worse
+        // (b) hash a ghost entry into storeDigest, which can then coincidentally equal
+        // lastPersistedData and make the cloud monitor discard a genuine foreign change as an
+        // echo of its own write. Only what THIS read actually finds should ever be in the cache.
+        digests.removeAll()
         let fm = FileManager.default
         let manifestPath = Shard.manifest.relativePath
         let manifestURL = baseDir.appendingPathComponent(manifestPath)
@@ -175,8 +202,12 @@ final class StoreFileLayout {
 
         // Neither a manifest nor any shard directory exists: a genuinely fresh install, not a
         // failure. Leave lastReadWasComplete untouched (still true) — there's nothing here to
-        // have failed to verify.
-        guard manifest != nil || treeExists else { return nil }
+        // have failed to verify. digests is already empty (cleared above) and storeDigest is
+        // reset so nothing stale from a previous read lingers.
+        guard manifest != nil || treeExists else {
+            storeDigest = nil
+            return nil
+        }
 
         guard
             let (types, typesBytes) = readShard(baseDir: baseDir, shard: .types, as: [CompositeTypeDTO].self),
@@ -184,6 +215,7 @@ final class StoreFileLayout {
             let (categories, categoriesBytes) = readShard(baseDir: baseDir, shard: .categories, as: [CategoryDTO].self)
         else {
             lastReadWasComplete = false
+            storeDigest = nil
             Self.logger.error("read: a Definitions shard is missing or undecodable — treating as no store rather than persisting a partial one")
             return nil
         }
@@ -283,6 +315,11 @@ final class StoreFileLayout {
         }
 
         let encoder = Self.makeEncoder()
+        // Canonicalize once, up front: every nested array in canonical order regardless of
+        // whether `snap` came from live model state or from a merge. Everything below reads
+        // from `canonSnap`, never `snap`, so on-disk bytes are always a pure function of
+        // content — see the doc comment on StoreSnapshotDTO.canonicalized().
+        let canonSnap = snap.canonicalized()
 
         func writeShard<T: Encodable>(_ shard: Shard, _ value: T) {
             guard let data = try? encoder.encode(value) else {
@@ -297,43 +334,42 @@ final class StoreFileLayout {
                 return
             }
             let url = baseDir.appendingPathComponent(path)
-            do {
-                try data.write(to: url, options: .atomic)
-                digests[path] = digest
-                report.writtenPaths.append(path)
-            } catch {
+            var writeError: Error?
+            Self.coordinatedAccess(at: url, options: .forReplacing, enabled: usesFileCoordination) {
+                do {
+                    try data.write(to: url, options: .atomic)
+                    digests[path] = digest
+                    report.writtenPaths.append(path)
+                } catch {
+                    writeError = error
+                }
+            }
+            if let writeError {
                 report.allDataShardsSucceeded = false
-                Self.logger.error("write: failed to write shard \(shard.relativePath, privacy: .public): \(String(describing: error), privacy: .public)")
+                Self.logger.error("write: failed to write shard \(shard.relativePath, privacy: .public): \(String(describing: writeError), privacy: .public)")
             }
         }
 
         // Dependencies before dependents, manifest last: an interrupted save then leaves
         // definitions newer than assets (harmless — an unreferenced definition costs nothing),
         // never the reverse (which would amputate composite/comboList properties on read).
-        writeShard(.types, snap.compositeTypes.sorted { $0.id.uuidString < $1.id.uuidString })
-        writeShard(.comboLists, snap.comboLists.sorted { $0.id.uuidString < $1.id.uuidString })
-        writeShard(.categories, snap.categories.sorted { $0.id.uuidString < $1.id.uuidString })
+        writeShard(.types, canonSnap.compositeTypes)
+        writeShard(.comboLists, canonSnap.comboLists)
+        writeShard(.categories, canonSnap.categories)
 
         var assetIDs: Set<UUID> = []
-        for asset in snap.assets {
+        for asset in canonSnap.assets {
             assetIDs.insert(asset.id)
             writeShard(.asset(asset.id), asset)
         }
 
-        // Swift's sort isn't stable, so equal timestamps (mergeSnapshot appends at differing
-        // instants but two entries can still tie) need a secondary key to stay deterministic
-        // across launches. HomeActivityDigest re-sorts internally, so on-disk order is invisible
-        // to anything observable.
-        let sortedLog = snap.activityLog.sorted {
-            $0.timestamp == $1.timestamp ? $0.id.uuidString < $1.id.uuidString : $0.timestamp < $1.timestamp
-        }
-        writeShard(.activityLog, sortedLog)
+        writeShard(.activityLog, canonSnap.activityLog)
 
         if report.allDataShardsSucceeded {
             let manifest = StoreManifestDTO(
                 layoutVersion: storeLayoutVersion,
-                schemaVersion: snap.schemaVersion,
-                backgroundTheme: snap.backgroundTheme
+                schemaVersion: canonSnap.schemaVersion,
+                backgroundTheme: canonSnap.backgroundTheme
             )
             writeShard(.manifest, manifest)
         } else {
@@ -350,7 +386,11 @@ final class StoreFileLayout {
                     guard url.pathExtension == "json",
                           let id = UUID(uuidString: url.deletingPathExtension().lastPathComponent),
                           !assetIDs.contains(id) else { continue }
-                    if (try? fm.removeItem(at: url)) != nil {
+                    var removed = false
+                    Self.coordinatedAccess(at: url, options: .forDeleting, enabled: usesFileCoordination) {
+                        removed = (try? fm.removeItem(at: url)) != nil
+                    }
+                    if removed {
                         digests.removeValue(forKey: "Assets/\(url.lastPathComponent)")
                         report.deletedPaths.append("Assets/\(url.lastPathComponent)")
                     }

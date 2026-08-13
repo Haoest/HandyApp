@@ -37,7 +37,7 @@ struct CategoryPropertyDefsView: View {
             }
 
             Section {
-                ForEach(category.propertyTemplates) { prop in
+                ForEach(category.liveTemplates) { prop in
                     TemplatePropertyRow(categoryID: category.id, property: prop, onEditLabel: { propertyToEdit = prop })
                         .swipeActions(edge: .trailing, allowsFullSwipe: false) {
                             Button(role: .destructive) {

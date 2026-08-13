@@ -14,11 +14,12 @@ extension BuiltInTypes {
     ///   • Unit   — Text     (optional, e.g. UnitIndex.feet.symbol → "ft")
     static func size2D() -> CompositeTypeDefinition {
         CompositeTypeDefinition(
+            id: deterministicID("compositeType.2DSize"),
             name: "2D Size",
             fields: [
-                PropertyDefinition(name: "Width",  type: .basic(.number), isRequired: true),
-                PropertyDefinition(name: "Length", type: .basic(.number), isRequired: true),
-                PropertyDefinition(name: "Unit",   type: .basic(.text),   isRequired: false),
+                PropertyDefinition(id: deterministicID("compositeType.2DSize.Width"),  name: "Width",  type: .basic(.number), isRequired: true),
+                PropertyDefinition(id: deterministicID("compositeType.2DSize.Length"), name: "Length", type: .basic(.number), isRequired: true),
+                PropertyDefinition(id: deterministicID("compositeType.2DSize.Unit"),   name: "Unit",   type: .basic(.text),   isRequired: false),
             ],
             labelHint: "WxL"
         )

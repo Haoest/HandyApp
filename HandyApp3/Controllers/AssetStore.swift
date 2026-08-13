@@ -72,8 +72,21 @@ final class AssetStore {
     /// Runtime-only — driven by purchase state, never persisted.
     var transactionCreationLimit: Int?
 
-    var backgroundTheme: BackgroundTheme = .mist {
-        didSet { markDirty() }
+    /// Per-device cosmetic preference — deliberately NOT synced through the store. A field
+    /// like this living inside a synced file would never converge: each device would keep
+    /// rewriting the manifest with its own value, and the other device would see that as a
+    /// genuine foreign change and write its own value right back, forever. Backed directly by
+    /// UserDefaults rather than `@AppStorage` (a View-only property wrapper) so `@Observable`
+    /// still instruments this as a normal stored property — the `Picker` binding in
+    /// `ContentView` needs that. `_applyLoaded`/`applyInPlace` never touch this.
+    var backgroundTheme: BackgroundTheme = AssetStore.loadBackgroundThemeFromDefaults() {
+        didSet { UserDefaults.standard.set(backgroundTheme.rawValue, forKey: Self.backgroundThemeDefaultsKey) }
+    }
+
+    static let backgroundThemeDefaultsKey = "backgroundTheme"
+
+    private static func loadBackgroundThemeFromDefaults() -> BackgroundTheme {
+        UserDefaults.standard.string(forKey: backgroundThemeDefaultsKey).flatMap(BackgroundTheme.init) ?? .mist
     }
 
     /// Retained iCloud metadata query for remote-change monitoring. Set by startCloudMonitor().
@@ -92,9 +105,20 @@ final class AssetStore {
 
     /// True while we have seeded in-memory data but have NOT yet confirmed the cloud
     /// container is empty. While set, save()/markDirty() are no-ops so seed data can
-    /// never overwrite an unread cloud store.
-    @ObservationIgnored
+    /// never overwrite an unread cloud store. Not `@ObservationIgnored`: the Tools "waiting
+    /// for iCloud" banner reads it directly and needs to react when it changes.
     var savesSuspended = false
+
+    /// When this device last wrote to, or applied a foreign change from, the store — shown in
+    /// Tools as a coarse sync status. `nil` until the first save or applied cloud change.
+    var lastSyncDate: Date?
+
+    /// True once this store's in-memory content has been confirmed authoritative — either
+    /// loaded from disk, or seeded and explicitly un-suspended after confirming the cloud
+    /// container was empty. False while `savesSuspended`: a freshly-seeded store must never be
+    /// merged into a foreign snapshot, or its randomly-id'd seed data (categories, sample
+    /// assets) would get unioned into the peer's real data instead of being replaced by it.
+    var hasAuthoritativeLocalState: Bool { !savesSuspended }
 
     /// The whole-store digest (see `StoreFileLayout.storeDigest`) last written to, or read from,
     /// disk by this process — no longer literal bytes now that the store is many files, but the
@@ -115,7 +139,7 @@ final class AssetStore {
 
     var allAssets: [Asset] { assets.values.filter { !$0.isDeleted } }
     var allCategories: [AssetCategory] { categories.values.filter { !$0.isDeleted } }
-    var deletedAssets: [Asset] { assets.values.filter { $0.isDeleted } }
+    var deletedAssets: [Asset] { assets.values.filter { $0.isDeleted && !$0.isPurged } }
     var deletedCategories: [AssetCategory] { categories.values.filter { $0.isDeleted } }
     var allCompositeTypes: [CompositeTypeDefinition] { Array(compositeTypes.values) }
     var allComboListDefinitions: [ComboListDefinition] { Array(comboListDefinitions.values) }
@@ -141,12 +165,12 @@ final class AssetStore {
     // MARK: - AssetCategory CRUD
 
     @discardableResult
-    func createCategory(name: String, iconName: String = "square.grid.2x2", propertyTemplates: [AssetProperty] = []) throws -> AssetCategory {
+    func createCategory(id: UUID = UUID(), name: String, iconName: String = "square.grid.2x2", propertyTemplates: [AssetProperty] = []) throws -> AssetCategory {
         let trimmed = name.trimmingCharacters(in: .whitespaces)
         if categories.values.contains(where: { $0.name.caseInsensitiveCompare(trimmed) == .orderedSame }) {
             throw AssetStoreError.duplicateCategoryName(trimmed)
         }
-        let cat = AssetCategory(name: trimmed, iconName: iconName, propertyTemplates: propertyTemplates)
+        let cat = AssetCategory(id: id, name: trimmed, iconName: iconName, propertyTemplates: propertyTemplates)
         categories[cat.id] = cat
         markDirty()
         return cat
@@ -155,12 +179,14 @@ final class AssetStore {
     func updateCategory(id: UUID, name: String) throws {
         guard let cat = categories[id] else { throw AssetStoreError.categoryNotFound(id) }
         cat.name = name
+        cat.modifyDate = Date()
         markDirty()
     }
 
     func updateCategoryIcon(id: UUID, iconName: String) throws {
         guard let cat = categories[id] else { throw AssetStoreError.categoryNotFound(id) }
         cat.iconName = iconName
+        cat.modifyDate = Date()
         markDirty()
     }
 
@@ -172,8 +198,10 @@ final class AssetStore {
 
     func softDeleteCategory(id: UUID) throws {
         guard let cat = categories[id] else { throw AssetStoreError.categoryNotFound(id) }
+        let now = Date()
         cat.isDeleted = true
-        cat.deletedAt = Date()
+        cat.deletedAt = now
+        cat.modifyDate = now
         markDirty()
     }
 
@@ -207,13 +235,21 @@ final class AssetStore {
         markDirty()
     }
 
-    /// Removes a template property from a category. Does not affect existing assets.
+    /// Tombstones a template property on a category — does not affect existing assets, whose
+    /// baseProperties were deep-copied at creation and are untouched by a later template edit.
+    /// Soft, not a hard remove: an incoming sync/import that still has this template live must
+    /// not resurrect it, which only works if the removal itself is a record the merge can see
+    /// and a peer's later re-add can still outrace (see `SnapshotReconciler`'s per-template LWW).
+    /// Reaped by `purgeHardDeleted` once its tombstone ages out, like every other soft delete.
     func removeTemplateProperty(id propID: UUID, fromCategoryID categoryID: UUID) throws {
         guard let cat = categories[categoryID] else { throw AssetStoreError.categoryNotFound(categoryID) }
-        guard cat.propertyTemplates.contains(where: { $0.id == propID }) else {
+        guard let prop = cat.propertyTemplates.first(where: { $0.id == propID }) else {
             throw AssetStoreError.propertyNotFound(propID)
         }
-        cat.propertyTemplates.removeAll { $0.id == propID }
+        let now = Date()
+        prop.isDeleted = true
+        prop.deletedAt = now
+        prop.touch(now)
         markDirty()
     }
 
@@ -245,7 +281,7 @@ final class AssetStore {
             throw AssetStoreError.freeLimitReached(limit: limit)
         }
         guard let cat = categories[categoryID] else { throw AssetStoreError.categoryNotFound(categoryID) }
-        let baseProperties = cat.propertyTemplates.enumerated().map { index, template in
+        let baseProperties = cat.liveTemplates.enumerated().map { index, template in
             AssetProperty(definition: template.definition, value: template.value,
                           sortOrder: Double(index) * AssetProperty.sortOrderIncrement)
         }
@@ -258,11 +294,17 @@ final class AssetStore {
 
     func updateAsset(id: UUID, name: String) throws {
         guard let asset = assets[id] else { throw AssetStoreError.assetNotFound(id) }
+        let now = Date()
         asset.name = name
-        asset.modifiedDate = Date()
+        asset.modifiedDate = now
+        asset.headModifyDate = now
         markDirty()
     }
 
+    /// True removal — leaves no tombstone, so a peer that still has this asset will union it
+    /// straight back on the next sync. Not sync-safe; unused by app code, kept for tests only.
+    /// App code that needs to discard an asset for good should go through `softDeleteAsset`
+    /// followed by `purgeHardDeleted`/`hardDeleteAsset`, which purge to a tombstone instead.
     func deleteAsset(id: UUID) throws {
         guard let asset = assets[id] else { throw AssetStoreError.assetNotFound(id) }
         let grandparent = asset.parent
@@ -291,6 +333,7 @@ final class AssetStore {
             current.isDeleted = true
             current.deletedAt = now
             current.modifiedDate = now
+            current.headModifyDate = now
         }
         notificationScheduler?.requestResync(assets: allAssets)
         markDirty()
@@ -309,21 +352,18 @@ final class AssetStore {
             node.isDeleted = false
             node.deletedAt = nil
             node.modifiedDate = now
+            node.headModifyDate = now
         }
         notificationScheduler?.requestResync(assets: allAssets)
         markDirty()
     }
 
-    /// Immediately hard-deletes a soft-deleted asset and its entire subtree.
-    /// Photo files are deleted; inline events and transactions are discarded with the assets.
+    /// Immediately purges a soft-deleted asset and its entire subtree to minimal tombstones,
+    /// ignoring the retention window `purgeHardDeleted` normally waits out. See `purgeInPlace`.
     func hardDeleteAsset(id: UUID) throws {
         guard let asset = assets[id] else { throw AssetStoreError.assetNotFound(id) }
         let subtree = [asset] + asset.descendants
-        asset.parent?._removeChild(asset)
-        for node in subtree {
-            for photo in node.photos { PhotoStorage.delete(id: photo.id) }
-            assets.removeValue(forKey: node.id)
-        }
+        for node in subtree { purgeInPlace(node) }
         notificationScheduler?.requestResync(assets: allAssets)
         markDirty()
     }
@@ -332,18 +372,19 @@ final class AssetStore {
         guard let cat = categories[id] else { throw AssetStoreError.categoryNotFound(id) }
         cat.isDeleted = false
         cat.deletedAt = nil
+        cat.modifyDate = Date()
         markDirty()
     }
 
     /// All assets belonging to the given category.
     func assets(ofCategoryID categoryID: UUID) throws -> [Asset] {
         guard categories[categoryID] != nil else { throw AssetStoreError.categoryNotFound(categoryID) }
-        return assets.values.filter { $0.category.id == categoryID }
+        return assets.values.filter { $0.category.id == categoryID && !$0.isPurged }
     }
 
     /// Number of assets referencing this category, including soft-deleted ones.
     func associatedAssetCount(categoryID: UUID) -> Int {
-        assets.values.filter { $0.category.id == categoryID }.count
+        assets.values.filter { $0.category.id == categoryID && !$0.isPurged }.count
     }
 
     // MARK: - Property value management
@@ -487,12 +528,13 @@ final class AssetStore {
 
     @discardableResult
     func createComboList(
+        id: UUID = UUID(),
         name: String,
         systemOptions: [String] = [],
         userOptions: [String] = [],
         isUserExtensible: Bool = true
     ) -> ComboListDefinition {
-        let cl = ComboListDefinition(name: name, systemOptions: systemOptions, userOptions: userOptions, isUserExtensible: isUserExtensible)
+        let cl = ComboListDefinition(id: id, name: name, systemOptions: systemOptions, userOptions: userOptions, isUserExtensible: isUserExtensible)
         comboListDefinitions[cl.id] = cl
         markDirty()
         return cl
@@ -501,6 +543,7 @@ final class AssetStore {
     func updateComboList(id: UUID, name: String) throws {
         guard let cl = comboListDefinitions[id] else { throw AssetStoreError.comboListNotFound(id) }
         cl.name = name
+        cl.modifyDate = Date()
         markDirty()
     }
 
@@ -515,6 +558,7 @@ final class AssetStore {
         guard cl.isUserExtensible else { throw AssetStoreError.comboListNotExtensible(id) }
         guard !cl.allOptions.contains(option) else { return }
         cl.userOptions.append(option)
+        cl.modifyDate = Date()
         markDirty()
     }
 
@@ -525,6 +569,7 @@ final class AssetStore {
             throw AssetStoreError.cannotModifySystemOption(listID: id, option: option)
         }
         cl.userOptions.removeAll { $0 == option }
+        cl.modifyDate = Date()
         markDirty()
     }
 
@@ -532,11 +577,12 @@ final class AssetStore {
 
     @discardableResult
     func createCompositeType(
+        id: UUID = UUID(),
         name: String,
         fields: [PropertyDefinition] = [],
         labelHint: String? = nil
     ) -> CompositeTypeDefinition {
-        let ct = CompositeTypeDefinition(name: name, fields: fields, labelHint: labelHint)
+        let ct = CompositeTypeDefinition(id: id, name: name, fields: fields, labelHint: labelHint)
         compositeTypes[ct.id] = ct
         markDirty()
         return ct
@@ -545,6 +591,7 @@ final class AssetStore {
     func updateCompositeType(id: UUID, name: String) throws {
         guard let ct = compositeTypes[id] else { throw AssetStoreError.compositeTypeNotFound(id) }
         ct.name = name
+        ct.modifyDate = Date()
         markDirty()
     }
 
@@ -558,6 +605,7 @@ final class AssetStore {
     func addField(_ field: PropertyDefinition, toCompositeTypeID typeID: UUID) throws -> PropertyDefinition {
         guard let ct = compositeTypes[typeID] else { throw AssetStoreError.compositeTypeNotFound(typeID) }
         ct.fields.append(field)
+        ct.modifyDate = Date()
         markDirty()
         return field
     }
@@ -568,6 +616,7 @@ final class AssetStore {
             throw AssetStoreError.definitionNotFound(fieldID)
         }
         ct.fields.removeAll { $0.id == fieldID }
+        ct.modifyDate = Date()
         markDirty()
     }
 
@@ -585,6 +634,7 @@ final class AssetStore {
         if let name       { ct.fields[idx].name       = name       }
         if let type       { ct.fields[idx].type       = type       }
         if let isRequired { ct.fields[idx].isRequired = isRequired }
+        ct.modifyDate = Date()
         markDirty()
     }
 
@@ -808,6 +858,7 @@ final class AssetStore {
               list.isUserExtensible,
               !list.allOptions.contains(value) else { return }
         list.userOptions.append(value)
+        list.modifyDate = Date()
     }
 
     // MARK: - Persistence internals
@@ -833,40 +884,93 @@ final class AssetStore {
     }
 
     /// Replaces in-memory state with the decoded snapshot. Called on the main thread.
+    /// `backgroundTheme` is deliberately not a parameter here — it's UserDefaults-backed, not
+    /// part of the loaded/replaced store state; see its doc comment.
     func _applyLoaded(
         compositeTypes: [UUID: CompositeTypeDefinition],
         comboLists: [UUID: ComboListDefinition],
         categories: [UUID: AssetCategory],
         assets: [UUID: Asset],
-        activityLog: [ActivityLogEntry],
-        backgroundTheme: BackgroundTheme
+        activityLog: [ActivityLogEntry]
     ) {
         self.compositeTypes = compositeTypes
         self.comboListDefinitions = comboLists
         self.categories = categories
         self.assets = assets
         self.activityLog = activityLog
-        self.backgroundTheme = backgroundTheme
     }
 
-    /// Permanently removes soft-deleted assets and categories whose deletedAt is older than
-    /// `seconds`, then the same for tombstoned events/transactions/photos/custom properties
-    /// inside the assets that survived. Assets are purged first (photo files deleted, inline records discarded
-    /// with them). Surviving assets — live, or soft-deleted but not yet expired — keep their
-    /// own inline tombstones until those individually age out. Categories are evaluated after
-    /// — a category kept alive only by a now-purged asset is eligible for removal in the same
-    /// sweep. Categories still referenced by any surviving asset are retained regardless of
-    /// age to avoid dangling categoryIDs.
+    /// Inserts new records into the store's maps. Existing records are mutated directly by
+    /// `applyInPlace` — they're reference types, so only insertion needs write access to these
+    /// `private(set)` maps. Never removes anything; absence is never a delete.
+    func _upsertLoaded(
+        compositeTypes: [CompositeTypeDefinition] = [],
+        comboLists: [ComboListDefinition] = [],
+        categories: [AssetCategory] = [],
+        assets: [Asset] = []
+    ) {
+        for ct in compositeTypes { self.compositeTypes[ct.id] = ct }
+        for cl in comboLists { self.comboListDefinitions[cl.id] = cl }
+        for cat in categories { self.categories[cat.id] = cat }
+        for a in assets { self.assets[a.id] = a }
+    }
+
+    /// Union by id — entries are immutable, so unlike `_upsertLoaded` there's nothing to
+    /// mutate in place, only append what's missing. Called by `applyInPlace`.
+    func _upsertActivityLog(_ entries: [ActivityLogEntry]) {
+        var seen = Set(activityLog.map(\.id))
+        for entry in entries where !seen.contains(entry.id) {
+            activityLog.append(entry)
+            seen.insert(entry.id)
+        }
+        activityLog.sort { $0.timestamp < $1.timestamp }
+    }
+
+    /// Strips an asset down to a minimal tombstone — `id`, `name`, `categoryID`, and its
+    /// timestamps survive; every photo file is deleted, and `photos`/`events`/`transactions`/
+    /// `customProperties`/`baseProperties` are emptied and the asset is detached from its
+    /// parent and children. The record itself is never removed: `applyInPlace`/`_upsertLoaded`
+    /// can only insert, never delete, so a real removal here would be silently resurrected the
+    /// next time a peer that still has the full asset syncs. Keeping the (now-tiny) record
+    /// around with `isPurged = true` is what makes the strip visible to that peer instead.
+    /// Idempotent — safe to call on an already-purged asset. Called only on assets already
+    /// soft-deleted; see `purgeHardDeleted` and `hardDeleteAsset`. Not `private`: `applyInPlace`
+    /// (`AssetStore+Persistence.swift`) also calls it, to replace rather than additively merge
+    /// content on a local asset a peer has already purged.
+    func purgeInPlace(_ asset: Asset) {
+        guard !asset.isPurged else { return }
+        for photo in asset.photos { PhotoStorage.delete(id: photo.id) }
+        asset.photos = []
+        asset.events = []
+        asset.transactions = []
+        asset.customProperties = []
+        asset.baseProperties = []
+        asset.parent?._removeChild(asset, stampParentage: false)
+        for child in Array(asset.children) {
+            asset._removeChild(child, stampParentage: false)
+        }
+        asset.isPurged = true
+    }
+
+    /// Purges soft-deleted assets and categories whose deletedAt is older than `seconds` to
+    /// minimal tombstones (see `purgeInPlace`) — never removes the record — then the same
+    /// age-based reaping as before for tombstoned events/transactions/photos/custom properties
+    /// inside assets that are not (yet) purged, and for aged-out category property-template
+    /// tombstones. Categories are evaluated after assets — a category kept alive only by a
+    /// now-purged asset is eligible for removal in the same sweep, since a purged asset no
+    /// longer counts as a reference. Categories still referenced by any non-purged asset are
+    /// retained regardless of age to avoid dangling categoryIDs. Old activity-log entries whose
+    /// owning asset is gone or purged are dropped once their own timestamp ages past cutoff —
+    /// mirrors `SnapshotReconciler.reap`, so a local sweep and a sync merge converge.
     func purgeHardDeleted(olderThan seconds: TimeInterval = 90 * 86_400) {
         let cutoff = Date().addingTimeInterval(-seconds)
-        assets = assets.filter { _, a in
-            guard a.isDeleted, (a.deletedAt ?? .distantFuture) < cutoff else { return true }
-            for photo in a.photos { PhotoStorage.delete(id: photo.id) }
-            return false
+        for asset in assets.values
+        where asset.isDeleted && (asset.deletedAt ?? .distantFuture) < cutoff && !asset.isPurged {
+            purgeInPlace(asset)
         }
         // Photo bytes are freed here rather than at removePhoto time so a peer that hasn't
         // seen the delete can still resolve the file for the life of the tombstone.
-        for asset in assets.values {
+        for asset in assets.values where !asset.isPurged {
             for photo in asset.photos where Self.isExpiredTombstone(photo.isDeleted, photo.deletedAt, before: cutoff) {
                 PhotoStorage.delete(id: photo.id)
             }
@@ -875,10 +979,21 @@ final class AssetStore {
             asset.transactions.removeAll { Self.isExpiredTombstone($0.isDeleted, $0.deletedAt, before: cutoff) }
             asset.customProperties.removeAll { Self.isExpiredTombstone($0.isDeleted, $0.deletedAt, before: cutoff) }
         }
-        let referencedCategoryIDs = Set(assets.values.map { $0.category.id })
+        for category in categories.values {
+            category.propertyTemplates.removeAll {
+                Self.isExpiredTombstone($0.isDeleted, $0.deletedAt, before: cutoff)
+            }
+        }
+        let referencedCategoryIDs = Set(assets.values.filter { !$0.isPurged }.map { $0.category.id })
         categories = categories.filter { id, c in
             referencedCategoryIDs.contains(id)
                 || !(c.isDeleted && (c.deletedAt ?? .distantFuture) < cutoff)
+        }
+        activityLog.removeAll { entry in
+            let referenced = entry.owningAssetID ?? (entry.kind == .asset ? entry.recordID : nil)
+            guard let referenced else { return false }
+            let owner = assets[referenced]
+            return (owner == nil || owner!.isPurged) && entry.timestamp < cutoff
         }
         notificationScheduler?.requestResync(assets: allAssets)
     }

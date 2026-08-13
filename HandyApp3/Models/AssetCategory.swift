@@ -9,17 +9,33 @@ final class AssetCategory: Identifiable, Equatable {
     let id: UUID
     var name: String
     var iconName: String
-    /// The property templates that get stamped onto new assets of this category.
+    /// The property templates that get stamped onto new assets of this category. Includes
+    /// tombstoned entries — use `liveTemplates` for anything that shouldn't show a removed one.
     var propertyTemplates: [AssetProperty]
     var isDeleted: Bool = false
     var deletedAt: Date? = nil
 
-    init(id: UUID = UUID(), name: String, iconName: String = "square.grid.2x2", propertyTemplates: [AssetProperty] = []) {
+    /// Absolute instant `name`, `iconName`, or the tombstone last changed. `AssetCategory` has
+    /// no rollup field the way `Asset.modifiedDate` does, so this covers the whole header as
+    /// one record.
+    var modifyDate: Date
+
+    init(
+        id: UUID = UUID(),
+        name: String,
+        iconName: String = "square.grid.2x2",
+        propertyTemplates: [AssetProperty] = [],
+        modifyDate: Date = Date()
+    ) {
         self.id = id
         self.name = name
         self.iconName = iconName
         self.propertyTemplates = propertyTemplates
+        self.modifyDate = modifyDate
     }
+
+    /// `propertyTemplates` filtering out removed fields — mirrors `Asset.liveCustomProperties`.
+    var liveTemplates: [AssetProperty] { propertyTemplates.filter { !$0.isDeleted } }
 
     static func == (lhs: AssetCategory, rhs: AssetCategory) -> Bool {
         lhs.id == rhs.id

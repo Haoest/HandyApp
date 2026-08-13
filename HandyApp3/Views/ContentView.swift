@@ -4,26 +4,51 @@ import SwiftUI
 
 struct ContentView: View {
     @Environment(AppRouter.self) private var router
+    @Environment(AssetStore.self) private var store
 
     var body: some View {
         @Bindable var router = router
-        TabView(selection: $router.selectedTab) {
-            HomeTab()
-                .tabItem { Image(systemName: "house") }
-                .tag(AppTab.home)
-            AssetTab()
-                .tabItem { Image(systemName: "shippingbox") }
-                .tag(AppTab.assets)
-            CategoryTab()
-                .tabItem { Image(systemName: "folder") }
-                .tag(AppTab.categories)
-            ToolsTab()
-                .tabItem { Image(systemName: "wrench.and.screwdriver") }
-                .tag(AppTab.tools)
-            PreferenceTab()
-                .tabItem { Image(systemName: "gearshape") }
-                .tag(AppTab.preferences)
+        ZStack(alignment: .top) {
+            TabView(selection: $router.selectedTab) {
+                HomeTab()
+                    .tabItem { Image(systemName: "house") }
+                    .tag(AppTab.home)
+                AssetTab()
+                    .tabItem { Image(systemName: "shippingbox") }
+                    .tag(AppTab.assets)
+                CategoryTab()
+                    .tabItem { Image(systemName: "folder") }
+                    .tag(AppTab.categories)
+                ToolsTab()
+                    .tabItem { Image(systemName: "wrench.and.screwdriver") }
+                    .tag(AppTab.tools)
+                PreferenceTab()
+                    .tabItem { Image(systemName: "gearshape") }
+                    .tag(AppTab.preferences)
+            }
+            if store.savesSuspended {
+                SyncSuspendedBanner()
+            }
         }
+        .animation(.default, value: store.savesSuspended)
+    }
+}
+
+/// Shown while the store has only ever seeded sample data and is withholding saves until it
+/// confirms whether the iCloud container already has real data — see
+/// `AssetStore.savesSuspended`. Without this, a device stuck in that state (e.g. a shard that
+/// never finishes downloading) silently discards every edit the user makes with no visible sign
+/// anything is wrong.
+private struct SyncSuspendedBanner: View {
+    var body: some View {
+        Label("Waiting for iCloud…", systemImage: "icloud.and.arrow.down")
+            .font(.footnote)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 6)
+            .background(.thinMaterial, in: Capsule())
+            .shadow(radius: 2)
+            .padding(.top, 4)
+            .transition(.move(edge: .top).combined(with: .opacity))
     }
 }
 
