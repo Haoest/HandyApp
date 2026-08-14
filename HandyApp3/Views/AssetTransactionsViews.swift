@@ -27,6 +27,7 @@ enum TransactionSheetMode: Identifiable {
 struct TransactionsSection: View {
     let asset: Asset
     @Binding var sheetMode: TransactionSheetMode?
+    let onAdd: () -> Void
     /// Called when a creation action is blocked by the free-tier transaction limit.
     /// The paywall itself is presented by the owner (see AssetDetailView's
     /// note on why sheets can't live at the section/row level).
@@ -54,7 +55,7 @@ struct TransactionsSection: View {
     }
 
     var body: some View {
-        Section("Transactions") {
+        Section {
             if sorted.isEmpty {
                 Text("None").foregroundStyle(.secondary)
             } else {
@@ -70,6 +71,8 @@ struct TransactionsSection: View {
                     }
                 }
             }
+        } header: {
+            AddSectionHeader(title: "Transactions", action: onAdd)
         }
     }
 }

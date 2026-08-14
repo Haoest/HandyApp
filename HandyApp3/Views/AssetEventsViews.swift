@@ -27,6 +27,7 @@ enum EventSheetMode: Identifiable {
 struct EventsSection: View {
     let asset: Asset
     @Binding var sheetMode: EventSheetMode?
+    let onAdd: () -> Void
     /// Called when a creation action is blocked by the free-tier event limit.
     /// The paywall itself is presented by the owner (see AssetDetailView's
     /// note on why sheets can't live at the section/row level).
@@ -54,7 +55,7 @@ struct EventsSection: View {
     }
 
     var body: some View {
-        Section("Events") {
+        Section {
             if sorted.isEmpty {
                 Text("None").foregroundStyle(.secondary)
             } else {
@@ -70,6 +71,8 @@ struct EventsSection: View {
                     }
                 }
             }
+        } header: {
+            AddSectionHeader(title: "Events", action: onAdd)
         }
     }
 }

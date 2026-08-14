@@ -18,6 +18,20 @@ extension DetailAnchor {
     var localizedName: LocalizedStringKey { LocalizedStringKey(rawValue) }
 }
 
+/// Section header with a trailing add button, e.g. "Photos  +".
+struct AddSectionHeader: View {
+    let title: LocalizedStringKey
+    let action: () -> Void
+
+    var body: some View {
+        HStack {
+            Text(title)
+            Spacer()
+            Button(action: action) { Image(systemName: "plus") }
+        }
+    }
+}
+
 /// Pages between sibling assets with a horizontal swipe, sliding the detail screen.
 /// The sibling order is supplied by the listing screen so it honours its view mode
 /// (All vs Tree). Per product spec the gesture is inverted from the usual convention:
@@ -241,7 +255,6 @@ private struct AssetDetailContent: View {
         DetailAnchor.allCases.filter { anchor in
             switch anchor {
             case .category: return !sortedBase.isEmpty
-            case .contents: return childCount > 0
             default: return true
             }
         }
@@ -292,23 +305,33 @@ private struct AssetDetailContent: View {
                         }
                     }
                 } header: {
-                    HStack {
-                        Text("Custom Field")
-                        Spacer()
-                        Button { addPropertyPresented = true } label: {
-                            Image(systemName: "plus")
-                        }
-                    }
+                    AddSectionHeader(title: "Custom Field") { addPropertyPresented = true }
                 }
                 .id(DetailAnchor.custom)
-                PhotosSection(asset: asset, selectedPhoto: $selectedPhoto)
+                PhotosSection(asset: asset, selectedPhoto: $selectedPhoto, onAdd: {
+                    photoSourceDialogPresented = true
+                })
                     .id(DetailAnchor.photos)
-                EventsSection(asset: asset, sheetMode: $eventSheetMode, onLimitReached: {
+                EventsSection(asset: asset, sheetMode: $eventSheetMode, onAdd: {
+                    if store.hasEventCapacity(for: asset) {
+                        addEventPresented = true
+                    } else {
+                        paywallReason = .events
+                        paywallPresented = true
+                    }
+                }, onLimitReached: {
                     paywallReason = .events
                     paywallPresented = true
                 })
                     .id(DetailAnchor.events)
-                TransactionsSection(asset: asset, sheetMode: $transactionSheetMode, onLimitReached: {
+                TransactionsSection(asset: asset, sheetMode: $transactionSheetMode, onAdd: {
+                    if store.hasTransactionCapacity(for: asset) {
+                        addTransactionPresented = true
+                    } else {
+                        paywallReason = .transactions
+                        paywallPresented = true
+                    }
+                }, onLimitReached: {
                     paywallReason = .transactions
                     paywallPresented = true
                 })
@@ -318,8 +341,10 @@ private struct AssetDetailContent: View {
                         .pagingExcludedRow(id: "relationship")
                 }
                 .id(DetailAnchor.relationship)
-                if !sortedChildren.isEmpty {
-                    Section("What's Inside") {
+                Section {
+                    if sortedChildren.isEmpty {
+                        Text("None").foregroundStyle(.secondary)
+                    } else {
                         ForEach(sortedChildren) { child in
                             NavigationLink(destination: AssetDetailView(asset: child, orderedIDs: sortedChildren.map(\.id))) {
                                 Label(child.name, systemImage: child.category.iconName)
@@ -327,8 +352,17 @@ private struct AssetDetailContent: View {
                             .pagingExcludedRow(id: child.id.uuidString)
                         }
                     }
-                    .id(DetailAnchor.contents)
+                } header: {
+                    AddSectionHeader(title: "What's Inside") {
+                        if store.hasAssetCapacity {
+                            addChildPresented = true
+                        } else {
+                            paywallReason = .assets
+                            paywallPresented = true
+                        }
+                    }
                 }
+                .id(DetailAnchor.contents)
                 Section {
                     Button(role: .destructive) {
                         deleteConfirmationPresented = true

@@ -31,11 +31,12 @@ struct PhotosSection: View {
     // section's body during presentation can't cancel the first present — same reason
     // the event/transaction sheets live at the Form level.
     @Binding var selectedPhoto: Photo?
+    let onAdd: () -> Void
 
     private var sorted: [Photo] { asset.livePhotos.sorted { $0.addedDate > $1.addedDate } }
 
     var body: some View {
-        Section("Photos") {
+        Section {
             if sorted.isEmpty {
                 Text("None").foregroundStyle(.secondary)
             } else {
@@ -49,6 +50,8 @@ struct PhotosSection: View {
                 }
                 .pagingExcludedRow(id: "photos")
             }
+        } header: {
+            AddSectionHeader(title: "Photos", action: onAdd)
         }
     }
 
