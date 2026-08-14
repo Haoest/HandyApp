@@ -16,10 +16,14 @@ final class AssetCategory: Identifiable, Equatable {
     var deletedAt: Date? = nil
 
     /// Set once `AssetStore.purgeHardDeleted`/`hardDeleteCategory` has stripped this record to
-    /// a minimal tombstone (`name`/`iconName` blanked, `propertyTemplates` emptied). Monotone —
-    /// never goes back to false. The record itself is kept forever specifically so this stays
-    /// visible to every peer: a stale device that still holds the full category must see the
-    /// strip and re-apply it, not resurrect the payload by unioning it back in on the next sync.
+    /// a minimal tombstone (`name`/`iconName` blanked, `propertyTemplates` emptied). The record
+    /// itself is kept forever specifically so this stays visible to every peer: a stale device
+    /// that still holds the full category must see the strip and re-apply it, not resurrect the
+    /// payload by unioning it back in on the next sync.
+    ///
+    /// Cleared only by an explicit user-initiated import (`AssetStore.importJSON`) carrying a
+    /// live copy of this category, which also restores the blanked `name`/`iconName`. Cloud
+    /// sync (`applyInPlace`/`SnapshotReconciler`) never clears it: there the strip must win.
     var isPurged: Bool = false
 
     /// Absolute instant `name`, `iconName`, or the tombstone last changed. `AssetCategory` has

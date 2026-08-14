@@ -42,10 +42,14 @@ final class Asset: Identifiable, Equatable {
 
     /// Set once `AssetStore.purgeHardDeleted`/`hardDeleteAsset` has stripped this record to a
     /// minimal tombstone (photos/events/transactions/customProperties/baseProperties emptied,
-    /// detached from its parent). Monotone — never goes back to false. The record itself is
-    /// kept forever specifically so this stays visible to every peer: a stale device that still
-    /// holds the full asset must see the strip and re-apply it, not resurrect the payload by
-    /// unioning it back in on the next sync.
+    /// detached from its parent). The record itself is kept forever specifically so this stays
+    /// visible to every peer: a stale device that still holds the full asset must see the strip
+    /// and re-apply it, not resurrect the payload by unioning it back in on the next sync.
+    ///
+    /// Cleared only by an explicit user-initiated import (`AssetStore.importJSON`) carrying a
+    /// live copy of this asset — an import that says a record is alive is treated as intent to
+    /// bring it back, rebuilding content and parentage from the incoming record. Cloud sync
+    /// (`applyInPlace`/`SnapshotReconciler`) never clears it: there the strip must always win.
     var isPurged: Bool = false
 
     /// Resolved in-memory reference to the parent. Set by AssetStore hierarchy methods.

@@ -715,6 +715,78 @@ final class ImportMergeTests: XCTestCase {
         XCTAssertTrue(store.allAssets.contains { $0.id == asset.id })
     }
 
+    /// A purge strips an asset to id/name/category/timestamps. An import carrying a live copy
+    /// is explicit user intent to bring it back, so the emptied content is refilled from the
+    /// incoming record — the opposite of the cloud-sync rule, where a purge always wins.
+    func testMergeResurrectsPurgedAssetAndRebuildsItsContent() throws {
+        let cat = try store.createCategory(name: "Garage")
+        let asset = try store.createAsset(name: "Camry", categoryID: cat.id)
+        _ = try store.addCustomProperty(definition: PropertyDefinition(name: "Paint", type: .basic(.text)),
+                                        toAssetID: asset.id)
+        _ = try store.addEvent(title: "Oil change", date: Date(), toAssetID: asset.id)
+        _ = try store.addTransaction(details: "Tires", amount: 400, date: Date(), kind: .expense, toAssetID: asset.id)
+        let export = try XCTUnwrap(store.exportJSON())   // exported while still live and full
+
+        try store.softDeleteAsset(id: asset.id)
+        try store.hardDeleteAsset(id: asset.id)
+        XCTAssertTrue(try XCTUnwrap(store.assets[asset.id]).isPurged, "precondition: asset is a purged tombstone")
+
+        try store.importJSON(data: export)
+
+        let merged = try XCTUnwrap(store.assets[asset.id])
+        XCTAssertFalse(merged.isPurged, "a live incoming asset must clear the purge tombstone")
+        XCTAssertFalse(merged.isDeleted)
+        XCTAssertTrue(store.allAssets.contains { $0.id == asset.id })
+        XCTAssertEqual(merged.liveCustomProperties.map(\.definition.name), ["Paint"])
+        XCTAssertEqual(merged.liveEvents.map(\.title), ["Oil change"])
+        XCTAssertEqual(merged.liveTransactions.map(\.details), ["Tires"])
+    }
+
+    /// Purge also detaches the asset from its parent, so the incoming `parentID` is the only
+    /// surviving record of where it belonged — a resurrected asset must not be left at the root.
+    func testMergeRestoresParentageOfResurrectedPurgedAsset() throws {
+        let cat = try store.createCategory(name: "Garage")
+        let parent = try store.createAsset(name: "Shed", categoryID: cat.id)
+        let child = try store.createAsset(name: "Mower", categoryID: cat.id)
+        try store.addChild(assetID: child.id, toParentID: parent.id)
+        let export = try XCTUnwrap(store.exportJSON())
+
+        try store.softDeleteAsset(id: child.id)
+        try store.hardDeleteAsset(id: child.id)
+        XCTAssertNil(try XCTUnwrap(store.assets[child.id]).parentID, "precondition: purge detached the child")
+
+        try store.importJSON(data: export)
+
+        let merged = try XCTUnwrap(store.assets[child.id])
+        XCTAssertFalse(merged.isPurged)
+        XCTAssertEqual(merged.parentID, parent.id, "a resurrected purged asset must be re-parented")
+        XCTAssertTrue(try XCTUnwrap(store.assets[parent.id]).children.contains { $0.id == child.id })
+    }
+
+    /// A purged category has its `name`/`iconName` blanked; clearing `isPurged` without
+    /// restoring them would surface a live category with an empty name.
+    func testMergeResurrectsPurgedCategoryAndRestoresHeaderAndTemplates() throws {
+        let cat = try store.createCategory(name: "Garage", iconName: "car")
+        _ = try store.addTemplateProperty(
+            AssetProperty(definition: PropertyDefinition(name: "Bay", type: .basic(.text))),
+            toCategoryID: cat.id
+        )
+        let export = try XCTUnwrap(store.exportJSON())
+
+        try store.softDeleteCategory(id: cat.id)
+        try store.hardDeleteCategory(id: cat.id)
+        XCTAssertTrue(try XCTUnwrap(store.categories[cat.id]).isPurged, "precondition: category is purged")
+
+        try store.importJSON(data: export)
+
+        let merged = try XCTUnwrap(store.categories[cat.id])
+        XCTAssertFalse(merged.isPurged, "a live incoming category must clear the purge tombstone")
+        XCTAssertFalse(merged.isDeleted)
+        XCTAssertEqual(merged.name, "Garage", "the blanked name must be restored from the incoming record")
+        XCTAssertEqual(merged.iconName, "car")
+        XCTAssertEqual(merged.liveTemplates.map(\.definition.name), ["Bay"])
+    }
+
     func testMergeLeavesLocalDeletedRecordsAloneWhenIncomingIsAlsoDeleted() throws {
         let cat = try store.createCategory(name: "Garage")
         let asset = try store.createAsset(name: "Camry", categoryID: cat.id)

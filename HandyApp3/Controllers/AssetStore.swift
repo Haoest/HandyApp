@@ -137,8 +137,13 @@ final class AssetStore {
 
     // MARK: - Derived collections
 
-    var allAssets: [Asset] { assets.values.filter { !$0.isDeleted } }
-    var allCategories: [AssetCategory] { categories.values.filter { !$0.isDeleted } }
+    // `isPurged` is checked alongside the tombstone, not because a purged record should ever
+    // also be live — `hardDeleteAsset`/`purgeHardDeleted` always tombstone it first — but
+    // because a purged record has no content left to show (a category's `name` is even blanked),
+    // so it must stay invisible however it reached that state: an older build, a peer's sync, or
+    // a hand-edited file. `deletedAssets`/`deletedCategories` exclude them for the same reason.
+    var allAssets: [Asset] { assets.values.filter { !$0.isDeleted && !$0.isPurged } }
+    var allCategories: [AssetCategory] { categories.values.filter { !$0.isDeleted && !$0.isPurged } }
     var deletedAssets: [Asset] { assets.values.filter { $0.isDeleted && !$0.isPurged } }
     var deletedCategories: [AssetCategory] { categories.values.filter { $0.isDeleted && !$0.isPurged } }
     var allCompositeTypes: [CompositeTypeDefinition] { Array(compositeTypes.values) }
@@ -346,6 +351,10 @@ final class AssetStore {
     /// Throws `freeLimitReached` if restoring the family would exceed the asset creation limit.
     func restoreAsset(id: UUID) throws {
         guard let asset = assets[id] else { throw AssetStoreError.assetNotFound(id) }
+        // Nothing to restore once purged — the content is gone, so clearing the tombstone
+        // would surface an empty husk. Mirrors the same guard in `restoreCategory`. Only
+        // `importJSON`, which carries the content back with it, can undo a purge.
+        guard !asset.isPurged else { return }
         let subtree = [asset] + asset.descendants
         if let limit = assetCreationLimit, allAssets.count + subtree.count > limit {
             throw AssetStoreError.freeLimitReached(limit: limit)
@@ -363,8 +372,13 @@ final class AssetStore {
 
     /// Immediately purges a soft-deleted asset and its entire subtree to minimal tombstones,
     /// ignoring the retention window `purgeHardDeleted` normally waits out. See `purgeInPlace`.
+    /// Soft-deletes first if the asset is still live: `purgeInPlace` only strips content — it
+    /// deliberately leaves the tombstone alone, mirroring `SnapshotReconciler.stripPurged` — so
+    /// without this an asset purged straight from live would carry no `deletedAt` for the reap
+    /// sweep to age out, and peers would receive a stripped record that never reads as deleted.
     func hardDeleteAsset(id: UUID) throws {
         guard let asset = assets[id] else { throw AssetStoreError.assetNotFound(id) }
+        if !asset.isDeleted { try softDeleteAsset(id: id) }
         let subtree = [asset] + asset.descendants
         for node in subtree { purgeInPlace(node) }
         notificationScheduler?.requestResync(assets: allAssets)
@@ -382,8 +396,10 @@ final class AssetStore {
 
     /// Immediately purges a soft-deleted category to a minimal tombstone, ignoring the
     /// retention window `purgeHardDeleted` normally waits out. See `purgeCategoryInPlace`.
+    /// Soft-deletes first if the category is still live, for the reason `hardDeleteAsset` does.
     func hardDeleteCategory(id: UUID) throws {
         guard let cat = categories[id] else { throw AssetStoreError.categoryNotFound(id) }
+        if !cat.isDeleted { try softDeleteCategory(id: id) }
         purgeCategoryInPlace(cat)
         markDirty()
     }

@@ -144,6 +144,54 @@ final class CategoryDeletionTests: XCTestCase {
         XCTAssertNil(store.assets[child.id]?.parentID)
     }
 
+    /// `purgeInPlace` strips content but deliberately leaves the tombstone alone, mirroring
+    /// `SnapshotReconciler.stripPurged`. Purging straight from live must therefore stamp the
+    /// tombstone itself, or the record would read as live-but-empty and stay in the asset list.
+    func testHardDeleteOfLiveAssetTombstonesItAndHidesItEverywhere() throws {
+        let cat = try makeCategory()
+        let asset = try store.createAsset(name: "Mower", categoryID: cat.id)
+
+        try store.hardDeleteAsset(id: asset.id)   // no softDeleteAsset first
+
+        let purged = try XCTUnwrap(store.assets[asset.id])
+        XCTAssertTrue(purged.isPurged)
+        XCTAssertTrue(purged.isDeleted, "a purged asset must carry a tombstone")
+        XCTAssertNotNil(purged.deletedAt, "without deletedAt the reap sweep can never age it out")
+        XCTAssertFalse(store.allAssets.contains { $0.id == asset.id },
+                       "a purged asset has no content left and must never appear as live")
+        XCTAssertFalse(store.deletedAssets.contains { $0.id == asset.id })
+    }
+
+    func testHardDeleteOfLiveCategoryTombstonesItAndHidesItEverywhere() throws {
+        let cat = try makeCategory(name: "Appliances")
+
+        try store.hardDeleteCategory(id: cat.id)   // no softDeleteCategory first
+
+        let purged = try XCTUnwrap(store.categories[cat.id])
+        XCTAssertTrue(purged.isPurged)
+        XCTAssertTrue(purged.isDeleted, "a purged category must carry a tombstone")
+        XCTAssertNotNil(purged.deletedAt)
+        XCTAssertFalse(store.allCategories.contains { $0.id == cat.id },
+                       "a purged category's name is blanked and must never appear as live")
+        XCTAssertFalse(store.deletedCategories.contains { $0.id == cat.id })
+    }
+
+    /// Restoring can only clear a tombstone; it cannot bring content back. Mirrors the guard
+    /// `restoreCategory` already had — only `importJSON` carries the content to undo a purge.
+    func testRestoreAssetRefusesAPurgedRecord() throws {
+        let cat = try makeCategory()
+        let asset = try store.createAsset(name: "Mower", categoryID: cat.id)
+        try store.softDeleteAsset(id: asset.id)
+        try store.hardDeleteAsset(id: asset.id)
+
+        try store.restoreAsset(id: asset.id)
+
+        let still = try XCTUnwrap(store.assets[asset.id])
+        XCTAssertTrue(still.isDeleted, "restore must not resurrect an emptied husk")
+        XCTAssertTrue(still.isPurged)
+        XCTAssertFalse(store.allAssets.contains { $0.id == asset.id })
+    }
+
     // MARK: - hardDeleteCategory (immediate "Delete now" path)
 
     func testHardDeleteCategoryPurgesImmediately() throws {

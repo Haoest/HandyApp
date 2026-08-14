@@ -283,7 +283,14 @@ extension AssetStore {
     ///
     /// One deliberate exception to "local wins": when a live incoming record matches a
     /// locally soft-deleted one by id, the local record is restored from the trash. An
-    /// import that says a record is alive is treated as intent to bring it back.
+    /// import that says a record is alive is treated as intent to bring it back. This
+    /// extends to purged tombstones — a record already stripped to id/timestamps by
+    /// `purgeInPlace`/`purgeCategoryInPlace` is un-purged and rebuilt from the incoming
+    /// copy: properties, events, transactions, photos and parentage for an asset, and the
+    /// blanked `name`/`iconName` plus templates for a category. Nothing local is lost doing
+    /// so, since a purge already emptied everything the merge refills. Note this is the
+    /// import path only; cloud sync (`applyInPlace`) keeps the opposite rule, where a purge
+    /// on either side always wins.
     func importJSON(data: Data) throws {
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
@@ -621,6 +628,16 @@ extension AssetStore {
                     existing.isDeleted = false
                     existing.deletedAt = nil
                 }
+                // A purge left only id/tombstone/modifyDate: `name` and `iconName` were
+                // blanked and `propertyTemplates` emptied. Clearing `isPurged` alone would
+                // surface a live category with an empty name, so the stripped header is
+                // rebuilt from the incoming record; `mergeTemplates` below refills the
+                // emptied templates as an ordinary additive merge.
+                if existing.isPurged {
+                    existing.isPurged = false
+                    existing.name = dto.name
+                    existing.iconName = dto.iconName
+                }
                 mergeTemplates(into: existing, from: dto, ctMap: ctMap, clMap: clMap)
             } else {
                 let templates = dto.propertyTemplates.compactMap {
@@ -635,11 +652,19 @@ extension AssetStore {
         var assetMap = assets
         var newAssets: [(Asset, AssetDTO)] = []
         var undeletedAssets: [Asset] = []
+        var unpurgedAssets: [(Asset, AssetDTO)] = []
         var photoIDsToMaterialize: Set<UUID> = []
         var recoveredPlaceholders: [UUID: AssetCategory] = [:]
 
         for dto in snap.assets where !dto.isDeleted {
             if let local = assetMap[dto.id] {
+                // A purge emptied every content array and detached the asset from its
+                // parent, leaving id/name/category/timestamps. Clearing `isPurged` here lets
+                // `mergeAsset` refill those arrays as an ordinary additive merge — nothing
+                // local is overwritten, because a purged record has nothing left to protect.
+                // Parentage, which purge also stripped, is rebuilt by `mergeHierarchy` below.
+                let wasPurged = local.isPurged
+                if wasPurged { local.isPurged = false }
                 var changed = mergeAsset(local, from: dto, ctMap: ctMap, clMap: clMap)
                 // A live incoming record resurrects a locally-trashed one — the one place
                 // the merge deliberately overwrites local state rather than only adding.
@@ -651,6 +676,10 @@ extension AssetStore {
                     // this, or a later cloud sync could misread it as a recent rename.
                     local.headModifyDate = Date()
                     undeletedAssets.append(local)
+                    changed += 1
+                }
+                if wasPurged {
+                    unpurgedAssets.append((local, dto))
                     changed += 1
                 }
                 if changed > 0 { local.modifiedDate = Date() }
@@ -682,10 +711,12 @@ extension AssetStore {
             for p in dto.photos where !(p.isDeleted ?? false) { photoIDsToMaterialize.insert(p.id) }
         }
 
-        // 6. Wire parent→child hierarchy for newly added assets only. Existing local
-        // assets are never re-parented — their incoming parentID is ignored outright.
-        // Runs after step 5 so a resurrected asset already reads as live here.
-        mergeHierarchy(newAssets: newAssets, assetMap: assetMap)
+        // 6. Wire parent→child hierarchy for newly added assets, plus assets just brought
+        // back from a purge — purge detached those, so there is no local link to preserve
+        // and the incoming parentID is the only record of where they belonged. Every other
+        // existing local asset is never re-parented; its incoming parentID is ignored
+        // outright. Runs after step 5 so a resurrected asset already reads as live here.
+        mergeHierarchy(newAssets: newAssets + unpurgedAssets, assetMap: assetMap)
         detachAcrossDeletionBoundary(undeletedAssets)
 
         // 7. Activity log — append incoming entries not already present, dropping any
@@ -877,11 +908,13 @@ extension AssetStore {
         }
     }
 
-    /// Wires parent→child links for newly merged assets only. Existing local assets are
-    /// never touched. A new asset falls back to being a root (`parentID = nil`, not left
-    /// dangling) when its incoming parent is missing, itself, soft-deleted, or would form
-    /// a cycle — a cycle is not just bad data, `Asset.descendants` and
-    /// `AssetDetailView.anchorIndex` are unbounded walks that would hang on one.
+    /// Wires parent→child links for newly merged assets and for assets just un-purged by
+    /// the merge — both arrive with no local parent link, so there is nothing to preserve.
+    /// Every other existing local asset is left untouched. Such an asset falls back to being
+    /// a root (`parentID = nil`, not left dangling) when its incoming parent is missing,
+    /// itself, soft-deleted, or would form a cycle — a cycle is not just bad data,
+    /// `Asset.descendants` and `AssetDetailView.anchorIndex` are unbounded walks that would
+    /// hang on one.
     private func mergeHierarchy(newAssets: [(Asset, AssetDTO)], assetMap: [UUID: Asset]) {
         let newAssetIDs = Set(newAssets.map { $0.0.id })
         var pendingParent: [UUID: UUID] = [:]

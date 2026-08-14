@@ -16,7 +16,6 @@ revisit paywall ensure transaction and event has a limited free count
 - reorganize categories, remove specific appliances
 - rework combo list, allow custom text values to be entered, and the new values becomes pre-selectable for the next combo list field
 - build on recurring event/transaction notification
-- add + buttons to event/transaction/photo fields
 
 == completed ==
 
@@ -33,4 +32,5 @@ siri intergration
 --category, asset, properties, transaction, event, photos, all need to have a modifiedDate field
 -break up store.json
 -rework category purge
+- add + buttons to event/transaction/photo fields
 
