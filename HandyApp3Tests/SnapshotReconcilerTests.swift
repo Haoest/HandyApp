@@ -775,4 +775,83 @@ final class SnapshotReconcilerTests: XCTestCase {
         let merged = SnapshotReconciler.joinCompositeType(a, b)
         XCTAssertEqual(merged.fields.map(\.name), ["Height"], "the winner's whole field set replaces the loser's, never a union")
     }
+
+    // MARK: - Due/series fields: whole-record LWW carries them for free
+
+    func testJoinEventCarriesDueAndSeriesFieldsFromTheWinner() {
+        let t0 = Date(timeIntervalSince1970: 1_700_000_000)
+        let seriesID = UUID()
+        var older = event(modifyDate: t0)
+        var newer = event(id: older.id, modifyDate: t0.addingTimeInterval(10))
+        newer.dueDate = t0.addingTimeInterval(86_400)
+        newer.seriesID = seriesID
+        newer.createdAt = t0
+        newer.messageDaysBefore = 14
+        newer.deviceNotificationOn = true
+        newer.deviceNotificationDaysBefore = 30
+
+        let merged = SnapshotReconciler.joinEvent(older, newer)
+
+        XCTAssertEqual(merged.dueDate, newer.dueDate)
+        XCTAssertEqual(merged.seriesID, seriesID)
+        XCTAssertEqual(merged.messageDaysBefore, 14)
+        XCTAssertEqual(merged.deviceNotificationOn, true)
+        XCTAssertEqual(merged.deviceNotificationDaysBefore, 30)
+    }
+
+    func testJoinTransactionCarriesDueAndSeriesFieldsFromTheWinner() {
+        let t0 = Date(timeIntervalSince1970: 1_700_000_000)
+        let seriesID = UUID()
+        let older = transaction(modifyDate: t0)
+        var newer = transaction(id: older.id, modifyDate: t0.addingTimeInterval(10))
+        newer.dueDate = t0.addingTimeInterval(86_400)
+        newer.seriesID = seriesID
+
+        let merged = SnapshotReconciler.joinTransaction(older, newer)
+
+        XCTAssertEqual(merged.dueDate, newer.dueDate)
+        XCTAssertEqual(merged.seriesID, seriesID)
+    }
+
+    // MARK: - Old-file decode: absent due/series keys fall back deterministically
+
+    func testEventDTODecodesOldFileWithoutDueSeriesKeysUsingDateAsCreatedAtFallback() throws {
+        let id = UUID()
+        let day = Date(timeIntervalSince1970: 1_700_000_000)
+        let old = EventDTO(id: id, title: "Legacy", date: day, notes: "", recurrence: nil,
+                           modifyDate: day, isDeleted: false, deletedAt: nil)
+        let data = try CanonicalCodec.makeEncoder().encode(old)
+        let decoded = try CanonicalCodec.makeDecoder().decode(EventDTO.self, from: data)
+
+        XCTAssertNil(decoded.dueDate)
+        XCTAssertNil(decoded.seriesID)
+        XCTAssertNil(decoded.createdAt, "the DTO itself has no createdAt — the fallback to `date` is applied by AssetStore+Persistence's `event(from:)`, not by decoding")
+        XCTAssertEqual(decoded.messageDaysBefore, nil)
+        XCTAssertEqual(decoded.deviceNotificationOn, nil)
+    }
+
+    func testEventDTORoundTripsAllDueSeriesFields() throws {
+        let id = UUID()
+        let seriesID = UUID()
+        let day = Date(timeIntervalSince1970: 1_700_000_000)
+        var original = event(id: id, modifyDate: day)
+        original.dueDate = day.addingTimeInterval(86_400)
+        original.seriesID = seriesID
+        original.createdAt = day
+        original.messageDaysBefore = 14
+        original.messageDaysAfter = 1
+        original.deviceNotificationOn = true
+        original.deviceNotificationDaysBefore = 30
+
+        let data = try CanonicalCodec.makeEncoder().encode(original)
+        let decoded = try CanonicalCodec.makeDecoder().decode(EventDTO.self, from: data)
+
+        XCTAssertEqual(decoded.dueDate, original.dueDate)
+        XCTAssertEqual(decoded.seriesID, seriesID)
+        XCTAssertEqual(decoded.createdAt, day)
+        XCTAssertEqual(decoded.messageDaysBefore, 14)
+        XCTAssertEqual(decoded.messageDaysAfter, 1)
+        XCTAssertEqual(decoded.deviceNotificationOn, true)
+        XCTAssertEqual(decoded.deviceNotificationDaysBefore, 30)
+    }
 }

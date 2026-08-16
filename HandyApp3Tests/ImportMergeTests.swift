@@ -387,6 +387,41 @@ final class ImportMergeTests: XCTestCase {
         XCTAssertTrue(merged.transactions.contains { $0.id == newTxnID })
     }
 
+    func testImportedEventRetainsDueAndSeriesFields() throws {
+        let cat = try store.createCategory(name: "Garage")
+        let asset = try store.createAsset(name: "Camry", categoryID: cat.id)
+
+        let export = try XCTUnwrap(store.exportJSON())
+        let newEventID = UUID()
+        let seriesID = UUID()
+        let dueDate = Date().addingTimeInterval(86_400)
+        let createdAt = Date()
+        let formatter = ISO8601DateFormatter()
+        let doctored = try mutatingAsset(id: asset.id, in: export) { dict in
+            var events = dict["events"] as? [[String: Any]] ?? []
+            events.append([
+                "id": newEventID.uuidString, "title": "New Event",
+                "date": formatter.string(from: Date()), "notes": "",
+                "dueDate": formatter.string(from: dueDate),
+                "seriesID": seriesID.uuidString,
+                "createdAt": formatter.string(from: createdAt),
+                "messageDaysBefore": 14, "messageDaysAfter": 1,
+                "deviceNotificationOn": true, "deviceNotificationDaysBefore": 30,
+            ])
+            dict["events"] = events
+        }
+
+        try store.importJSON(data: doctored)
+
+        let merged = try XCTUnwrap(store.assets[asset.id])
+        let event = try XCTUnwrap(merged.events.first { $0.id == newEventID })
+        XCTAssertEqual(event.seriesID, seriesID)
+        XCTAssertEqual(event.messageDaysBefore, 14)
+        XCTAssertEqual(event.messageDaysAfter, 1)
+        XCTAssertTrue(event.deviceNotificationOn)
+        XCTAssertEqual(event.deviceNotificationDaysBefore, 30)
+    }
+
     func testMergeAddsMissingCustomPropertyToExistingAsset() throws {
         let cat = try store.createCategory(name: "Garage")
         let asset = try store.createAsset(name: "Camry", categoryID: cat.id)

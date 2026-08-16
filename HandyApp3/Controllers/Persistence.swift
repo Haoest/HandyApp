@@ -177,6 +177,18 @@ struct EventDTO: Codable {
     var modifyDate: Date?
     var isDeleted: Bool?
     var deletedAt: Date?
+    var dueDate: Date? = nil
+    var seriesID: UUID? = nil
+    /// Optional: absent in files written before series existed. Decoders fall back to `date`
+    /// (the record's own scheduled day) — deterministic from file content, so every device
+    /// derives the identical value from an old file. `modifyDate` was rejected as the fallback:
+    /// an old-build peer editing the record would inflate it past a genuine duplicate's
+    /// `createdAt` and steal "newest occurrence".
+    var createdAt: Date? = nil
+    var messageDaysBefore: Int? = nil       // fallback DueDefaults.messageDaysBefore
+    var messageDaysAfter: Int? = nil        // fallback DueDefaults.messageDaysAfter
+    var deviceNotificationOn: Bool? = nil   // fallback false
+    var deviceNotificationDaysBefore: Int? = nil  // fallback DueDefaults.notifyDaysBefore
 }
 
 // MARK: - TransactionDTO
@@ -197,6 +209,15 @@ struct TransactionDTO: Codable {
     var modifyDate: Date?
     var isDeleted: Bool?
     var deletedAt: Date?
+    var dueDate: Date? = nil
+    var seriesID: UUID? = nil
+    /// Optional: absent in files written before series existed. Same fallback rule as
+    /// `EventDTO.createdAt` — see there.
+    var createdAt: Date? = nil
+    var messageDaysBefore: Int? = nil       // fallback DueDefaults.messageDaysBefore
+    var messageDaysAfter: Int? = nil        // fallback DueDefaults.messageDaysAfter
+    var deviceNotificationOn: Bool? = nil   // fallback false
+    var deviceNotificationDaysBefore: Int? = nil  // fallback DueDefaults.notifyDaysBefore
 }
 
 // MARK: - AssetDTO

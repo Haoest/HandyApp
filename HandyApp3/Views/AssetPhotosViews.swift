@@ -186,8 +186,8 @@ struct PhotoViewerSheet: View {
                 }
             }
             .sheet(item: $scannedPrefill) { prefill in
-                TransactionEditView(prefill: prefill) { details, amount, date, kind, payeeID, notes, recurrence in
-                    try? store.addTransaction(details: details, amount: amount, date: date, kind: kind, payeeContactID: payeeID, notes: notes, recurrence: recurrence, toAssetID: asset.id)
+                TransactionEditView(prefill: prefill) { details, amount, date, kind, payeeID, notes, recurrence, due in
+                    try? store.addTransaction(details: details, amount: amount, date: date, kind: kind, payeeContactID: payeeID, notes: notes, recurrence: recurrence, due: due, toAssetID: asset.id)
                 }
             }
             .sheet(isPresented: $paywallPresented) {

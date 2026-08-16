@@ -330,4 +330,64 @@ final class ApplyInPlaceTests: XCTestCase {
         XCTAssertEqual(store.assets.count, 1)
         XCTAssertEqual(store.categories.count, 1)
     }
+
+    // MARK: - Due/series fields land on existing live objects (the upsert trap)
+
+    func testIncomingDueAndSeriesFieldsLandOnExistingLiveEvent() throws {
+        let cat = try store.createCategory(name: "Vehicle")
+        let asset = try store.createAsset(name: "Car", categoryID: cat.id)
+        let event = try store.addEvent(title: "Inspection", date: Date(), toAssetID: asset.id)
+
+        let seriesID = UUID()
+        let dueDate = Date().addingTimeInterval(86_400)
+        let createdAt = Date()
+        var incomingEvent = EventDTO(id: event.id, title: event.title, date: event.date, notes: "",
+                                     recurrence: nil, modifyDate: event.modifyDate.addingTimeInterval(10),
+                                     isDeleted: false, deletedAt: nil)
+        incomingEvent.dueDate = dueDate
+        incomingEvent.seriesID = seriesID
+        incomingEvent.createdAt = createdAt
+        incomingEvent.messageDaysBefore = 14
+        incomingEvent.messageDaysAfter = 1
+        incomingEvent.deviceNotificationOn = true
+        incomingEvent.deviceNotificationDaysBefore = 30
+
+        var incomingAsset = assetDTO(id: asset.id, name: asset.name, categoryID: cat.id)
+        incomingAsset.events = [incomingEvent]
+        let snap = snapshot(categories: [categoryDTO(id: cat.id, name: cat.name)], assets: [incomingAsset])
+        store.applyInPlace(snap)
+
+        XCTAssertTrue(asset.events.first === event, "upsert must mutate the existing object, not replace it")
+        XCTAssertEqual(event.dueDate, dueDate)
+        XCTAssertEqual(event.seriesID, seriesID)
+        XCTAssertEqual(event.createdAt, createdAt)
+        XCTAssertEqual(event.messageDaysBefore, 14)
+        XCTAssertEqual(event.messageDaysAfter, 1)
+        XCTAssertTrue(event.deviceNotificationOn)
+        XCTAssertEqual(event.deviceNotificationDaysBefore, 30)
+    }
+
+    func testIncomingDueAndSeriesFieldsLandOnExistingLiveTransaction() throws {
+        let cat = try store.createCategory(name: "Vehicle")
+        let asset = try store.createAsset(name: "Car", categoryID: cat.id)
+        let txn = try store.addTransaction(details: "Insurance", amount: 100, date: Date(), kind: .expense, toAssetID: asset.id)
+
+        let seriesID = UUID()
+        let dueDate = Date().addingTimeInterval(86_400)
+        var incomingTxn = TransactionDTO(id: txn.id, details: txn.details, amount: txn.amount.description,
+                                         date: txn.date, kind: txn.kind.rawValue, payeeContactID: nil, notes: "",
+                                         recurrence: nil, modifyDate: txn.modifyDate.addingTimeInterval(10),
+                                         isDeleted: false, deletedAt: nil)
+        incomingTxn.dueDate = dueDate
+        incomingTxn.seriesID = seriesID
+
+        var incomingAsset = assetDTO(id: asset.id, name: asset.name, categoryID: cat.id)
+        incomingAsset.transactions = [incomingTxn]
+        let snap = snapshot(categories: [categoryDTO(id: cat.id, name: cat.name)], assets: [incomingAsset])
+        store.applyInPlace(snap)
+
+        XCTAssertTrue(asset.transactions.first === txn)
+        XCTAssertEqual(txn.dueDate, dueDate)
+        XCTAssertEqual(txn.seriesID, seriesID)
+    }
 }

@@ -1114,6 +1114,12 @@ extension AssetStore {
     private func event(from dto: EventDTO, fallbackModifyDate: Date) -> Event {
         let event = Event(id: dto.id, title: dto.title, date: dto.date, notes: dto.notes,
                           recurrence: dto.recurrence.flatMap(RecurrenceInterval.init),
+                          dueDate: dto.dueDate, seriesID: dto.seriesID,
+                          createdAt: dto.createdAt ?? dto.date,
+                          messageDaysBefore: dto.messageDaysBefore ?? DueDefaults.messageDaysBefore,
+                          messageDaysAfter: dto.messageDaysAfter ?? DueDefaults.messageDaysAfter,
+                          deviceNotificationOn: dto.deviceNotificationOn ?? false,
+                          deviceNotificationDaysBefore: dto.deviceNotificationDaysBefore ?? DueDefaults.notifyDaysBefore,
                           modifyDate: dto.modifyDate ?? fallbackModifyDate)
         event.isDeleted = dto.isDeleted ?? false
         event.deletedAt = dto.deletedAt
@@ -1127,6 +1133,12 @@ extension AssetStore {
                               date: dto.date, kind: TransactionKind(rawValue: dto.kind) ?? .expense,
                               payeeContactID: dto.payeeContactID, notes: dto.notes,
                               recurrence: dto.recurrence.flatMap(RecurrenceInterval.init),
+                              dueDate: dto.dueDate, seriesID: dto.seriesID,
+                              createdAt: dto.createdAt ?? dto.date,
+                              messageDaysBefore: dto.messageDaysBefore ?? DueDefaults.messageDaysBefore,
+                              messageDaysAfter: dto.messageDaysAfter ?? DueDefaults.messageDaysAfter,
+                              deviceNotificationOn: dto.deviceNotificationOn ?? false,
+                              deviceNotificationDaysBefore: dto.deviceNotificationDaysBefore ?? DueDefaults.notifyDaysBefore,
                               modifyDate: dto.modifyDate ?? fallbackModifyDate)
         txn.isDeleted = dto.isDeleted ?? false
         txn.deletedAt = dto.deletedAt
@@ -1180,14 +1192,22 @@ extension AssetStore {
     private func eventDTO(_ e: Event) -> EventDTO {
         EventDTO(id: e.id, title: e.title, date: e.date, notes: e.notes,
                  recurrence: e.recurrence?.rawValue,
-                 modifyDate: e.modifyDate, isDeleted: e.isDeleted, deletedAt: e.deletedAt)
+                 modifyDate: e.modifyDate, isDeleted: e.isDeleted, deletedAt: e.deletedAt,
+                 dueDate: e.dueDate, seriesID: e.seriesID, createdAt: e.createdAt,
+                 messageDaysBefore: e.messageDaysBefore, messageDaysAfter: e.messageDaysAfter,
+                 deviceNotificationOn: e.deviceNotificationOn,
+                 deviceNotificationDaysBefore: e.deviceNotificationDaysBefore)
     }
 
     private func transactionDTO(_ t: Transaction) -> TransactionDTO {
         TransactionDTO(id: t.id, details: t.details, amount: t.amount.description,
                        date: t.date, kind: t.kind.rawValue, payeeContactID: t.payeeContactID,
                        notes: t.notes, recurrence: t.recurrence?.rawValue,
-                       modifyDate: t.modifyDate, isDeleted: t.isDeleted, deletedAt: t.deletedAt)
+                       modifyDate: t.modifyDate, isDeleted: t.isDeleted, deletedAt: t.deletedAt,
+                       dueDate: t.dueDate, seriesID: t.seriesID, createdAt: t.createdAt,
+                       messageDaysBefore: t.messageDaysBefore, messageDaysAfter: t.messageDaysAfter,
+                       deviceNotificationOn: t.deviceNotificationOn,
+                       deviceNotificationDaysBefore: t.deviceNotificationDaysBefore)
     }
 
     /// A tombstoned photo's bytes are never embedded in an export — the peer is being told to
@@ -1476,6 +1496,13 @@ extension AssetStore {
                 existing.modifyDate = dto.modifyDate ?? fallbackModifyDate
                 existing.isDeleted = dto.isDeleted ?? false
                 existing.deletedAt = dto.deletedAt
+                existing.dueDate = dto.dueDate
+                existing.seriesID = dto.seriesID
+                existing.createdAt = dto.createdAt ?? dto.date
+                existing.messageDaysBefore = dto.messageDaysBefore ?? DueDefaults.messageDaysBefore
+                existing.messageDaysAfter = dto.messageDaysAfter ?? DueDefaults.messageDaysAfter
+                existing.deviceNotificationOn = dto.deviceNotificationOn ?? false
+                existing.deviceNotificationDaysBefore = dto.deviceNotificationDaysBefore ?? DueDefaults.notifyDaysBefore
             } else {
                 let created = event(from: dto, fallbackModifyDate: fallbackModifyDate)
                 target.append(created)
@@ -1499,6 +1526,13 @@ extension AssetStore {
                 existing.modifyDate = dto.modifyDate ?? fallbackModifyDate
                 existing.isDeleted = dto.isDeleted ?? false
                 existing.deletedAt = dto.deletedAt
+                existing.dueDate = dto.dueDate
+                existing.seriesID = dto.seriesID
+                existing.createdAt = dto.createdAt ?? dto.date
+                existing.messageDaysBefore = dto.messageDaysBefore ?? DueDefaults.messageDaysBefore
+                existing.messageDaysAfter = dto.messageDaysAfter ?? DueDefaults.messageDaysAfter
+                existing.deviceNotificationOn = dto.deviceNotificationOn ?? false
+                existing.deviceNotificationDaysBefore = dto.deviceNotificationDaysBefore ?? DueDefaults.notifyDaysBefore
             } else {
                 let created = transaction(from: dto, fallbackModifyDate: fallbackModifyDate)
                 target.append(created)

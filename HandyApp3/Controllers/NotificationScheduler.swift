@@ -18,6 +18,7 @@ struct PlannedNotification: Equatable {
 
 enum NotificationPlanner {
     static let identifierPrefix = "recurring-"
+    static let duePrefix = "due-"
 
     /// Computes the full set of notifications that should be pending for the given
     /// assets. Pure: no UserNotifications side effects, deterministic for a fixed
@@ -36,29 +37,42 @@ enum NotificationPlanner {
         var candidates: [PlannedNotification] = []
         for asset in assets {
             for event in asset.liveEvents {
-                guard let recurrence = event.recurrence else { continue }
-                for (index, date) in recurrence.occurrences(from: event.date, after: cutoff, count: perItemLimit, calendar: calendar) {
-                    if let planned = makePlanned(
-                        identifier: "\(identifierPrefix)event-\(event.id.uuidString)-\(index)",
-                        occurrence: date, now: now, calendar: calendar,
-                        title: asset.name, body: event.title, assetID: asset.id
-                    ) {
-                        candidates.append(planned)
+                // A series duplicate inherits recurrence from its source, so without this
+                // guard every occurrence in the series would independently plan its own
+                // recurring reminders. Only the newest occurrence carries them forward.
+                if let recurrence = event.recurrence,
+                   event.seriesID == nil || SeriesLogic.newest(of: event, in: asset.liveEvents).id == event.id {
+                    for (index, date) in recurrence.occurrences(from: event.date, after: cutoff, count: perItemLimit, calendar: calendar) {
+                        if let planned = makePlanned(
+                            identifier: "\(identifierPrefix)event-\(event.id.uuidString)-\(index)",
+                            occurrence: date, now: now, calendar: calendar,
+                            title: asset.name, body: event.title, assetID: asset.id
+                        ) {
+                            candidates.append(planned)
+                        }
                     }
+                }
+                if let planned = dueCandidate(for: event, kindPrefix: "event", body: event.title, asset: asset, in: asset.liveEvents, now: now, calendar: calendar) {
+                    candidates.append(planned)
                 }
             }
             for txn in asset.liveTransactions {
-                guard let recurrence = txn.recurrence else { continue }
                 let amount = txn.amount.formatted(.currency(code: Locale.current.currency?.identifier ?? "USD"))
                 let body = "\(txn.details) — \(amount) (\(txn.kind.rawValue))"
-                for (index, date) in recurrence.occurrences(from: txn.date, after: cutoff, count: perItemLimit, calendar: calendar) {
-                    if let planned = makePlanned(
-                        identifier: "\(identifierPrefix)txn-\(txn.id.uuidString)-\(index)",
-                        occurrence: date, now: now, calendar: calendar,
-                        title: asset.name, body: body, assetID: asset.id
-                    ) {
-                        candidates.append(planned)
+                if let recurrence = txn.recurrence,
+                   txn.seriesID == nil || SeriesLogic.newest(of: txn, in: asset.liveTransactions).id == txn.id {
+                    for (index, date) in recurrence.occurrences(from: txn.date, after: cutoff, count: perItemLimit, calendar: calendar) {
+                        if let planned = makePlanned(
+                            identifier: "\(identifierPrefix)txn-\(txn.id.uuidString)-\(index)",
+                            occurrence: date, now: now, calendar: calendar,
+                            title: asset.name, body: body, assetID: asset.id
+                        ) {
+                            candidates.append(planned)
+                        }
                     }
+                }
+                if let planned = dueCandidate(for: txn, kindPrefix: "txn", body: body, asset: asset, in: asset.liveTransactions, now: now, calendar: calendar) {
+                    candidates.append(planned)
                 }
             }
         }
@@ -66,6 +80,21 @@ enum NotificationPlanner {
             ($0.fireDate, $0.identifier) < ($1.fireDate, $1.identifier)
         }
         return Array(sorted.prefix(globalLimit))
+    }
+
+    /// One-shot due-date reminder, `deviceNotificationDaysBefore` days ahead of `record`'s due
+    /// date. Independent of recurrence — a non-recurring record can still carry one. Mirrors
+    /// the home-tab due-message suppression rule so a logged newer occurrence also silences
+    /// the pending device notification, not just the on-screen banner.
+    private static func dueCandidate<R: SeriesRecord>(for record: R, kindPrefix: String, body: String, asset: Asset, in siblings: [R], now: Date, calendar: Calendar) -> PlannedNotification? {
+        guard record.deviceNotificationOn, let dueDate = record.dueDate,
+              !SeriesLogic.isSuppressed(record, in: siblings, calendar: calendar, now: now) else { return nil }
+        guard let occurrence = calendar.date(byAdding: .day, value: -record.deviceNotificationDaysBefore, to: dueDate) else { return nil }
+        return makePlanned(
+            identifier: "\(duePrefix)\(kindPrefix)-\(record.id.uuidString)",
+            occurrence: occurrence, now: now, calendar: calendar,
+            title: asset.name, body: body, assetID: asset.id
+        )
     }
 
     private static func makePlanned(identifier: String, occurrence: Date, now: Date, calendar: Calendar, title: String, body: String, assetID: UUID) -> PlannedNotification? {
@@ -112,10 +141,12 @@ final class NotificationScheduler: NSObject, UNUserNotificationCenterDelegate {
         }
         guard !Task.isCancelled else { return }
 
-        // Always clear stale recurrence notifications, even when not authorized —
-        // but never touch requests outside our prefix.
+        // Always clear stale recurrence/due notifications, even when not authorized —
+        // but never touch requests outside our prefixes.
         let pending = await center.pendingNotificationRequests()
-        let stale = pending.map(\.identifier).filter { $0.hasPrefix(NotificationPlanner.identifierPrefix) }
+        let stale = pending.map(\.identifier).filter {
+            $0.hasPrefix(NotificationPlanner.identifierPrefix) || $0.hasPrefix(NotificationPlanner.duePrefix)
+        }
         center.removePendingNotificationRequests(withIdentifiers: stale)
 
         guard settings.authorizationStatus == .authorized || settings.authorizationStatus == .provisional else { return }

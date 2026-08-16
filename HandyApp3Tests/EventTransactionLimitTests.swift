@@ -107,7 +107,7 @@ final class EventTransactionLimitTests: XCTestCase {
         }
         // Pre-existing overflow items remain fully editable/removable.
         let first = assetA.events[0]
-        XCTAssertNoThrow(try store.updateEvent(id: first.id, onAssetID: assetA.id, title: "Renamed", date: first.date, notes: "", recurrence: nil))
+        XCTAssertNoThrow(try store.updateEvent(id: first.id, onAssetID: assetA.id, title: "Renamed", date: first.date, notes: "", recurrence: nil, due: DueSettings()))
         XCTAssertNoThrow(try store.removeEvent(id: first.id, fromAssetID: assetA.id))
         XCTAssertEqual(assetA.events.count, 8, "the tombstone stays until purge")
         XCTAssertEqual(assetA.liveEvents.count, 7)
@@ -191,7 +191,7 @@ final class EventTransactionLimitTests: XCTestCase {
             XCTAssertEqual(error as? AssetStoreError, .freeTransactionLimitReached(limit: 5))
         }
         let first = assetA.transactions[0]
-        XCTAssertNoThrow(try store.updateTransaction(id: first.id, onAssetID: assetA.id, details: "Renamed", amount: first.amount, date: first.date, kind: first.kind, payeeContactID: nil, notes: "", recurrence: nil))
+        XCTAssertNoThrow(try store.updateTransaction(id: first.id, onAssetID: assetA.id, details: "Renamed", amount: first.amount, date: first.date, kind: first.kind, payeeContactID: nil, notes: "", recurrence: nil, due: DueSettings()))
         XCTAssertNoThrow(try store.removeTransaction(id: first.id, fromAssetID: assetA.id))
         XCTAssertEqual(assetA.transactions.count, 8, "the tombstone stays until purge")
         XCTAssertEqual(assetA.liveTransactions.count, 7)

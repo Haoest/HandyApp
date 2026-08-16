@@ -1,4 +1,4 @@
-
+- improve localization with domain vocabulary
 -quick reporting
 -export data to excel by email
 -swiping to delete transaction/event carries the asset sheet under

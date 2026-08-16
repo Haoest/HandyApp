@@ -24,7 +24,25 @@ final class Transaction: Identifiable, Equatable {
     var isDeleted: Bool = false
     var deletedAt: Date? = nil
 
-    init(id: UUID = UUID(), details: String, amount: Decimal, date: Date, kind: TransactionKind, payeeContactID: String? = nil, notes: String = "", recurrence: RecurrenceInterval? = nil, modifyDate: Date = Date()) {
+    /// Optional due date, independent of `date` (the transaction's own occurrence day).
+    var dueDate: Date? = nil
+    /// Shared identifier for a chain of duplicates of a recurring transaction — see `SeriesLogic`.
+    var seriesID: UUID? = nil
+    /// Instant this record was created (not edited); series members are ordered by this,
+    /// independent of `modifyDate`.
+    var createdAt: Date
+    var messageDaysBefore: Int
+    var messageDaysAfter: Int
+    var deviceNotificationOn: Bool
+    var deviceNotificationDaysBefore: Int
+
+    init(id: UUID = UUID(), details: String, amount: Decimal, date: Date, kind: TransactionKind, payeeContactID: String? = nil, notes: String = "", recurrence: RecurrenceInterval? = nil,
+         dueDate: Date? = nil, seriesID: UUID? = nil, createdAt: Date = Date(),
+         messageDaysBefore: Int = DueDefaults.messageDaysBefore,
+         messageDaysAfter: Int = DueDefaults.messageDaysAfter,
+         deviceNotificationOn: Bool = false,
+         deviceNotificationDaysBefore: Int = DueDefaults.notifyDaysBefore,
+         modifyDate: Date = Date()) {
         self.id = id
         self.details = details
         self.amount = abs(amount)
@@ -33,6 +51,13 @@ final class Transaction: Identifiable, Equatable {
         self.payeeContactID = payeeContactID
         self.notes = notes
         self.recurrence = recurrence
+        self.dueDate = dueDate
+        self.seriesID = seriesID
+        self.createdAt = createdAt
+        self.messageDaysBefore = messageDaysBefore
+        self.messageDaysAfter = messageDaysAfter
+        self.deviceNotificationOn = deviceNotificationOn
+        self.deviceNotificationDaysBefore = deviceNotificationDaysBefore
         self.modifyDate = modifyDate
     }
 

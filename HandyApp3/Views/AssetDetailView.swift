@@ -475,13 +475,13 @@ private struct AssetDetailContent: View {
             }
         )
         .sheet(isPresented: $addEventPresented) {
-            EventEditView { title, date, notes, recurrence in
-                try? store.addEvent(title: title, date: date, notes: notes, recurrence: recurrence, toAssetID: asset.id)
+            EventEditView { title, date, notes, recurrence, due in
+                try? store.addEvent(title: title, date: date, notes: notes, recurrence: recurrence, due: due, toAssetID: asset.id)
             }
         }
         .sheet(isPresented: $addTransactionPresented, onDismiss: { initialTransactionKind = nil }) {
-            TransactionEditView(initialKind: initialTransactionKind) { details, amount, date, kind, payeeID, notes, recurrence in
-                try? store.addTransaction(details: details, amount: amount, date: date, kind: kind, payeeContactID: payeeID, notes: notes, recurrence: recurrence, toAssetID: asset.id)
+            TransactionEditView(initialKind: initialTransactionKind) { details, amount, date, kind, payeeID, notes, recurrence, due in
+                try? store.addTransaction(details: details, amount: amount, date: date, kind: kind, payeeContactID: payeeID, notes: notes, recurrence: recurrence, due: due, toAssetID: asset.id)
             }
         }
         .sheet(isPresented: $paywallPresented) {
@@ -520,24 +520,32 @@ private struct AssetDetailContent: View {
         .sheet(item: $eventSheetMode) { mode in
             switch mode {
             case .edit(let event):
-                EventEditView(existing: event) { title, date, notes, recurrence in
-                    try? store.updateEvent(id: event.id, onAssetID: asset.id, title: title, date: date, notes: notes, recurrence: recurrence)
+                EventEditView(existing: event, seriesCount: SeriesLogic.members(of: event, in: asset.liveEvents).count) { title, date, notes, recurrence, due in
+                    try? store.updateEvent(id: event.id, onAssetID: asset.id, title: title, date: date, notes: notes, recurrence: recurrence, due: due)
                 }
             case .duplicate(let source):
-                EventEditView(prefill: source) { title, date, notes, recurrence in
-                    try? store.addEvent(title: title, date: date, notes: notes, recurrence: recurrence, toAssetID: asset.id)
+                EventEditView(
+                    prefill: source,
+                    prefillTitle: store.suggestedDuplicateTitle(forEventID: source.id, onAssetID: asset.id),
+                    prefillDue: DueSettings(dueDate: SeriesLogic.advancedDueDate(for: source), messageDaysBefore: source.messageDaysBefore, messageDaysAfter: source.messageDaysAfter, deviceNotificationOn: source.deviceNotificationOn, deviceNotificationDaysBefore: source.deviceNotificationDaysBefore)
+                ) { title, date, notes, recurrence, due in
+                    try? store.duplicateEvent(id: source.id, onAssetID: asset.id, title: title, date: date, notes: notes, recurrence: recurrence, due: due)
                 }
             }
         }
         .sheet(item: $transactionSheetMode) { mode in
             switch mode {
             case .edit(let txn):
-                TransactionEditView(existing: txn) { details, amount, date, kind, payeeID, notes, recurrence in
-                    try? store.updateTransaction(id: txn.id, onAssetID: asset.id, details: details, amount: amount, date: date, kind: kind, payeeContactID: payeeID, notes: notes, recurrence: recurrence)
+                TransactionEditView(existing: txn, seriesCount: SeriesLogic.members(of: txn, in: asset.liveTransactions).count) { details, amount, date, kind, payeeID, notes, recurrence, due in
+                    try? store.updateTransaction(id: txn.id, onAssetID: asset.id, details: details, amount: amount, date: date, kind: kind, payeeContactID: payeeID, notes: notes, recurrence: recurrence, due: due)
                 }
             case .duplicate(let source):
-                TransactionEditView(prefill: source) { details, amount, date, kind, payeeID, notes, recurrence in
-                    try? store.addTransaction(details: details, amount: amount, date: date, kind: kind, payeeContactID: payeeID, notes: notes, recurrence: recurrence, toAssetID: asset.id)
+                TransactionEditView(
+                    prefill: source,
+                    prefillDetails: store.suggestedDuplicateTitle(forTransactionID: source.id, onAssetID: asset.id),
+                    prefillDue: DueSettings(dueDate: SeriesLogic.advancedDueDate(for: source), messageDaysBefore: source.messageDaysBefore, messageDaysAfter: source.messageDaysAfter, deviceNotificationOn: source.deviceNotificationOn, deviceNotificationDaysBefore: source.deviceNotificationDaysBefore)
+                ) { details, amount, date, kind, payeeID, notes, recurrence, due in
+                    try? store.duplicateTransaction(id: source.id, onAssetID: asset.id, details: details, amount: amount, date: date, kind: kind, payeeContactID: payeeID, notes: notes, recurrence: recurrence, due: due)
                 }
             }
         }

@@ -795,12 +795,16 @@ final class AssetStore {
     }
 
     @discardableResult
-    func addEvent(title: String, date: Date, notes: String = "", recurrence: RecurrenceInterval? = nil, toAssetID assetID: UUID) throws -> Event {
+    func addEvent(title: String, date: Date, notes: String = "", recurrence: RecurrenceInterval? = nil, due: DueSettings = DueSettings(), toAssetID assetID: UUID) throws -> Event {
         guard let asset = assets[assetID] else { throw AssetStoreError.assetNotFound(assetID) }
         if let limit = eventCreationLimit, asset.liveEvents.count >= limit {
             throw AssetStoreError.freeEventLimitReached(limit: limit)
         }
-        let event = Event(title: title, date: date, notes: notes, recurrence: recurrence)
+        let event = Event(title: title, date: date, notes: notes, recurrence: recurrence,
+                          dueDate: due.dueDate, messageDaysBefore: due.messageDaysBefore,
+                          messageDaysAfter: due.messageDaysAfter,
+                          deviceNotificationOn: due.deviceNotificationOn,
+                          deviceNotificationDaysBefore: due.deviceNotificationDaysBefore)
         asset.events.append(event)
         asset.modifiedDate = Date()
         logCreation(of: event.id, kind: .event, owningAssetID: assetID)
@@ -809,7 +813,7 @@ final class AssetStore {
         return event
     }
 
-    func updateEvent(id eventID: UUID, onAssetID assetID: UUID, title: String, date: Date, notes: String, recurrence: RecurrenceInterval?) throws {
+    func updateEvent(id eventID: UUID, onAssetID assetID: UUID, title: String, date: Date, notes: String, recurrence: RecurrenceInterval?, due: DueSettings) throws {
         guard let asset = assets[assetID] else { throw AssetStoreError.assetNotFound(assetID) }
         guard let event = asset.liveEvents.first(where: { $0.id == eventID }) else { throw AssetStoreError.eventNotFound(eventID) }
         let now = Date()
@@ -817,6 +821,11 @@ final class AssetStore {
         event.date = date
         event.notes = notes
         event.recurrence = recurrence
+        event.dueDate = due.dueDate
+        event.messageDaysBefore = due.messageDaysBefore
+        event.messageDaysAfter = due.messageDaysAfter
+        event.deviceNotificationOn = due.deviceNotificationOn
+        event.deviceNotificationDaysBefore = due.deviceNotificationDaysBefore
         event.touch(now)
         asset.modifiedDate = now
         notificationScheduler?.requestResync(assets: allAssets)
@@ -835,13 +844,82 @@ final class AssetStore {
         markDirty()
     }
 
+    /// Suffixed title a duplicate of `sourceID` would get if created at `date`, per
+    /// `SeriesLogic.duplicateTitle`. Non-recurring sources return the title verbatim — series
+    /// membership (and therefore the suffix) only applies to duplicates of recurring records.
+    /// Used both to prefill the "Duplicate…" sheet and internally by the immediate duplicate.
+    func suggestedDuplicateTitle(forEventID id: UUID, onAssetID assetID: UUID, at date: Date = Date()) -> String {
+        guard let asset = assets[assetID], let source = asset.liveEvents.first(where: { $0.id == id }) else { return "" }
+        guard source.recurrence != nil else { return source.title }
+        let siblingTitles = SeriesLogic.members(of: source, in: asset.liveEvents)
+            .filter { $0.id != source.id }
+            .map { $0.title }
+        return SeriesLogic.duplicateTitle(source: source.title, seriesTitles: siblingTitles, creationDate: date)
+    }
+
+    /// Immediate duplicate (context-menu "Duplicate"): date = now, title = suggested suffix,
+    /// everything else copied from the source. If the source is recurring, the copy inherits
+    /// recurrence and joins (or starts) the source's series.
     @discardableResult
-    func addTransaction(details: String, amount: Decimal, date: Date, kind: TransactionKind, payeeContactID: String? = nil, notes: String = "", recurrence: RecurrenceInterval? = nil, toAssetID assetID: UUID) throws -> Transaction {
+    func duplicateEvent(id sourceID: UUID, onAssetID assetID: UUID) throws -> Event {
+        guard let asset = assets[assetID] else { throw AssetStoreError.assetNotFound(assetID) }
+        guard let source = asset.liveEvents.first(where: { $0.id == sourceID }) else { throw AssetStoreError.eventNotFound(sourceID) }
+        let now = Date()
+        let title = suggestedDuplicateTitle(forEventID: sourceID, onAssetID: assetID, at: now)
+        let due = DueSettings(dueDate: SeriesLogic.advancedDueDate(for: source), messageDaysBefore: source.messageDaysBefore,
+                              messageDaysAfter: source.messageDaysAfter, deviceNotificationOn: source.deviceNotificationOn,
+                              deviceNotificationDaysBefore: source.deviceNotificationDaysBefore)
+        return try duplicateEventCore(source: source, asset: asset, title: title, date: now, notes: source.notes, recurrence: source.recurrence, due: due)
+    }
+
+    /// "Duplicate…" sheet save: field values come from the form verbatim (the sheet was
+    /// prefilled with `suggestedDuplicateTitle`/the advanced due date, but the user may have
+    /// edited them) — no re-suffixing here. Series assignment still happens at save time, so
+    /// cancelling the sheet leaves the source untouched.
+    @discardableResult
+    func duplicateEvent(id sourceID: UUID, onAssetID assetID: UUID, title: String, date: Date, notes: String, recurrence: RecurrenceInterval?, due: DueSettings) throws -> Event {
+        guard let asset = assets[assetID] else { throw AssetStoreError.assetNotFound(assetID) }
+        guard let source = asset.liveEvents.first(where: { $0.id == sourceID }) else { throw AssetStoreError.eventNotFound(sourceID) }
+        return try duplicateEventCore(source: source, asset: asset, title: title, date: date, notes: notes, recurrence: recurrence, due: due)
+    }
+
+    private func duplicateEventCore(source: Event, asset: Asset, title: String, date: Date, notes: String, recurrence: RecurrenceInterval?, due: DueSettings) throws -> Event {
+        if let limit = eventCreationLimit, asset.liveEvents.count >= limit {
+            throw AssetStoreError.freeEventLimitReached(limit: limit)
+        }
+        let now = Date()
+        var seriesID: UUID? = nil
+        if source.recurrence != nil {
+            if source.seriesID == nil {
+                source.seriesID = UUID()
+                source.touch(now)
+            }
+            seriesID = source.seriesID
+        }
+        let event = Event(title: title, date: date, notes: notes, recurrence: recurrence,
+                          dueDate: due.dueDate, seriesID: seriesID, createdAt: now,
+                          messageDaysBefore: due.messageDaysBefore, messageDaysAfter: due.messageDaysAfter,
+                          deviceNotificationOn: due.deviceNotificationOn,
+                          deviceNotificationDaysBefore: due.deviceNotificationDaysBefore)
+        asset.events.append(event)
+        asset.modifiedDate = now
+        logCreation(of: event.id, kind: .event, owningAssetID: asset.id)
+        notificationScheduler?.requestResync(assets: allAssets)
+        markDirty()
+        return event
+    }
+
+    @discardableResult
+    func addTransaction(details: String, amount: Decimal, date: Date, kind: TransactionKind, payeeContactID: String? = nil, notes: String = "", recurrence: RecurrenceInterval? = nil, due: DueSettings = DueSettings(), toAssetID assetID: UUID) throws -> Transaction {
         guard let asset = assets[assetID] else { throw AssetStoreError.assetNotFound(assetID) }
         if let limit = transactionCreationLimit, asset.liveTransactions.count >= limit {
             throw AssetStoreError.freeTransactionLimitReached(limit: limit)
         }
-        let txn = Transaction(details: details, amount: amount, date: date, kind: kind, payeeContactID: payeeContactID, notes: notes, recurrence: recurrence)
+        let txn = Transaction(details: details, amount: amount, date: date, kind: kind, payeeContactID: payeeContactID, notes: notes, recurrence: recurrence,
+                              dueDate: due.dueDate, messageDaysBefore: due.messageDaysBefore,
+                              messageDaysAfter: due.messageDaysAfter,
+                              deviceNotificationOn: due.deviceNotificationOn,
+                              deviceNotificationDaysBefore: due.deviceNotificationDaysBefore)
         asset.transactions.append(txn)
         asset.modifiedDate = Date()
         logCreation(of: txn.id, kind: .transaction, owningAssetID: assetID)
@@ -850,7 +928,7 @@ final class AssetStore {
         return txn
     }
 
-    func updateTransaction(id txnID: UUID, onAssetID assetID: UUID, details: String, amount: Decimal, date: Date, kind: TransactionKind, payeeContactID: String?, notes: String, recurrence: RecurrenceInterval?) throws {
+    func updateTransaction(id txnID: UUID, onAssetID assetID: UUID, details: String, amount: Decimal, date: Date, kind: TransactionKind, payeeContactID: String?, notes: String, recurrence: RecurrenceInterval?, due: DueSettings) throws {
         guard let asset = assets[assetID] else { throw AssetStoreError.assetNotFound(assetID) }
         guard let txn = asset.liveTransactions.first(where: { $0.id == txnID }) else { throw AssetStoreError.transactionNotFound(txnID) }
         let now = Date()
@@ -861,6 +939,11 @@ final class AssetStore {
         txn.payeeContactID = payeeContactID
         txn.notes = notes
         txn.recurrence = recurrence
+        txn.dueDate = due.dueDate
+        txn.messageDaysBefore = due.messageDaysBefore
+        txn.messageDaysAfter = due.messageDaysAfter
+        txn.deviceNotificationOn = due.deviceNotificationOn
+        txn.deviceNotificationDaysBefore = due.deviceNotificationDaysBefore
         txn.touch(now)
         asset.modifiedDate = now
         notificationScheduler?.requestResync(assets: allAssets)
@@ -878,6 +961,64 @@ final class AssetStore {
         notificationScheduler?.requestResync(assets: allAssets)
         markDirty()
     }
+
+    /// See `suggestedDuplicateTitle(forEventID:onAssetID:at:)` — same rule, on `details`.
+    func suggestedDuplicateTitle(forTransactionID id: UUID, onAssetID assetID: UUID, at date: Date = Date()) -> String {
+        guard let asset = assets[assetID], let source = asset.liveTransactions.first(where: { $0.id == id }) else { return "" }
+        guard source.recurrence != nil else { return source.details }
+        let siblingTitles = SeriesLogic.members(of: source, in: asset.liveTransactions)
+            .filter { $0.id != source.id }
+            .map { $0.details }
+        return SeriesLogic.duplicateTitle(source: source.details, seriesTitles: siblingTitles, creationDate: date)
+    }
+
+    /// See `duplicateEvent(id:onAssetID:)` — same rule, mirrored for Transaction.
+    @discardableResult
+    func duplicateTransaction(id sourceID: UUID, onAssetID assetID: UUID) throws -> Transaction {
+        guard let asset = assets[assetID] else { throw AssetStoreError.assetNotFound(assetID) }
+        guard let source = asset.liveTransactions.first(where: { $0.id == sourceID }) else { throw AssetStoreError.transactionNotFound(sourceID) }
+        let now = Date()
+        let details = suggestedDuplicateTitle(forTransactionID: sourceID, onAssetID: assetID, at: now)
+        let due = DueSettings(dueDate: SeriesLogic.advancedDueDate(for: source), messageDaysBefore: source.messageDaysBefore,
+                              messageDaysAfter: source.messageDaysAfter, deviceNotificationOn: source.deviceNotificationOn,
+                              deviceNotificationDaysBefore: source.deviceNotificationDaysBefore)
+        return try duplicateTransactionCore(source: source, asset: asset, details: details, amount: source.amount, date: now, kind: source.kind, payeeContactID: source.payeeContactID, notes: source.notes, recurrence: source.recurrence, due: due)
+    }
+
+    /// See `duplicateEvent(id:onAssetID:title:date:notes:recurrence:due:)` — same rule, mirrored for Transaction.
+    @discardableResult
+    func duplicateTransaction(id sourceID: UUID, onAssetID assetID: UUID, details: String, amount: Decimal, date: Date, kind: TransactionKind, payeeContactID: String?, notes: String, recurrence: RecurrenceInterval?, due: DueSettings) throws -> Transaction {
+        guard let asset = assets[assetID] else { throw AssetStoreError.assetNotFound(assetID) }
+        guard let source = asset.liveTransactions.first(where: { $0.id == sourceID }) else { throw AssetStoreError.transactionNotFound(sourceID) }
+        return try duplicateTransactionCore(source: source, asset: asset, details: details, amount: amount, date: date, kind: kind, payeeContactID: payeeContactID, notes: notes, recurrence: recurrence, due: due)
+    }
+
+    private func duplicateTransactionCore(source: Transaction, asset: Asset, details: String, amount: Decimal, date: Date, kind: TransactionKind, payeeContactID: String?, notes: String, recurrence: RecurrenceInterval?, due: DueSettings) throws -> Transaction {
+        if let limit = transactionCreationLimit, asset.liveTransactions.count >= limit {
+            throw AssetStoreError.freeTransactionLimitReached(limit: limit)
+        }
+        let now = Date()
+        var seriesID: UUID? = nil
+        if source.recurrence != nil {
+            if source.seriesID == nil {
+                source.seriesID = UUID()
+                source.touch(now)
+            }
+            seriesID = source.seriesID
+        }
+        let txn = Transaction(details: details, amount: amount, date: date, kind: kind, payeeContactID: payeeContactID, notes: notes, recurrence: recurrence,
+                              dueDate: due.dueDate, seriesID: seriesID, createdAt: now,
+                              messageDaysBefore: due.messageDaysBefore, messageDaysAfter: due.messageDaysAfter,
+                              deviceNotificationOn: due.deviceNotificationOn,
+                              deviceNotificationDaysBefore: due.deviceNotificationDaysBefore)
+        asset.transactions.append(txn)
+        asset.modifiedDate = now
+        logCreation(of: txn.id, kind: .transaction, owningAssetID: asset.id)
+        notificationScheduler?.requestResync(assets: allAssets)
+        markDirty()
+        return txn
+    }
+
 
     // MARK: - Private helpers
 

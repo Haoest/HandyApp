@@ -54,13 +54,15 @@ struct HomeTab: View {
                 }
             }
             .sheet(item: $eventToEdit) { resolved in
-                EventEditView(existing: resolved.event) { title, date, notes, recurrence in
-                    try? store.updateEvent(id: resolved.event.id, onAssetID: resolved.assetID, title: title, date: date, notes: notes, recurrence: recurrence)
+                let seriesCount = liveAsset(resolved.assetID).map { SeriesLogic.members(of: resolved.event, in: $0.liveEvents).count } ?? 1
+                EventEditView(existing: resolved.event, seriesCount: seriesCount) { title, date, notes, recurrence, due in
+                    try? store.updateEvent(id: resolved.event.id, onAssetID: resolved.assetID, title: title, date: date, notes: notes, recurrence: recurrence, due: due)
                 }
             }
             .sheet(item: $transactionToEdit) { resolved in
-                TransactionEditView(existing: resolved.transaction) { details, amount, date, kind, payeeID, notes, recurrence in
-                    try? store.updateTransaction(id: resolved.transaction.id, onAssetID: resolved.assetID, details: details, amount: amount, date: date, kind: kind, payeeContactID: payeeID, notes: notes, recurrence: recurrence)
+                let seriesCount = liveAsset(resolved.assetID).map { SeriesLogic.members(of: resolved.transaction, in: $0.liveTransactions).count } ?? 1
+                TransactionEditView(existing: resolved.transaction, seriesCount: seriesCount) { details, amount, date, kind, payeeID, notes, recurrence, due in
+                    try? store.updateTransaction(id: resolved.transaction.id, onAssetID: resolved.assetID, details: details, amount: amount, date: date, kind: kind, payeeContactID: payeeID, notes: notes, recurrence: recurrence, due: due)
                 }
             }
         }
@@ -95,11 +97,79 @@ struct HomeTab: View {
         Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? ""
     }
 
+    // MARK: - Due messages
+
+    private struct DueLine: Identifiable {
+        let id: UUID
+        let kindHost: String        // "event" | "transaction" — matches recordURL's kind
+        let assetID: UUID
+        let openRecordID: UUID      // newest series occurrence (== id for non-series records)
+        let assetName: String
+        let dueDate: Date
+        let isEvent: Bool
+    }
+
+    /// Due-window-active records, one line per series (the most urgent member's window,
+    /// linking to the newest occurrence), sorted most-overdue/soonest first.
+    private var dueLines: [DueLine] {
+        var lines: [DueLine] = []
+        for asset in store.allAssets {
+            lines += dueCandidates(from: asset.liveEvents, kindHost: "event", isEvent: true, assetID: asset.id, assetName: asset.name)
+            lines += dueCandidates(from: asset.liveTransactions, kindHost: "transaction", isEvent: false, assetID: asset.id, assetName: asset.name)
+        }
+        return lines.sorted {
+            $0.dueDate == $1.dueDate ? $0.id.uuidString < $1.id.uuidString : $0.dueDate < $1.dueDate
+        }
+    }
+
+    private func dueCandidates<R: SeriesRecord>(from records: [R], kindHost: String, isEvent: Bool, assetID: UUID, assetName: String) -> [DueLine] {
+        var bestByGroup: [String: (record: R, dueDate: Date)] = [:]
+        for record in records {
+            guard let dueDate = record.dueDate,
+                  SeriesLogic.isDueMessageActive(record),
+                  !SeriesLogic.isSuppressed(record, in: records) else { continue }
+            let key = record.seriesID?.uuidString ?? record.id.uuidString
+            if let existing = bestByGroup[key] {
+                let better = dueDate < existing.dueDate
+                    || (dueDate == existing.dueDate && record.id.uuidString < existing.record.id.uuidString)
+                if better { bestByGroup[key] = (record, dueDate) }
+            } else {
+                bestByGroup[key] = (record, dueDate)
+            }
+        }
+        return bestByGroup.values.map { entry in
+            let newest = SeriesLogic.newest(of: entry.record, in: records)
+            return DueLine(id: entry.record.id, kindHost: kindHost, assetID: assetID, openRecordID: newest.id,
+                           assetName: assetName, dueDate: entry.dueDate, isEvent: isEvent)
+        }
+    }
+
+    private func dueSentence(for line: DueLine) -> AttributedString {
+        let dateText = line.dueDate.formatted(date: .abbreviated, time: .omitted)
+        let noun = line.isEvent ? "event" : "transaction"
+        return plain("Asset \(line.assetName) has \(noun) due on \(dateText). ")
+            + linked("Open", to: recordURL(line.kindHost, line.assetID, line.openRecordID))
+    }
+
+    @ViewBuilder
+    private var dueSection: some View {
+        if !dueLines.isEmpty {
+            VStack(alignment: .leading, spacing: 14) {
+                ForEach(dueLines) { line in
+                    Text(dueSentence(for: line))
+                        .font(.callout)
+                        .foregroundStyle(palette.onBackground)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+        }
+    }
+
     // MARK: - Feed
 
     @ViewBuilder
     private var feed: some View {
-        if store.activityLog.isEmpty {
+        if store.activityLog.isEmpty && dueLines.isEmpty {
             ContentUnavailableView(
                 "No Activity",
                 systemImage: "waveform",
@@ -108,6 +178,7 @@ struct HomeTab: View {
         } else {
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 28) {
+                    dueSection
                     ForEach(days, id: \.day) { group in
                         VStack(alignment: .leading, spacing: 10) {
                             Text(Self.dayFormatter.string(from: group.day))

@@ -248,7 +248,7 @@ final class RecordTimestampTests: XCTestCase {
         let event = try store.addEvent(title: "Old", date: Date(), toAssetID: asset.id)
         event.modifyDate = .distantPast
 
-        try store.updateEvent(id: event.id, onAssetID: asset.id, title: "New", date: Date(), notes: "", recurrence: nil)
+        try store.updateEvent(id: event.id, onAssetID: asset.id, title: "New", date: Date(), notes: "", recurrence: nil, due: DueSettings())
 
         XCTAssertGreaterThan(event.modifyDate, .distantPast)
     }
@@ -259,7 +259,7 @@ final class RecordTimestampTests: XCTestCase {
         let txn = try store.addTransaction(details: "Old", amount: 10, date: Date(), kind: .expense, toAssetID: asset.id)
         txn.modifyDate = .distantPast
 
-        try store.updateTransaction(id: txn.id, onAssetID: asset.id, details: "New", amount: 20, date: Date(), kind: .income, payeeContactID: nil, notes: "", recurrence: nil)
+        try store.updateTransaction(id: txn.id, onAssetID: asset.id, details: "New", amount: 20, date: Date(), kind: .income, payeeContactID: nil, notes: "", recurrence: nil, due: DueSettings())
 
         XCTAssertGreaterThan(txn.modifyDate, .distantPast)
     }
@@ -295,7 +295,7 @@ final class RecordTimestampTests: XCTestCase {
         let edit = try store.addEvent(title: "Edit", date: Date(), toAssetID: asset.id)
         keep.modifyDate = .distantPast
 
-        try store.updateEvent(id: edit.id, onAssetID: asset.id, title: "Edited", date: Date(), notes: "", recurrence: nil)
+        try store.updateEvent(id: edit.id, onAssetID: asset.id, title: "Edited", date: Date(), notes: "", recurrence: nil, due: DueSettings())
 
         XCTAssertEqual(keep.modifyDate, .distantPast,
                        "a sibling event must not be stamped — per-record freshness is the point of the field")

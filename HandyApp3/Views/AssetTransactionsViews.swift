@@ -116,7 +116,7 @@ private struct TransactionItemRow: View {
             .contextMenu {
                 Button {
                     if store.hasTransactionCapacity(for: asset) {
-                        try? store.addTransaction(details: transaction.details, amount: transaction.amount, date: Date(), kind: transaction.kind, payeeContactID: transaction.payeeContactID, notes: transaction.notes, toAssetID: asset.id)
+                        try? store.duplicateTransaction(id: transaction.id, onAssetID: asset.id)
                     } else {
                         onLimitReached()
                     }
@@ -195,7 +195,8 @@ private struct TransactionRow: View {
 struct TransactionEditView: View {
     @Environment(\.dismiss) private var dismiss
     let existing: Transaction?
-    let onSave: (String, Decimal, Date, TransactionKind, String?, String, RecurrenceInterval?) -> Void
+    let seriesCount: Int
+    let onSave: (String, Decimal, Date, TransactionKind, String?, String, RecurrenceInterval?, DueSettings) -> Void
 
     @State private var details: String
     @State private var amountText: String
@@ -207,21 +208,31 @@ struct TransactionEditView: View {
     @State private var isRecurring: Bool
     @State private var interval: RecurrenceInterval
     @State private var contactPickerPresented = false
+    @State private var hasDueDate: Bool
+    @State private var dueDate: Date
+    @State private var messageDaysBefore: Int
+    @State private var messageDaysAfter: Int
+    @State private var deviceNotificationOn: Bool
+    @State private var deviceNotificationDaysBefore: Int
 
-    init(existing: Transaction? = nil, prefill: Transaction? = nil, initialKind: TransactionKind? = nil, onSave: @escaping (String, Decimal, Date, TransactionKind, String?, String, RecurrenceInterval?) -> Void) {
+    init(existing: Transaction? = nil, prefill: Transaction? = nil, prefillDetails: String? = nil, prefillDue: DueSettings? = nil,
+         initialKind: TransactionKind? = nil, seriesCount: Int = 1,
+         onSave: @escaping (String, Decimal, Date, TransactionKind, String?, String, RecurrenceInterval?, DueSettings) -> Void) {
         self.existing = existing
+        self.seriesCount = seriesCount
         self.onSave = onSave
         let source = existing ?? prefill
-        _details = State(initialValue: source?.details ?? "")
+        _details = State(initialValue: prefillDetails ?? source?.details ?? "")
         _amountText = State(initialValue: source.map { "\($0.amount)" } ?? "")
         _date = State(initialValue: existing?.date ?? Date())
         _kind = State(initialValue: source?.kind ?? initialKind ?? .expense)
         _payeeContactID = State(initialValue: source?.payeeContactID)
         _notes = State(initialValue: source?.notes ?? "")
-        // Recurrence intentionally doesn't carry over from a duplicate prefill —
-        // a copy starts non-recurring so duplication can't silently double reminders.
-        _isRecurring = State(initialValue: existing?.recurrence != nil)
-        _interval = State(initialValue: existing?.recurrence ?? .monthly)
+        // A series duplicate inherits recurrence from its source so the chain of occurrences
+        // keeps repeating; NotificationPlanner schedules reminders from only the newest
+        // occurrence of a series so this can't double them up.
+        _isRecurring = State(initialValue: source?.recurrence != nil)
+        _interval = State(initialValue: source?.recurrence ?? .monthly)
         let resolvedName: String
         if let id = source?.payeeContactID {
             resolvedName = ContactResolver.shared.displayName(for: id) ?? ""
@@ -229,6 +240,16 @@ struct TransactionEditView: View {
             resolvedName = ""
         }
         _payeeName = State(initialValue: resolvedName)
+        let due = existing.map {
+            DueSettings(dueDate: $0.dueDate, messageDaysBefore: $0.messageDaysBefore, messageDaysAfter: $0.messageDaysAfter,
+                       deviceNotificationOn: $0.deviceNotificationOn, deviceNotificationDaysBefore: $0.deviceNotificationDaysBefore)
+        } ?? prefillDue ?? DueSettings()
+        _hasDueDate = State(initialValue: due.dueDate != nil)
+        _dueDate = State(initialValue: due.dueDate ?? Date())
+        _messageDaysBefore = State(initialValue: due.messageDaysBefore)
+        _messageDaysAfter = State(initialValue: due.messageDaysAfter)
+        _deviceNotificationOn = State(initialValue: due.deviceNotificationOn)
+        _deviceNotificationDaysBefore = State(initialValue: due.deviceNotificationDaysBefore)
     }
 
     private var parsedAmount: Decimal? { Decimal(string: amountText) }
@@ -238,6 +259,11 @@ struct TransactionEditView: View {
             Form {
                 Section("Description") {
                     TextField("Description", text: $details)
+                    if seriesCount > 1 {
+                        Text("This series has ^[\(seriesCount) transaction](inflect: true)")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                    }
                 }
                 Section("Amount") {
                     TextField("0.00", text: $amountText)
@@ -249,7 +275,7 @@ struct TransactionEditView: View {
                     }
                     .pickerStyle(.segmented)
                 }
-                Section("Date") {
+                Section("Date of Transaction") {
                     DatePicker("", selection: $date, displayedComponents: .date)
                         .labelsHidden()
                 }
@@ -260,6 +286,19 @@ struct TransactionEditView: View {
                             ForEach(RecurrenceInterval.allCases, id: \.self) { option in
                                 Text(option.rawValue).tag(option)
                             }
+                        }
+                    }
+                }
+                Section("Due Date") {
+                    Toggle("Has Due Date", isOn: $hasDueDate)
+                    if hasDueDate {
+                        DatePicker("", selection: $dueDate, displayedComponents: .date)
+                            .labelsHidden()
+                        StepSlider(title: "Show message before due date", value: $messageDaysBefore)
+                        StepSlider(title: "Keep message after due date", value: $messageDaysAfter)
+                        Toggle("Device Notification", isOn: $deviceNotificationOn)
+                        if deviceNotificationOn {
+                            StepSlider(title: "Notify before due date", value: $deviceNotificationDaysBefore)
                         }
                     }
                 }
@@ -302,7 +341,10 @@ struct TransactionEditView: View {
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Save") {
                         let amount = parsedAmount ?? 0
-                        onSave(details.trimmingCharacters(in: .whitespaces), amount, date, kind, payeeContactID, notes.trimmingCharacters(in: .whitespaces), isRecurring ? interval : nil)
+                        let due = DueSettings(dueDate: hasDueDate ? dueDate : nil, messageDaysBefore: messageDaysBefore,
+                                              messageDaysAfter: messageDaysAfter, deviceNotificationOn: deviceNotificationOn,
+                                              deviceNotificationDaysBefore: deviceNotificationDaysBefore)
+                        onSave(details.trimmingCharacters(in: .whitespaces), amount, date, kind, payeeContactID, notes.trimmingCharacters(in: .whitespaces), isRecurring ? interval : nil, due)
                         dismiss()
                     }
                     .disabled(details.trimmingCharacters(in: .whitespaces).isEmpty || parsedAmount == nil)

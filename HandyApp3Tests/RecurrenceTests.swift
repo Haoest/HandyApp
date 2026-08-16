@@ -155,4 +155,58 @@ final class NotificationPlannerTests: XCTestCase {
         let plan = NotificationPlanner.plan(for: store.allAssets, now: date(2026, 1, 2), calendar: calendar)
         XCTAssertTrue(plan.isEmpty)
     }
+
+    // MARK: - Series: newest-occurrence-only recurring planning
+
+    func testOnlyNewestSeriesOccurrencePlansRecurringReminders() throws {
+        let source = try store.addEvent(title: "Rent", date: date(2026, 1, 1), recurrence: .monthly, toAssetID: assetID)
+        let copy = try store.duplicateEvent(id: source.id, onAssetID: assetID)
+        XCTAssertNotNil(source.seriesID)
+
+        let plan = NotificationPlanner.plan(for: store.allAssets, now: date(2026, 1, 2), calendar: calendar)
+
+        XCTAssertFalse(plan.contains { $0.identifier.contains(source.id.uuidString) })
+        XCTAssertTrue(plan.contains { $0.identifier.contains(copy.id.uuidString) })
+    }
+
+    func testNonSeriesRecurringRecordPlannedNormally() throws {
+        let event = try store.addEvent(title: "X", date: date(2026, 1, 1), recurrence: .monthly, toAssetID: assetID)
+        let plan = NotificationPlanner.plan(for: store.allAssets, now: date(2026, 1, 2), calendar: calendar)
+        XCTAssertTrue(plan.contains { $0.identifier.contains(event.id.uuidString) })
+    }
+
+    // MARK: - Due-date device notifications
+
+    func testDueNotificationIdentifierAndFireDate() throws {
+        let due = date(2026, 2, 1)
+        let event = try store.addEvent(title: "Inspection", date: date(2026, 1, 1),
+                                       due: DueSettings(dueDate: due, deviceNotificationOn: true, deviceNotificationDaysBefore: 7),
+                                       toAssetID: assetID)
+        let plan = NotificationPlanner.plan(for: store.allAssets, now: date(2026, 1, 2), calendar: calendar)
+        let due_ = plan.first { $0.identifier == "due-event-\(event.id.uuidString)" }
+        XCTAssertNotNil(due_)
+        XCTAssertEqual(due_?.fireDate, date(2026, 1, 25, hour: 9))
+    }
+
+    func testNoDueNotificationWhenDeviceNotificationOff() throws {
+        _ = try store.addEvent(title: "X", date: date(2026, 1, 1), due: DueSettings(dueDate: date(2026, 2, 1)), toAssetID: assetID)
+        let plan = NotificationPlanner.plan(for: store.allAssets, now: date(2026, 1, 2), calendar: calendar)
+        XCTAssertTrue(plan.allSatisfy { !$0.identifier.hasPrefix("due-") })
+    }
+
+    func testNoDueNotificationWhenNoDueDate() throws {
+        _ = try store.addEvent(title: "X", date: date(2026, 1, 1), due: DueSettings(deviceNotificationOn: true), toAssetID: assetID)
+        let plan = NotificationPlanner.plan(for: store.allAssets, now: date(2026, 1, 2), calendar: calendar)
+        XCTAssertTrue(plan.allSatisfy { !$0.identifier.hasPrefix("due-") })
+    }
+
+    func testSuppressedRecordProducesNoDueNotification() throws {
+        let source = try store.addEvent(title: "Rent", date: date(2026, 1, 1), recurrence: .monthly,
+                                        due: DueSettings(dueDate: date(2026, 2, 1), deviceNotificationOn: true),
+                                        toAssetID: assetID)
+        // A newer occurrence for the current period suppresses the older source's due reminder.
+        _ = try store.duplicateEvent(id: source.id, onAssetID: assetID)
+        let plan = NotificationPlanner.plan(for: store.allAssets, now: date(2026, 1, 2), calendar: calendar)
+        XCTAssertFalse(plan.contains { $0.identifier == "due-event-\(source.id.uuidString)" })
+    }
 }

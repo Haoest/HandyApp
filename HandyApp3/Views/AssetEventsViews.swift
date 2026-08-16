@@ -116,7 +116,7 @@ private struct EventItemRow: View {
             .contextMenu {
                 Button {
                     if store.hasEventCapacity(for: asset) {
-                        try? store.addEvent(title: event.title, date: Date(), notes: event.notes, toAssetID: asset.id)
+                        try? store.duplicateEvent(id: event.id, onAssetID: asset.id)
                     } else {
                         onLimitReached()
                     }
@@ -167,25 +167,45 @@ private struct EventRow: View {
 struct EventEditView: View {
     @Environment(\.dismiss) private var dismiss
     let existing: Event?
-    let onSave: (String, Date, String, RecurrenceInterval?) -> Void
+    let seriesCount: Int
+    let onSave: (String, Date, String, RecurrenceInterval?, DueSettings) -> Void
 
     @State private var title: String
     @State private var date: Date
     @State private var notes: String
     @State private var isRecurring: Bool
     @State private var interval: RecurrenceInterval
+    @State private var hasDueDate: Bool
+    @State private var dueDate: Date
+    @State private var messageDaysBefore: Int
+    @State private var messageDaysAfter: Int
+    @State private var deviceNotificationOn: Bool
+    @State private var deviceNotificationDaysBefore: Int
 
-    init(existing: Event? = nil, prefill: Event? = nil, onSave: @escaping (String, Date, String, RecurrenceInterval?) -> Void) {
+    init(existing: Event? = nil, prefill: Event? = nil, prefillTitle: String? = nil, prefillDue: DueSettings? = nil,
+         seriesCount: Int = 1, onSave: @escaping (String, Date, String, RecurrenceInterval?, DueSettings) -> Void) {
         self.existing = existing
+        self.seriesCount = seriesCount
         self.onSave = onSave
         let source = existing ?? prefill
-        _title = State(initialValue: source?.title ?? "")
+        _title = State(initialValue: prefillTitle ?? source?.title ?? "")
         _date = State(initialValue: existing?.date ?? Date())
         _notes = State(initialValue: source?.notes ?? "")
-        // Recurrence intentionally doesn't carry over from a duplicate prefill —
-        // a copy starts non-recurring so duplication can't silently double reminders.
-        _isRecurring = State(initialValue: existing?.recurrence != nil)
-        _interval = State(initialValue: existing?.recurrence ?? .monthly)
+        // A series duplicate inherits recurrence from its source so the chain of occurrences
+        // keeps repeating; NotificationPlanner schedules reminders from only the newest
+        // occurrence of a series so this can't double them up.
+        _isRecurring = State(initialValue: source?.recurrence != nil)
+        _interval = State(initialValue: source?.recurrence ?? .monthly)
+        let due = existing.map {
+            DueSettings(dueDate: $0.dueDate, messageDaysBefore: $0.messageDaysBefore, messageDaysAfter: $0.messageDaysAfter,
+                       deviceNotificationOn: $0.deviceNotificationOn, deviceNotificationDaysBefore: $0.deviceNotificationDaysBefore)
+        } ?? prefillDue ?? DueSettings()
+        _hasDueDate = State(initialValue: due.dueDate != nil)
+        _dueDate = State(initialValue: due.dueDate ?? Date())
+        _messageDaysBefore = State(initialValue: due.messageDaysBefore)
+        _messageDaysAfter = State(initialValue: due.messageDaysAfter)
+        _deviceNotificationOn = State(initialValue: due.deviceNotificationOn)
+        _deviceNotificationDaysBefore = State(initialValue: due.deviceNotificationDaysBefore)
     }
 
     var body: some View {
@@ -193,8 +213,13 @@ struct EventEditView: View {
             Form {
                 Section("Title") {
                     TextField("Event title", text: $title)
+                    if seriesCount > 1 {
+                        Text("This series has ^[\(seriesCount) event](inflect: true)")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                    }
                 }
-                Section("Date") {
+                Section("Date of Event") {
                     DatePicker("", selection: $date, displayedComponents: .date)
                         .labelsHidden()
                 }
@@ -205,6 +230,19 @@ struct EventEditView: View {
                             ForEach(RecurrenceInterval.allCases, id: \.self) { option in
                                 Text(option.rawValue).tag(option)
                             }
+                        }
+                    }
+                }
+                Section("Due Date") {
+                    Toggle("Has Due Date", isOn: $hasDueDate)
+                    if hasDueDate {
+                        DatePicker("", selection: $dueDate, displayedComponents: .date)
+                            .labelsHidden()
+                        StepSlider(title: "Show message before due date", value: $messageDaysBefore)
+                        StepSlider(title: "Keep message after due date", value: $messageDaysAfter)
+                        Toggle("Device Notification", isOn: $deviceNotificationOn)
+                        if deviceNotificationOn {
+                            StepSlider(title: "Notify before due date", value: $deviceNotificationDaysBefore)
                         }
                     }
                 }
@@ -221,7 +259,10 @@ struct EventEditView: View {
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Save") {
-                        onSave(title.trimmingCharacters(in: .whitespaces), date, notes.trimmingCharacters(in: .whitespaces), isRecurring ? interval : nil)
+                        let due = DueSettings(dueDate: hasDueDate ? dueDate : nil, messageDaysBefore: messageDaysBefore,
+                                              messageDaysAfter: messageDaysAfter, deviceNotificationOn: deviceNotificationOn,
+                                              deviceNotificationDaysBefore: deviceNotificationDaysBefore)
+                        onSave(title.trimmingCharacters(in: .whitespaces), date, notes.trimmingCharacters(in: .whitespaces), isRecurring ? interval : nil, due)
                         dismiss()
                     }
                     .disabled(title.trimmingCharacters(in: .whitespaces).isEmpty)

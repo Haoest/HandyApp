@@ -96,7 +96,7 @@ final class AttachmentStoreTests: XCTestCase {
     func testUpdateEventBumpsModifiedDate() throws {
         let event = try store.addEvent(title: "Old", date: Date(), toAssetID: assetID)
         let before = store.assets[assetID]!.modifiedDate
-        try store.updateEvent(id: event.id, onAssetID: assetID, title: "New", date: Date(), notes: "note", recurrence: nil)
+        try store.updateEvent(id: event.id, onAssetID: assetID, title: "New", date: Date(), notes: "note", recurrence: nil, due: DueSettings())
         XCTAssertEqual(store.assets[assetID]!.events.first?.title, "New")
         XCTAssertGreaterThan(store.assets[assetID]!.modifiedDate, before)
     }
@@ -104,9 +104,9 @@ final class AttachmentStoreTests: XCTestCase {
     func testEventRecurrenceRoundTrip() throws {
         let event = try store.addEvent(title: "Service", date: Date(), notes: "", recurrence: .monthly, toAssetID: assetID)
         XCTAssertEqual(store.assets[assetID]!.events.first?.recurrence, .monthly)
-        try store.updateEvent(id: event.id, onAssetID: assetID, title: "Service", date: Date(), notes: "", recurrence: .annually)
+        try store.updateEvent(id: event.id, onAssetID: assetID, title: "Service", date: Date(), notes: "", recurrence: .annually, due: DueSettings())
         XCTAssertEqual(store.assets[assetID]!.events.first?.recurrence, .annually)
-        try store.updateEvent(id: event.id, onAssetID: assetID, title: "Service", date: Date(), notes: "", recurrence: nil)
+        try store.updateEvent(id: event.id, onAssetID: assetID, title: "Service", date: Date(), notes: "", recurrence: nil, due: DueSettings())
         XCTAssertNil(store.assets[assetID]!.events.first?.recurrence)
     }
 
@@ -145,7 +145,7 @@ final class AttachmentStoreTests: XCTestCase {
     func testUpdateEventOnTombstonedEventThrows() throws {
         let event = try store.addEvent(title: "X", date: Date(), toAssetID: assetID)
         try store.removeEvent(id: event.id, fromAssetID: assetID)
-        XCTAssertThrowsError(try store.updateEvent(id: event.id, onAssetID: assetID, title: "Y", date: Date(), notes: "", recurrence: nil)) { error in
+        XCTAssertThrowsError(try store.updateEvent(id: event.id, onAssetID: assetID, title: "Y", date: Date(), notes: "", recurrence: nil, due: DueSettings())) { error in
             guard case AssetStoreError.eventNotFound = error else { return XCTFail("Expected eventNotFound") }
         }
     }
@@ -173,7 +173,7 @@ final class AttachmentStoreTests: XCTestCase {
     func testUpdateTransactionBumpsModifiedDate() throws {
         let txn = try store.addTransaction(details: "Old", amount: 10, date: Date(), kind: .expense, toAssetID: assetID)
         let before = store.assets[assetID]!.modifiedDate
-        try store.updateTransaction(id: txn.id, onAssetID: assetID, details: "New", amount: 20, date: Date(), kind: .income, payeeContactID: nil, notes: "", recurrence: nil)
+        try store.updateTransaction(id: txn.id, onAssetID: assetID, details: "New", amount: 20, date: Date(), kind: .income, payeeContactID: nil, notes: "", recurrence: nil, due: DueSettings())
         XCTAssertEqual(store.assets[assetID]!.transactions.first?.details, "New")
         XCTAssertGreaterThan(store.assets[assetID]!.modifiedDate, before)
     }
@@ -181,7 +181,7 @@ final class AttachmentStoreTests: XCTestCase {
     func testTransactionRecurrenceRoundTrip() throws {
         let txn = try store.addTransaction(details: "Pool", amount: 100, date: Date(), kind: .expense, recurrence: .quarterly, toAssetID: assetID)
         XCTAssertEqual(store.assets[assetID]!.transactions.first?.recurrence, .quarterly)
-        try store.updateTransaction(id: txn.id, onAssetID: assetID, details: "Pool", amount: 100, date: Date(), kind: .expense, payeeContactID: nil, notes: "", recurrence: nil)
+        try store.updateTransaction(id: txn.id, onAssetID: assetID, details: "Pool", amount: 100, date: Date(), kind: .expense, payeeContactID: nil, notes: "", recurrence: nil, due: DueSettings())
         XCTAssertNil(store.assets[assetID]!.transactions.first?.recurrence)
     }
 
@@ -220,7 +220,7 @@ final class AttachmentStoreTests: XCTestCase {
     func testUpdateTransactionOnTombstonedTransactionThrows() throws {
         let txn = try store.addTransaction(details: "X", amount: 5, date: Date(), kind: .expense, toAssetID: assetID)
         try store.removeTransaction(id: txn.id, fromAssetID: assetID)
-        XCTAssertThrowsError(try store.updateTransaction(id: txn.id, onAssetID: assetID, details: "Y", amount: 1, date: Date(), kind: .expense, payeeContactID: nil, notes: "", recurrence: nil)) { error in
+        XCTAssertThrowsError(try store.updateTransaction(id: txn.id, onAssetID: assetID, details: "Y", amount: 1, date: Date(), kind: .expense, payeeContactID: nil, notes: "", recurrence: nil, due: DueSettings())) { error in
             guard case AssetStoreError.transactionNotFound = error else { return XCTFail("Expected transactionNotFound") }
         }
     }
