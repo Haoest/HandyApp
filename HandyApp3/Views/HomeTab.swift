@@ -13,6 +13,8 @@ struct HomeTab: View {
     @State private var pushedAsset: PushedAsset?
     @State private var eventToEdit: ResolvedEvent?
     @State private var transactionToEdit: ResolvedTransaction?
+    @State private var eventToDuplicate: ResolvedEvent?
+    @State private var transactionToDuplicate: ResolvedTransaction?
     @State private var visibleDayCount = HomeActivityDigest.pageSize
 
     private var days: [HomeDay] {
@@ -63,6 +65,26 @@ struct HomeTab: View {
                 let seriesCount = liveAsset(resolved.assetID).map { SeriesLogic.members(of: resolved.transaction, in: $0.liveTransactions).count } ?? 1
                 TransactionEditView(existing: resolved.transaction, seriesCount: seriesCount) { details, amount, date, kind, payeeID, notes, recurrence, due in
                     try? store.updateTransaction(id: resolved.transaction.id, onAssetID: resolved.assetID, details: details, amount: amount, date: date, kind: kind, payeeContactID: payeeID, notes: notes, recurrence: recurrence, due: due)
+                }
+            }
+            .sheet(item: $eventToDuplicate) { resolved in
+                let source = resolved.event
+                EventEditView(
+                    prefill: source,
+                    prefillTitle: store.suggestedDuplicateTitle(forEventID: source.id, onAssetID: resolved.assetID),
+                    prefillDue: DueSettings(dueDate: SeriesLogic.advancedDueDate(for: source), messageDaysBefore: source.messageDaysBefore, messageDaysAfter: source.messageDaysAfter, deviceNotificationOn: source.deviceNotificationOn, deviceNotificationDaysBefore: source.deviceNotificationDaysBefore)
+                ) { title, date, notes, recurrence, due in
+                    try? store.duplicateEvent(id: source.id, onAssetID: resolved.assetID, title: title, date: date, notes: notes, recurrence: recurrence, due: due)
+                }
+            }
+            .sheet(item: $transactionToDuplicate) { resolved in
+                let source = resolved.transaction
+                TransactionEditView(
+                    prefill: source,
+                    prefillDetails: store.suggestedDuplicateTitle(forTransactionID: source.id, onAssetID: resolved.assetID),
+                    prefillDue: DueSettings(dueDate: SeriesLogic.advancedDueDate(for: source), messageDaysBefore: source.messageDaysBefore, messageDaysAfter: source.messageDaysAfter, deviceNotificationOn: source.deviceNotificationOn, deviceNotificationDaysBefore: source.deviceNotificationDaysBefore)
+                ) { details, amount, date, kind, payeeID, notes, recurrence, due in
+                    try? store.duplicateTransaction(id: source.id, onAssetID: resolved.assetID, details: details, amount: amount, date: date, kind: kind, payeeContactID: payeeID, notes: notes, recurrence: recurrence, due: due)
                 }
             }
         }
@@ -147,8 +169,10 @@ struct HomeTab: View {
     private func dueSentence(for line: DueLine) -> AttributedString {
         let dateText = line.dueDate.formatted(date: .abbreviated, time: .omitted)
         let noun = line.isEvent ? "event" : "transaction"
-        return plain("Asset \(line.assetName) has \(noun) due on \(dateText). ")
-            + linked("Open", to: recordURL(line.kindHost, line.assetID, line.openRecordID))
+        return plain("Asset ")
+            + linked(line.assetName, to: assetURL(line.assetID, section: line.isEvent ? .events : .transactions))
+            + plain(" has \(noun) due on \(dateText). ")
+            + linked("Add New", to: recordURL(line.kindHost, line.assetID, line.openRecordID, action: "duplicate"))
     }
 
     @ViewBuilder
@@ -331,8 +355,11 @@ struct HomeTab: View {
         return URL(string: "handylog://asset/\(id.uuidString)")
     }
 
-    private func recordURL(_ kind: String, _ assetID: UUID, _ recordID: UUID) -> URL? {
-        URL(string: "handylog://\(kind)/\(assetID.uuidString)/\(recordID.uuidString)")
+    /// `action` (e.g. `"duplicate"`) is folded into the host as `<kind>-<action>` so
+    /// `handleLink` can route it to a different presentation than the plain edit sheet.
+    private func recordURL(_ kind: String, _ assetID: UUID, _ recordID: UUID, action: String? = nil) -> URL? {
+        let host = action.map { "\(kind)-\($0)" } ?? kind
+        return URL(string: "handylog://\(host)/\(assetID.uuidString)/\(recordID.uuidString)")
     }
 
     /// `zip` for optionals: non-nil only when both are.
@@ -362,6 +389,16 @@ struct HomeTab: View {
             if ids.count == 2, let asset = liveAsset(ids[0]),
                let txn = asset.liveTransactions.first(where: { $0.id == ids[1] }) {
                 transactionToEdit = ResolvedTransaction(transaction: txn, assetID: asset.id)
+            }
+        case "event-duplicate":
+            if ids.count == 2, let asset = liveAsset(ids[0]),
+               let event = asset.liveEvents.first(where: { $0.id == ids[1] }) {
+                eventToDuplicate = ResolvedEvent(event: event, assetID: asset.id)
+            }
+        case "transaction-duplicate":
+            if ids.count == 2, let asset = liveAsset(ids[0]),
+               let txn = asset.liveTransactions.first(where: { $0.id == ids[1] }) {
+                transactionToDuplicate = ResolvedTransaction(transaction: txn, assetID: asset.id)
             }
         default:
             break
