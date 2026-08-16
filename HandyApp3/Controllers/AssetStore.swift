@@ -847,7 +847,8 @@ final class AssetStore {
     /// Suffixed title a duplicate of `sourceID` would get if created at `date`, per
     /// `SeriesLogic.duplicateTitle`. Non-recurring sources return the title verbatim — series
     /// membership (and therefore the suffix) only applies to duplicates of recurring records.
-    /// Used both to prefill the "Duplicate…" sheet and internally by the immediate duplicate.
+    /// Used both to prefill the "Log & Edit"/"Duplicate & Edit" sheet and internally by the
+    /// immediate "Log Now"/"Duplicate" action.
     func suggestedDuplicateTitle(forEventID id: UUID, onAssetID assetID: UUID, at date: Date = Date()) -> String {
         guard let asset = assets[assetID], let source = asset.liveEvents.first(where: { $0.id == id }) else { return "" }
         guard source.recurrence != nil else { return source.title }
@@ -857,7 +858,7 @@ final class AssetStore {
         return SeriesLogic.duplicateTitle(source: source.title, seriesTitles: siblingTitles, creationDate: date)
     }
 
-    /// Immediate duplicate (context-menu "Duplicate"): date = now, title = suggested suffix,
+    /// Immediate duplicate (context-menu "Log Now"/"Duplicate"): date = now, title = suggested suffix,
     /// everything else copied from the source. If the source is recurring, the copy inherits
     /// recurrence and joins (or starts) the source's series.
     @discardableResult
@@ -872,10 +873,10 @@ final class AssetStore {
         return try duplicateEventCore(source: source, asset: asset, title: title, date: now, notes: source.notes, recurrence: source.recurrence, due: due)
     }
 
-    /// "Duplicate…" sheet save: field values come from the form verbatim (the sheet was
-    /// prefilled with `suggestedDuplicateTitle`/the advanced due date, but the user may have
-    /// edited them) — no re-suffixing here. Series assignment still happens at save time, so
-    /// cancelling the sheet leaves the source untouched.
+    /// "Log & Edit"/"Duplicate & Edit" sheet save: field values come from the form verbatim
+    /// (the sheet was prefilled with `suggestedDuplicateTitle`/the advanced due date, but the
+    /// user may have edited them) — no re-suffixing here. Series assignment still happens at
+    /// save time, so cancelling the sheet leaves the source untouched.
     @discardableResult
     func duplicateEvent(id sourceID: UUID, onAssetID assetID: UUID, title: String, date: Date, notes: String, recurrence: RecurrenceInterval?, due: DueSettings) throws -> Event {
         guard let asset = assets[assetID] else { throw AssetStoreError.assetNotFound(assetID) }

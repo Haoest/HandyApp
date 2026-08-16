@@ -129,6 +129,9 @@ struct HomeTab: View {
         let assetName: String
         let dueDate: Date
         let isEvent: Bool
+        /// Whether the record duplicating `openRecordID` would join/extend a series — mirrors
+        /// the row context menu's "Log …" vs "Duplicate …" wording choice.
+        let isSeriesEligible: Bool
     }
 
     /// Due-window-active records, one line per series (the most urgent member's window,
@@ -162,17 +165,19 @@ struct HomeTab: View {
         return bestByGroup.values.map { entry in
             let newest = SeriesLogic.newest(of: entry.record, in: records)
             return DueLine(id: entry.record.id, kindHost: kindHost, assetID: assetID, openRecordID: newest.id,
-                           assetName: assetName, dueDate: entry.dueDate, isEvent: isEvent)
+                           assetName: assetName, dueDate: entry.dueDate, isEvent: isEvent,
+                           isSeriesEligible: newest.recurrence != nil)
         }
     }
 
     private func dueSentence(for line: DueLine) -> AttributedString {
         let dateText = line.dueDate.formatted(date: .abbreviated, time: .omitted)
         let noun = line.isEvent ? "event" : "transaction"
+        let actionTitle = line.isSeriesEligible ? String(localized: "Log & Edit") : String(localized: "Duplicate & Edit")
         return plain("Asset ")
             + linked(line.assetName, to: assetURL(line.assetID, section: line.isEvent ? .events : .transactions))
             + plain(" has \(noun) due on \(dateText). ")
-            + linked("Add New", to: recordURL(line.kindHost, line.assetID, line.openRecordID, action: "duplicate"))
+            + linked(actionTitle, to: recordURL(line.kindHost, line.assetID, line.openRecordID, action: "duplicate"))
     }
 
     @ViewBuilder

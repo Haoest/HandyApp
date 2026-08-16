@@ -102,6 +102,11 @@ private struct EventItemRow: View {
     @Binding var sheetMode: EventSheetMode?
     let onLimitReached: () -> Void
 
+    /// Recurring events join (or start) a series when duplicated — "Log" wording signals
+    /// that, versus a plain "Duplicate" for a one-off copy.
+    private var quickActionTitle: LocalizedStringKey { event.recurrence != nil ? "Log Now" : "Duplicate" }
+    private var reviewActionTitle: LocalizedStringKey { event.recurrence != nil ? "Log & Edit" : "Duplicate & Edit" }
+
     var body: some View {
         EventRow(event: event)
             .contentShape(Rectangle())
@@ -121,7 +126,7 @@ private struct EventItemRow: View {
                         onLimitReached()
                     }
                 } label: {
-                    Label("Duplicate", systemImage: "plus.square.on.square")
+                    Label(quickActionTitle, systemImage: "plus.square.on.square")
                 }
                 Button {
                     if store.hasEventCapacity(for: asset) {
@@ -130,7 +135,7 @@ private struct EventItemRow: View {
                         onLimitReached()
                     }
                 } label: {
-                    Label("Duplicate…", systemImage: "square.and.pencil")
+                    Label(reviewActionTitle, systemImage: "square.and.pencil")
                 }
             }
     }

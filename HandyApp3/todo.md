@@ -6,7 +6,6 @@
 
 need to refine how notification works. have it open the transaction / event screen with information filled? post event or transaction to home for quick action?
 
-data import should merge with live data instead of replace
 
 revisit paywall ensure transaction and event has a limited free count
 
@@ -16,7 +15,6 @@ revisit paywall ensure transaction and event has a limited free count
 - rework combo list, allow custom text values to be entered, and the new values becomes pre-selectable for the next 
 combo list field
 
-- build on recurring event/transaction notification
 
 - definition deletes (composite types, combo lists, combo list option removal) don't propagate over sync — a
 peer's still-live copy resurrects them on the next merge, since there's no tombstone on those two DTOs. Needs the
@@ -45,4 +43,6 @@ tombstone in Trash, restorable, instead of a prompt~
 -break up store.json
 -rework category purge
 - add + buttons to event/transaction/photo fields
+- build on recurring event/transaction notification
 
+- data import should merge with live data instead of replace

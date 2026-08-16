@@ -1343,29 +1343,6 @@
         }
       }
     },
-    "Duplicate…" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Duplicar…"
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Dupliquer…"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "复制…"
-          }
-        }
-      }
-    },
     "Edit Event" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -3628,6 +3605,78 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "设置到期日"
+          }
+        }
+      }
+    },
+    "Log Now" : {
+      "comment" : "Context-menu action that logs the next occurrence of a recurring event/transaction into its series, immediately, with no review sheet.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Registrar ahora"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Consigner maintenant"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "立即记录"
+          }
+        }
+      }
+    },
+    "Log & Edit" : {
+      "comment" : "Context-menu action (and home-tab due-message action) that opens a prefilled sheet to log the next occurrence of a recurring event/transaction into its series before saving.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Registrar y editar"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Consigner et modifier"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "记录并编辑"
+          }
+        }
+      }
+    },
+    "Duplicate & Edit" : {
+      "comment" : "Context-menu action (and home-tab due-message action) that opens a prefilled sheet to duplicate a non-recurring event/transaction before saving. Replaces the earlier 'Duplicate…' wording.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Duplicar y editar"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dupliquer et modifier"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "复制并编辑"
           }
         }
       }

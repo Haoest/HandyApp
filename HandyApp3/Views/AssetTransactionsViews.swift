@@ -102,6 +102,11 @@ private struct TransactionItemRow: View {
     @Binding var sheetMode: TransactionSheetMode?
     let onLimitReached: () -> Void
 
+    /// Recurring transactions join (or start) a series when duplicated — "Log" wording signals
+    /// that, versus a plain "Duplicate" for a one-off copy.
+    private var quickActionTitle: LocalizedStringKey { transaction.recurrence != nil ? "Log Now" : "Duplicate" }
+    private var reviewActionTitle: LocalizedStringKey { transaction.recurrence != nil ? "Log & Edit" : "Duplicate & Edit" }
+
     var body: some View {
         TransactionRow(transaction: transaction)
             .contentShape(Rectangle())
@@ -121,7 +126,7 @@ private struct TransactionItemRow: View {
                         onLimitReached()
                     }
                 } label: {
-                    Label("Duplicate", systemImage: "plus.square.on.square")
+                    Label(quickActionTitle, systemImage: "plus.square.on.square")
                 }
                 Button {
                     if store.hasTransactionCapacity(for: asset) {
@@ -130,7 +135,7 @@ private struct TransactionItemRow: View {
                         onLimitReached()
                     }
                 } label: {
-                    Label("Duplicate…", systemImage: "square.and.pencil")
+                    Label(reviewActionTitle, systemImage: "square.and.pencil")
                 }
             }
     }
