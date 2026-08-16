@@ -351,12 +351,30 @@ final class SyncRelayTests: XCTestCase {
         let cat = try storeA.createCategory(name: "Vehicle")
         let asset = try storeA.createAsset(name: "Car", categoryID: cat.id)
         _ = try storeA.addPhoto(imageData: Data("full".utf8), thumbnailData: Data("thumb".utf8), toAssetID: asset.id)
+        // Backdate the asset's own content stamps BEFORE B ever sees it, not just deletedAt
+        // below — the purge gate (SnapshotReconciler's join-time gate and
+        // AssetStore.purgeHardDeleted's mirror of it, Asset.isProtectedFromAutoPurge) refuses to
+        // strip a record whose own content is newer than its delete decision, so both stamps
+        // need backdating for the purge itself to proceed. But backdating only AFTER B has
+        // already pulled the live (real-"now") copy creates a temporally inconsistent fixture —
+        // "created just now, deleted 15 days ago" — where B's genuinely-untouched copy still
+        // carries a real-"now" headModifyDate that then outranks A's backdated one in
+        // joinAsset's head-pick, and the delete never propagates to B at all. Backdating before
+        // the first push keeps the fictional timeline internally consistent (created before
+        // deleted) — B's relayed copy inherits the same old stamps, so A's later (but still
+        // backdated) delete correctly outranks it.
+        let deleteInstant = Date().addingTimeInterval(-15 * 86_400)
+        let touchInstant = deleteInstant.addingTimeInterval(-100)
+        asset.modifiedDate = touchInstant
+        asset.headModifyDate = touchInstant
         storeA.save(to: rootA)
         relay.push("A"); relay.pull("B")
         XCTAssertTrue(storeB.load(from: rootB), "B has the full asset, offline from here on")
 
         try storeA.softDeleteAsset(id: asset.id)
-        asset.deletedAt = Date().addingTimeInterval(-15 * 86_400)
+        asset.deletedAt = deleteInstant
+        asset.modifiedDate = deleteInstant
+        asset.headModifyDate = deleteInstant
         storeA.purgeHardDeleted(olderThan: TimeInterval(AppPreference.DaysToRetainDeletedItems) * 86_400)
         XCTAssertTrue(storeA.assets[asset.id]?.isPurged ?? false, "sanity check: A actually purged it")
         storeA.save(to: rootA)
@@ -380,12 +398,23 @@ final class SyncRelayTests: XCTestCase {
         let cat = try storeA.createCategory(name: "Appliances", propertyTemplates: [
             AssetProperty(definition: PropertyDefinition(name: "Brand", type: .basic(.text)))
         ])
+        // Backdate modifyDate (header + every template) BEFORE B ever sees it — see the
+        // identical comment in testOfflineDeviceWithFullCopyEndsUpStrippedAfterSyncingAPurge for
+        // why backdating only after the initial push breaks joinCategory's header pick instead
+        // of fixing anything. AssetCategory.isProtectedFromAutoPurge folds in propertyTemplates'
+        // modifyDates too (addTemplateProperty never bumps the category's own modifyDate).
+        let deleteInstant = Date().addingTimeInterval(-15 * 86_400)
+        let touchInstant = deleteInstant.addingTimeInterval(-100)
+        cat.modifyDate = touchInstant
+        for template in cat.propertyTemplates { template.modifyDate = touchInstant }
         storeA.save(to: rootA)
         relay.push("A"); relay.pull("B")
         XCTAssertTrue(storeB.load(from: rootB), "B has the full category, offline from here on")
 
         try storeA.softDeleteCategory(id: cat.id)
-        cat.deletedAt = Date().addingTimeInterval(-15 * 86_400)
+        cat.deletedAt = deleteInstant
+        cat.modifyDate = deleteInstant
+        for template in cat.propertyTemplates { template.modifyDate = deleteInstant }
         storeA.purgeHardDeleted(olderThan: TimeInterval(AppPreference.DaysToRetainDeletedItems) * 86_400)
         XCTAssertTrue(storeA.categories[cat.id]?.isPurged ?? false, "sanity check: A actually purged it")
         storeA.save(to: rootA)

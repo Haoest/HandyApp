@@ -259,6 +259,51 @@ final class ApplyInPlaceTests: XCTestCase {
         XCTAssertEqual(cat.name, "")
     }
 
+    /// Pins the fix to a real bug: `applyInPlace`'s existing-record branch used to never assign
+    /// `existing.isPurged` at all, so a merged snapshot that un-purges a record (the new
+    /// `SnapshotReconciler` gate can do this — see `joinAsset`'s doc comment) would leave this
+    /// device's copy stuck `isPurged == true` forever, hidden from `allAssets`, even though the
+    /// merge result says it's live again.
+    func testIncomingUnPurgedAssetClearsIsPurgedAndRefillsContent() throws {
+        let cat = try store.createCategory(name: "Vehicle")
+        let asset = try store.createAsset(name: "Car", categoryID: cat.id)
+        store.purgeInPlace(asset)
+        XCTAssertTrue(asset.isPurged, "sanity check")
+        XCTAssertNotNil(asset.purgedAt, "sanity check")
+
+        let snap = snapshot(categories: [categoryDTO(id: cat.id, name: cat.name)], assets: [
+            assetDTO(id: asset.id, name: "Car", categoryID: cat.id, isDeleted: false,
+                    baseProperties: [property(name: "Color")], isPurged: false),
+        ])
+        store.applyInPlace(snap)
+
+        XCTAssertTrue(store.assets[asset.id] === asset, "still the same object — mutated, not replaced")
+        XCTAssertFalse(asset.isPurged)
+        XCTAssertNil(asset.purgedAt)
+        XCTAssertFalse(store.allAssets.isEmpty, "an un-purged asset must be visible again")
+        XCTAssertEqual(asset.baseProperties.count, 1, "content must be refilled from the merged snapshot")
+    }
+
+    /// Category twin of `testIncomingUnPurgedAssetClearsIsPurgedAndRefillsContent`.
+    func testIncomingUnPurgedCategoryClearsIsPurgedAndRestoresName() throws {
+        let cat = try store.createCategory(name: "Appliances")
+        store.purgeCategoryInPlace(cat)
+        XCTAssertTrue(cat.isPurged, "sanity check")
+        XCTAssertEqual(cat.name, "", "sanity check")
+
+        let snap = snapshot(categories: [
+            categoryDTO(id: cat.id, name: "Appliances",
+                       propertyTemplates: [property(name: "Brand")], isDeleted: false, isPurged: false),
+        ])
+        store.applyInPlace(snap)
+
+        XCTAssertTrue(store.categories[cat.id] === cat, "still the same object — mutated, not replaced")
+        XCTAssertFalse(cat.isPurged)
+        XCTAssertNil(cat.purgedAt)
+        XCTAssertEqual(cat.name, "Appliances", "name must be restored, not left blanked")
+        XCTAssertEqual(cat.propertyTemplates.count, 1)
+    }
+
     // MARK: - No-op self-merge produces zero churn
 
     func testApplyingCurrentStateBackToItselfChangesNothingObservable() throws {

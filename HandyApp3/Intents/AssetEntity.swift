@@ -25,7 +25,7 @@ struct AssetEntityQuery: EntityStringQuery {
     func entities(for identifiers: [UUID]) async throws -> [AssetEntity] {
         let store = AppDependencies.shared.store
         return identifiers.compactMap { store.assets[$0] }
-            .filter { !$0.isDeleted }
+            .filter { !$0.isDeleted && !$0.isPurged }
             .map(AssetEntity.init)
     }
 

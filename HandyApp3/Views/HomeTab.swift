@@ -43,7 +43,7 @@ struct HomeTab: View {
             .toolbarColorScheme(.light, for: .navigationBar)
             .toolbarBackground(.hidden, for: .navigationBar)
             .navigationDestination(item: $pushedAsset) { pushed in
-                if let asset = store.assets[pushed.id], !asset.isDeleted {
+                if let asset = store.assets[pushed.id], !asset.isDeleted, !asset.isPurged {
                     AssetDetailView(asset: asset, initialAnchor: pushed.section)
                 } else {
                     ContentUnavailableView(
@@ -234,7 +234,7 @@ struct HomeTab: View {
     }
 
     private func liveAsset(_ id: UUID) -> Asset? {
-        guard let asset = store.assets[id], !asset.isDeleted else { return nil }
+        guard let asset = store.assets[id], !asset.isDeleted, !asset.isPurged else { return nil }
         return asset
     }
 

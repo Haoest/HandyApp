@@ -61,7 +61,13 @@ final class CategoryDeletionTests: XCTestCase {
     func testPurgeRemovesUnreferencedCategoryPastRetention() throws {
         let cat = try makeCategory()
         try store.softDeleteCategory(id: cat.id)
-        cat.deletedAt = Date().addingTimeInterval(-15 * 86_400) // 15 days ago
+        // Backdate modifyDate along with deletedAt — AssetCategory.isProtectedFromAutoPurge
+        // (mirroring SnapshotReconciler's sync-merge gate) refuses to purge a category whose
+        // own content is newer than its delete decision; leaving modifyDate at "now" would make
+        // this look like an edit after the delete and the purge below would be refused.
+        let backdate = Date().addingTimeInterval(-15 * 86_400) // 15 days ago
+        cat.deletedAt = backdate
+        cat.modifyDate = backdate
         store.purgeHardDeleted(olderThan: TimeInterval(AppPreference.DaysToRetainDeletedItems) * 86_400)
         XCTAssertFalse(store.deletedCategories.contains { $0.id == cat.id })
         // The record survives as a minimal tombstone — never removed, so a peer that still
@@ -70,6 +76,38 @@ final class CategoryDeletionTests: XCTestCase {
         XCTAssertTrue(store.categories[cat.id]?.isPurged ?? false)
         XCTAssertEqual(store.categories[cat.id]?.name, "")
         XCTAssertEqual(store.categories[cat.id]?.iconName, "")
+    }
+
+    /// The headline new behavior: an aged tombstone whose content was edited AFTER the delete
+    /// decision must not be silently stripped by the automatic retention sweep — it stays a
+    /// live tombstone (visible in Trash) indefinitely, restorable or removable via an explicit
+    /// "delete now", rather than losing that edit the moment the retention window elapses.
+    func testPurgeSkipsCategoryEditedAfterDeletion() throws {
+        let cat = try makeCategory()
+        try store.softDeleteCategory(id: cat.id)
+        cat.deletedAt = Date().addingTimeInterval(-15 * 86_400) // 15 days ago, past retention
+        cat.modifyDate = Date() // edited just now — after the delete decision
+        XCTAssertTrue(cat.isProtectedFromAutoPurge, "sanity check")
+
+        store.purgeHardDeleted(olderThan: TimeInterval(AppPreference.DaysToRetainDeletedItems) * 86_400)
+
+        XCTAssertTrue(store.deletedCategories.contains { $0.id == cat.id },
+                      "an edited-after-delete category must not be auto-purged despite being past retention")
+        XCTAssertFalse(cat.isPurged)
+    }
+
+    /// Explicit user intent ("delete now") is unconditional and must strip the category
+    /// regardless of `isProtectedFromAutoPurge` — only the AUTOMATIC sweep is gated.
+    func testHardDeleteCategoryIgnoresAutoPurgeProtection() throws {
+        let cat = try makeCategory()
+        try store.softDeleteCategory(id: cat.id)
+        cat.deletedAt = Date().addingTimeInterval(-15 * 86_400)
+        cat.modifyDate = Date()
+        XCTAssertTrue(cat.isProtectedFromAutoPurge, "sanity check")
+
+        try store.hardDeleteCategory(id: cat.id)
+
+        XCTAssertTrue(cat.isPurged, "an explicit delete-now must strip regardless of protection")
     }
 
     func testPurgeKeepsUnreferencedCategoryWithinRetention() throws {
@@ -107,9 +145,18 @@ final class CategoryDeletionTests: XCTestCase {
         let cat = try makeCategory()
         let asset = try store.createAsset(name: "Asset A", categoryID: cat.id)
         try store.softDeleteAsset(id: asset.id)
-        asset.deletedAt = Date().addingTimeInterval(-15 * 86_400) // expired
+        // Backdate content stamps along with deletedAt on both records — see the identical
+        // comment in testPurgeRemovesUnreferencedCategoryPastRetention. Without backdating the
+        // asset's own modifiedDate/headModifyDate, it stays un-purged (protected), which would
+        // also keep it counted as a live reference to the category, independently blocking the
+        // category purge this test is actually about.
+        let backdate = Date().addingTimeInterval(-15 * 86_400) // expired
+        asset.deletedAt = backdate
+        asset.modifiedDate = backdate
+        asset.headModifyDate = backdate
         try store.softDeleteCategory(id: cat.id)
-        cat.deletedAt = Date().addingTimeInterval(-15 * 86_400) // expired
+        cat.deletedAt = backdate
+        cat.modifyDate = backdate
 
         store.purgeHardDeleted(olderThan: TimeInterval(AppPreference.DaysToRetainDeletedItems) * 86_400)
 
@@ -119,6 +166,25 @@ final class CategoryDeletionTests: XCTestCase {
         XCTAssertTrue(store.assets[asset.id]?.isPurged ?? false)
         XCTAssertFalse(store.deletedCategories.contains { $0.id == cat.id },
                        "category must be purged once its only referencing asset is purged")
+    }
+
+    // MARK: - purgeHardDeleted (asset protection)
+
+    /// Asset twin of `testPurgeSkipsCategoryEditedAfterDeletion`.
+    func testPurgeSkipsAssetEditedAfterDeletion() throws {
+        let cat = try makeCategory()
+        let asset = try store.createAsset(name: "Bike", categoryID: cat.id)
+        try store.softDeleteAsset(id: asset.id)
+        asset.deletedAt = Date().addingTimeInterval(-15 * 86_400) // past retention
+        asset.modifiedDate = Date() // edited just now — after the delete decision
+        asset.headModifyDate = Date()
+        XCTAssertTrue(asset.isProtectedFromAutoPurge, "sanity check")
+
+        store.purgeHardDeleted(olderThan: TimeInterval(AppPreference.DaysToRetainDeletedItems) * 86_400)
+
+        XCTAssertTrue(store.deletedAssets.contains { $0.id == asset.id },
+                      "an edited-after-delete asset must not be auto-purged despite being past retention")
+        XCTAssertFalse(asset.isPurged)
     }
 
     // MARK: - hardDeleteAsset (immediate "Delete now" path)

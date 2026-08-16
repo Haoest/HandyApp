@@ -136,6 +136,12 @@ struct CategoryDTO: Codable {
     /// Decoders fall back to `false`. See `AssetCategory.isPurged`. Defaulted to `nil` so every
     /// existing `CategoryDTO(...)` construction site keeps compiling unchanged.
     var isPurged: Bool? = nil
+    /// Optional: absent in files written before the purge instant was recorded separately from
+    /// the delete decision. See `AssetCategory.purgedAt`. Defaulted to `nil` so every existing
+    /// `CategoryDTO(...)` construction site keeps compiling unchanged, and so a record purged
+    /// before this field existed decodes as permanently unrefusable (`nil` reads as
+    /// `.distantFuture` wherever `SnapshotReconciler` compares against it).
+    var purgedAt: Date? = nil
 }
 
 // MARK: - PhotoDTO
@@ -220,6 +226,12 @@ struct AssetDTO: Codable {
     /// Decoders fall back to `false`. See `Asset.isPurged`. Defaulted to `nil` so every
     /// existing `AssetDTO(...)` construction site keeps compiling unchanged.
     var isPurged: Bool? = nil
+    /// Optional: absent in files written before the purge instant was recorded separately from
+    /// the delete decision. See `Asset.purgedAt`. Defaulted to `nil` so every existing
+    /// `AssetDTO(...)` construction site keeps compiling unchanged, and so a record purged
+    /// before this field existed decodes as permanently unrefusable (`nil` reads as
+    /// `.distantFuture` wherever `SnapshotReconciler` compares against it).
+    var purgedAt: Date? = nil
 }
 
 // MARK: - ActivityLogDTO

@@ -3,7 +3,8 @@
 Run this on two real devices (or one device + one simulator signed into the same test Apple
 ID) once per release that touches persistence or sync. The automated suite
 (`SnapshotReconcilerTests`, `ApplyInPlaceTests`, `TwoDeviceRelayTests`, `ConflictResolutionTests`,
-`SyncRelayTests`) proves the reconciliation logic and file-layout behavior; only a real run can
+`SyncRelayTests`, `StoreFileLayoutTests`, `CategoryDeletionTests`) proves the reconciliation
+logic, the purge-protection gate, and file-layout behavior in isolation; only a real run can
 show that the ubiquity container actually resolves under the signing profile, that
 `NSMetadataQuery`/`NSFileCoordinator`/`NSFileVersion` behave as assumed, and that download
 priming works against real placeholder timing.
@@ -37,17 +38,27 @@ log stream --predicate 'subsystem == "haoest.HandyApp3" and category == "Persist
 7. **Offline edit vs. later delete.** Device 2 offline, edits an asset. Device 1 (later)
    soft-deletes the same asset. Reconnect. The asset is deleted on both; open the trash on
    either device and confirm the edit is preserved inside the tombstoned record.
-8. **Photos.** Add a photo on device 1. Confirm the thumbnail appears on device 2 within the
+8. **Offline edit vs. delete that ages past retention (the purge-protection gate).** Device 2
+   offline, edits an asset (or a category's property template). Device 1 soft-deletes the same
+   record, then back-dates its own local `deletedAt`/force-purges it (Tools → System → Deleted →
+   swipe → Delete now) so it's stripped to a husk before device 2 ever reconnects. Reconnect
+   device 2 — the asset must land in Trash on both devices with device 2's edit still intact
+   (not stripped), and the Trash row must show "Edited after deletion — won't be auto-purged".
+   Confirm it truly never ages out: wait past the retention window (or lower
+   `DaysToRetainDeletedItems` for the test) and re-launch — it must still be there, still with
+   its content. Then swipe → Delete now on either device to confirm an explicit purge still
+   works and propagates the strip to the other device on the next sync.
+9. **Photos.** Add a photo on device 1. Confirm the thumbnail appears on device 2 within the
    retry window, then open it full-size.
-9. **Reciprocal re-parent.** Move a child asset under a different parent on device 1 while
-   device 2 (concurrently) moves the prospective parent under that child. Reconnect — no hang
-   (`Asset.descendants` / `AssetDetailView.anchorIndex` are unbounded walks), one link drops,
-   both devices converge on the same tree.
-10. **Factory reset.** Reset device 1. Device 2 must converge to the reset (empty + reseeded)
+10. **Reciprocal re-parent.** Move a child asset under a different parent on device 1 while
+    device 2 (concurrently) moves the prospective parent under that child. Reconnect — no hang
+    (`Asset.descendants` / `AssetDetailView.anchorIndex` are unbounded walks), one link drops,
+    both devices converge on the same tree.
+11. **Factory reset.** Reset device 1. Device 2 must converge to the reset (empty + reseeded)
     state rather than re-uploading its old data over the reset.
-11. **Reinstall.** Delete the app from device 2 and reinstall. The full store — including
+12. **Reinstall.** Delete the app from device 2 and reinstall. The full store — including
     photos — must download.
-12. **Interrupted save.** On device 1, make an edit and immediately background the app (or
+13. **Interrupted save.** On device 1, make an edit and immediately background the app (or
     force-quit) before the 2-second debounce fires. Relaunch — no partial tree, no lost edit.
 
 ## What each step is actually checking, if something goes wrong
@@ -61,4 +72,13 @@ log stream --predicate 'subsystem == "haoest.HandyApp3" and category == "Persist
   `removeOtherVersionsOfItem` behavior.
 - Step 6/7 resurrects a delete → `AssetDTO.headModifyDate` isn't being stamped or compared
   correctly in `SnapshotReconciler.joinAsset`.
-- Step 9 hangs → `SnapshotReconciler.normalizeHierarchy`'s cycle-breaking regressed.
+- Step 8 silently loses device 2's edit instead of protecting it → the purge gate isn't firing;
+  check `AssetDTO.purgedAt`/`Asset.purgedAt` actually got stamped by the purging device (via
+  `purgeInPlace(_:at:)` or `SnapshotReconciler.reap`) and that `SnapshotReconciler.joinAsset`'s
+  `purgeIsEntitled` check is comparing against the live side's own `modifiedDate`/
+  `headModifyDate`, not a stale/merged value. If it instead never purges even a genuinely
+  untouched tombstone, check the fallback direction — `purgeHardDeleted`'s selection and
+  `reap`'s transition test must use `purgedAtFallback: .distantPast` (a *not-yet-purged* record
+  with no prior purge attempt), not `.distantFuture` (which is only correct once a side already
+  carries `isPurged == true`).
+- Step 10 hangs → `SnapshotReconciler.normalizeHierarchy`'s cycle-breaking regressed.

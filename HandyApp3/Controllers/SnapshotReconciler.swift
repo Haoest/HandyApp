@@ -62,6 +62,50 @@ enum SnapshotReconciler {
         order(a, b, stamp: stamp).winner
     }
 
+    // MARK: - Purge gating
+
+    private static func assetContentStamp(_ dto: AssetDTO) -> Date {
+        max(dto.modifiedDate, dto.headModifyDate ?? dto.modifiedDate)
+    }
+
+    private static func categoryContentStamp(_ dto: CategoryDTO) -> Date {
+        let templateMax = dto.propertyTemplates.compactMap { $0.modifyDate }.max() ?? .distantPast
+        return max(dto.modifyDate ?? .distantPast, templateMax)
+    }
+
+    /// Whether a purge decided at `deletedAt` (and, if later, actually carried out at
+    /// `purgedAt`) is entitled to destroy content stamped `contentStamp`. Refuses when the
+    /// content is strictly newer than that decision — an offline device that edited a record
+    /// after it was soft-deleted elsewhere, but before the automatic retention sweep purged the
+    /// tombstone roughly `DaysToRetainDeletedItems` later, must not have that edit silently
+    /// destroyed the moment the two devices sync; the record simply stays a live tombstone (in
+    /// Trash) instead of being stripped. Truncated to whole seconds for the same reason `order`
+    /// is (see its doc comment).
+    ///
+    /// `purgedAtFallback` is what a *nil* `purgedAt` defaults to in the `max`, and it matters
+    /// because "nil" means two different things at the two call sites:
+    /// - `joinAsset`/`joinCategory` call this only once a side already carries
+    ///   `isPurged == true`, where a nil `purgedAt` specifically means a pre-migration legacy
+    ///   record (see `AssetDTO.purgedAt`'s doc comment) — those must stay permanently
+    ///   unrefusable, matching the original always-strips behavior for data older than this
+    ///   field. Pass `.distantFuture`, which always dominates the `max`.
+    /// - `reap`'s transition test evaluates a record that is *not yet* purged, where a nil
+    ///   `purgedAt` just means no purge has been attempted yet — it must be ignored, leaving
+    ///   `deletedAt` alone as the threshold, rather than treated as an infinite block. Pass
+    ///   `.distantPast`. (An existing *non-nil* `purgedAt` — left by an earlier refused
+    ///   attempt, local or synced — still floors the threshold either way, so this evaluation
+    ///   can never undermine a bar already established.) `AssetStore.purgeHardDeleted`'s local
+    ///   sweep and the `Asset`/`AssetCategory.isProtectedFromAutoPurge` models mirror this same
+    ///   `.distantPast` case, so all four call sites always agree about which records are
+    ///   protected.
+    private static func purgeIsEntitled(
+        contentStamp: Date, deletedAt: Date?, purgedAt: Date?, purgedAtFallback: Date
+    ) -> Bool {
+        let content = truncatedToSeconds(contentStamp)
+        let threshold = truncatedToSeconds(max(deletedAt ?? .distantPast, purgedAt ?? purgedAtFallback))
+        return content <= threshold
+    }
+
     /// Union of two id-keyed collections. A key present on only one side is kept verbatim; a
     /// key on both sides is resolved by `join`. Swift dictionary iteration order is
     /// unspecified, so callers must canonicalize the result before comparing or encoding it —
@@ -122,17 +166,50 @@ enum SnapshotReconciler {
     /// timestamp finer than the whole record, so a rename and an icon change are one unit.
     static func joinCategory(_ a: CategoryDTO, _ b: CategoryDTO) -> CategoryDTO {
         var merged = pick(a, b, stamp: { $0.modifyDate ?? .distantPast })
-        // Purge is monotone and OR's across sides, the same rule `joinAsset` uses for
-        // `isPurged` — once either device has stripped this category, the strip must win even
-        // over a later rename `pick` would otherwise have chosen, or a peer that hasn't purged
-        // yet would keep resurrecting the templates every time its still-full copy joins
-        // against the stripped one. Written only in the purged case — unconditionally writing
-        // `false` would coerce a `nil` (an un-migrated on-disk record that predates this field)
-        // into an explicit `false`, changing the encoded bytes and breaking
-        // `merge(a,a) == canonical(a)`.
-        if (a.isPurged ?? false) || (b.isPurged ?? false) {
-            merged.isPurged = true
-            return stripPurgedCategory(merged)
+        let aPurged = a.isPurged == true, bPurged = b.isPurged == true
+        // purgedAt always folds via max, regardless of what the entitlement check below decides
+        // — the field must keep accumulating every purge attempt's stamp even across a refused
+        // round, or a later, larger stamp folded in on a subsequent merge could never raise the
+        // bar past an earlier refusal. See `purgeIsEntitled`'s doc comment.
+        merged.purgedAt = [a.purgedAt, b.purgedAt].compactMap { $0 }.max()
+        if aPurged || bPurged {
+            // Purge is monotone with one bounded exception, mirroring `joinAsset` exactly (see
+            // its doc comment for the full rationale): a strip is refused when the not-yet-
+            // purged side's own content (header rename or template edit) is strictly newer than
+            // the purge decision. Refusal only applies when exactly one side is purged — if
+            // both are, there's no live content left on either side to protect, so the strip
+            // always proceeds. "The live side" is well-defined whichever side is `a`/`b`, so
+            // this stays commutative.
+            let bothPurged = aPurged && bPurged
+            let live = aPurged ? b : a
+            let refuses = !bothPurged && !purgeIsEntitled(
+                contentStamp: categoryContentStamp(live), deletedAt: merged.deletedAt,
+                purgedAt: merged.purgedAt, purgedAtFallback: .distantFuture)
+            if !refuses {
+                merged.isPurged = true
+                // A category purge always follows a soft delete (`hardDeleteCategory` soft-
+                // deletes first if needed), but force the tombstone here too — belt-and-braces
+                // against `isPurged == true, isDeleted == false` ever reaching a view that
+                // filters only on `isDeleted` (see the `!isPurged` filter additions this same
+                // change adds to the handful of sites that were missing it).
+                merged.isDeleted = true
+                merged.deletedAt = merged.deletedAt ?? merged.purgedAt
+                return stripPurgedCategory(merged)
+            }
+            // Refused: the tombstone (from the `pick` above) still propagates — the category
+            // lands in Trash with its templates unioned below, same as an ordinary soft delete.
+            merged.isPurged = false
+            // `purgeCategoryInPlace` blanks name/iconName WITHOUT bumping `modifyDate` (see its
+            // doc comment), so if the purged side happened to win the header `pick` above —
+            // likely, since its `modifyDate` reflects the original soft-delete, which by
+            // definition predates `live`'s protecting edit — `merged.name`/`iconName` would
+            // otherwise be the purged side's blanked ("") header even though we're keeping this
+            // category's content. Restore them from `live` explicitly; mirrors the identical fix
+            // `AssetStore+Persistence.swift`'s import-path un-purge already applies for the same
+            // reason. `modifyDate` is deliberately left as `pick` resolved it — only these two
+            // fields are the ones a purge can corrupt without a compensating stamp.
+            merged.name = live.name
+            merged.iconName = live.iconName
         }
         merged.propertyTemplates = joinKeyed(a.propertyTemplates, b.propertyTemplates,
                                              id: { $0.id }, join: joinAssetProperty)
@@ -170,15 +247,47 @@ enum SnapshotReconciler {
         merged.parentageModifyDate = parentage.parentageModifyDate ?? parentage.createdDate
         merged.createdDate = min(a.createdDate, b.createdDate)
         merged.modifiedDate = max(a.modifiedDate, b.modifiedDate)
-        // Purge is monotone and OR's across sides — once either device has stripped this
-        // asset, the strip must win, or a peer that hasn't purged yet would keep resurrecting
-        // the payload every time its still-full copy joins against the stripped one. Written
-        // only in the purged case — unconditionally writing `false` here would coerce a `nil`
-        // (an un-migrated on-disk record that predates this field) into an explicit `false`,
-        // changing the encoded bytes and breaking `merge(a,a) == canonical(a)`.
-        if (a.isPurged ?? false) || (b.isPurged ?? false) {
-            merged.isPurged = true
-            return stripPurged(merged)
+
+        let aPurged = a.isPurged == true, bPurged = b.isPurged == true
+        // purgedAt always folds via max, regardless of what the entitlement check below decides
+        // — the field must keep accumulating every purge attempt's stamp even across a refused
+        // round, or a later, larger stamp folded in on a subsequent merge could never raise the
+        // bar past an earlier refusal. See `purgeIsEntitled`'s doc comment.
+        merged.purgedAt = [a.purgedAt, b.purgedAt].compactMap { $0 }.max()
+        if aPurged || bPurged {
+            // Purge is monotone with one bounded exception: a strip is refused when the
+            // not-yet-purged side's own content (`baseProperties`/`customProperties`/`photos`/
+            // `events`/`transactions`, via `modifiedDate`) is strictly newer than the purge
+            // decision — an offline device that edited this asset after it was soft-deleted
+            // elsewhere, but before the automatic retention sweep purged the tombstone roughly
+            // `DaysToRetainDeletedItems` later, must not have that edit silently destroyed the
+            // moment the two devices sync. Refusal only applies when exactly one side is purged
+            // — if both are, there's no live content left on either side to protect, so the
+            // strip always proceeds. "The live side" is well-defined whichever side is `a`/`b`,
+            // so this stays commutative; see the doc comment above `purgeIsEntitled` for the
+            // full associativity argument (`purgedAt`'s unconditional max-fold is what makes a
+            // later, larger stamp always able to override an earlier refusal, regardless of the
+            // order records are folded together in).
+            let bothPurged = aPurged && bPurged
+            let live = aPurged ? b : a
+            let refuses = !bothPurged && !purgeIsEntitled(
+                contentStamp: assetContentStamp(live), deletedAt: merged.deletedAt,
+                purgedAt: merged.purgedAt, purgedAtFallback: .distantFuture)
+            if !refuses {
+                merged.isPurged = true
+                // A record can only be purged after being soft-deleted, but force the tombstone
+                // here too — belt-and-braces against `isPurged == true, isDeleted == false` ever
+                // reaching a view that filters only on `isDeleted` (the handful of sites this
+                // same change adds a `!isPurged` filter to, as a second line of defense).
+                merged.isDeleted = true
+                merged.deletedAt = merged.deletedAt ?? merged.purgedAt
+                return stripPurged(merged)
+            }
+            // Refused: the tombstone (from the head pick above) still propagates — the asset
+            // lands in Trash with its content unioned below, same as an ordinary soft delete.
+            // `purgeInPlace` never touches `name`, unlike the category equivalent, so there is
+            // no blanked-header risk here to compensate for.
+            merged.isPurged = false
         }
         merged.baseProperties = joinKeyed(a.baseProperties, b.baseProperties, id: { $0.id }, join: joinAssetProperty)
         merged.customProperties = joinKeyed(a.customProperties, b.customProperties, id: { $0.id }, join: joinAssetProperty)
@@ -318,8 +427,21 @@ enum SnapshotReconciler {
         var result = snap
 
         for i in result.assets.indices {
-            if isExpired(result.assets[i].isDeleted, result.assets[i].deletedAt, before: cutoff) {
+            // Gated the same way `joinAsset` gates a purge (see `purgeIsEntitled`'s doc
+            // comment): an aged tombstone whose content is still newer than the delete decision
+            // (or an already-recorded purge attempt, whichever is later — `result.assets[i]`
+            // here is post-`joinKeyed`, so `purgedAt` may already carry a fold from `joinAsset`
+            // having run over this same pair) stays a live tombstone rather than being stripped.
+            if isExpired(result.assets[i].isDeleted, result.assets[i].deletedAt, before: cutoff),
+               purgeIsEntitled(contentStamp: assetContentStamp(result.assets[i]),
+                               deletedAt: result.assets[i].deletedAt, purgedAt: result.assets[i].purgedAt,
+                               purgedAtFallback: .distantPast) {
                 result.assets[i].isPurged = true
+                // deletedAt, not Date(): must stay content-derived so every device reaping the
+                // same aged tombstone produces byte-identical output. Only when nothing already
+                // recorded a purge attempt — an existing stamp (from `joinAsset`, always ≥
+                // deletedAt) is never regressed.
+                if result.assets[i].purgedAt == nil { result.assets[i].purgedAt = result.assets[i].deletedAt }
             }
             guard result.assets[i].isPurged != true else {
                 result.assets[i] = stripPurged(result.assets[i])
@@ -334,9 +456,16 @@ enum SnapshotReconciler {
         if !assetsMayBeIncomplete {
             let nonPurgedCategoryIDs = Set(result.assets.filter { $0.isPurged != true }.map(\.categoryID))
             for i in result.categories.indices {
+                // Same gate as the asset loop above — see its comment and `purgeIsEntitled`.
                 if isExpired(result.categories[i].isDeleted, result.categories[i].deletedAt, before: cutoff)
-                    && !nonPurgedCategoryIDs.contains(result.categories[i].id) {
+                    && !nonPurgedCategoryIDs.contains(result.categories[i].id)
+                    && purgeIsEntitled(contentStamp: categoryContentStamp(result.categories[i]),
+                                       deletedAt: result.categories[i].deletedAt, purgedAt: result.categories[i].purgedAt,
+                                       purgedAtFallback: .distantPast) {
                     result.categories[i].isPurged = true
+                    if result.categories[i].purgedAt == nil {
+                        result.categories[i].purgedAt = result.categories[i].deletedAt
+                    }
                 }
             }
         }

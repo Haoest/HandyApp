@@ -52,10 +52,11 @@ final class SnapshotReconcilerTests: XCTestCase {
     private func category(
         id: UUID = UUID(), name: String = "Category", iconName: String = "tray",
         propertyTemplates: [AssetPropertyDTO] = [], isDeleted: Bool = false, deletedAt: Date? = nil,
-        modifyDate: Date? = Date(), isPurged: Bool? = nil
+        modifyDate: Date? = Date(), isPurged: Bool? = nil, purgedAt: Date? = nil
     ) -> CategoryDTO {
         CategoryDTO(id: id, name: name, iconName: iconName, propertyTemplates: propertyTemplates,
-                   isDeleted: isDeleted, deletedAt: deletedAt, modifyDate: modifyDate, isPurged: isPurged)
+                   isDeleted: isDeleted, deletedAt: deletedAt, modifyDate: modifyDate, isPurged: isPurged,
+                   purgedAt: purgedAt)
     }
 
     private func asset(
@@ -64,14 +65,15 @@ final class SnapshotReconcilerTests: XCTestCase {
         photos: [PhotoDTO] = [], events: [EventDTO] = [], transactions: [TransactionDTO] = [],
         parentID: UUID? = nil, isDeleted: Bool = false, deletedAt: Date? = nil,
         createdDate: Date = Date(), modifiedDate: Date = Date(),
-        parentageModifyDate: Date? = nil, headModifyDate: Date? = nil, isPurged: Bool? = nil
+        parentageModifyDate: Date? = nil, headModifyDate: Date? = nil, isPurged: Bool? = nil,
+        purgedAt: Date? = nil
     ) -> AssetDTO {
         AssetDTO(id: id, name: name, categoryID: categoryID, baseProperties: baseProperties,
                 customProperties: customProperties, photos: photos, events: events, transactions: transactions,
                 parentID: parentID, isDeleted: isDeleted, deletedAt: deletedAt,
                 createdDate: createdDate, modifiedDate: modifiedDate,
                 parentageModifyDate: parentageModifyDate ?? createdDate,
-                headModifyDate: headModifyDate ?? modifiedDate, isPurged: isPurged)
+                headModifyDate: headModifyDate ?? modifiedDate, isPurged: isPurged, purgedAt: purgedAt)
     }
 
     private func comboList(
@@ -357,7 +359,7 @@ final class SnapshotReconcilerTests: XCTestCase {
         let catID = UUID()
         let t0 = Date(timeIntervalSince1970: 1_700_000_000)
         let cutoff = t0.addingTimeInterval(100)
-        let expired = asset(id: UUID(), categoryID: catID, isDeleted: true, deletedAt: t0)
+        let expired = asset(id: UUID(), categoryID: catID, isDeleted: true, deletedAt: t0, modifiedDate: t0)
         let fresh = asset(id: UUID(), categoryID: catID, isDeleted: true, deletedAt: t0.addingTimeInterval(200))
         let snap = snapshot(categories: [category(id: catID)], assets: [expired, fresh])
 
@@ -388,7 +390,8 @@ final class SnapshotReconcilerTests: XCTestCase {
         let childID = UUID()
         let t0 = Date(timeIntervalSince1970: 1_700_000_000)
         let cutoff = t0.addingTimeInterval(100)
-        let parent = asset(id: parentID, categoryID: catID, isDeleted: true, deletedAt: t0, createdDate: t0)
+        let parent = asset(id: parentID, categoryID: catID, isDeleted: true, deletedAt: t0, createdDate: t0,
+                          modifiedDate: t0)
         let child = asset(id: childID, categoryID: catID, parentID: parentID,
                           isDeleted: true, deletedAt: t0.addingTimeInterval(200), createdDate: t0)
         let snap = snapshot(categories: [category(id: catID)], assets: [parent, child])
@@ -422,8 +425,8 @@ final class SnapshotReconcilerTests: XCTestCase {
         let catID = UUID()
         let t0 = Date(timeIntervalSince1970: 1_700_000_000)
         let cutoff = t0.addingTimeInterval(100)
-        let agedCategory = category(id: catID, isDeleted: true, deletedAt: t0)
-        let purgedAsset = asset(id: UUID(), categoryID: catID, isDeleted: true, deletedAt: t0)
+        let agedCategory = category(id: catID, isDeleted: true, deletedAt: t0, modifyDate: t0)
+        let purgedAsset = asset(id: UUID(), categoryID: catID, isDeleted: true, deletedAt: t0, modifiedDate: t0)
         let snap = snapshot(categories: [agedCategory], assets: [purgedAsset])
 
         let reaped = SnapshotReconciler.reap(snap, cutoff: cutoff)
@@ -435,6 +438,190 @@ final class SnapshotReconcilerTests: XCTestCase {
         XCTAssertEqual(reapedCategory.name, "")
         XCTAssertEqual(reapedCategory.iconName, "")
         XCTAssertTrue(reapedCategory.propertyTemplates.isEmpty)
+    }
+
+    // MARK: - Purge gating (content newer than the delete/purge decision)
+
+    /// A record purged before `purgedAt` existed (the field is `nil`) must still always strip,
+    /// regardless of how much later the live side's content is — this is the pre-gate,
+    /// pre-migration behavior every existing purge test above already pins; this test isolates
+    /// it explicitly to contrast with the two below, where a recorded `purgedAt` changes the
+    /// outcome for otherwise-identical content.
+    func testLegacyPurgedRecordWithNoPurgedAtIsNeverRefusable() {
+        let catID = UUID()
+        let id = UUID()
+        let t0 = Date(timeIntervalSince1970: 1_700_000_000)
+        let purged = asset(id: id, categoryID: catID, isDeleted: true, deletedAt: t0,
+                           headModifyDate: t0, isPurged: true)  // purgedAt left nil
+        let editedLongAfter = asset(id: id, categoryID: catID, baseProperties: [property()],
+                                    isDeleted: true, deletedAt: t0,
+                                    modifiedDate: t0.addingTimeInterval(999_999))
+
+        let merged = SnapshotReconciler.joinAsset(purged, editedLongAfter)
+        XCTAssertEqual(merged.isPurged, true)
+        XCTAssertTrue(merged.baseProperties.isEmpty)
+    }
+
+    /// The headline new behavior: an explicit purge decision (`purgedAt`, later than
+    /// `deletedAt`) can still be outrun by content edited even later — an offline device that
+    /// touched this asset after the purge already happened elsewhere must not have that edit
+    /// silently destroyed. The tombstone (isDeleted/deletedAt) still propagates; only the strip
+    /// is refused.
+    func testJoinAssetRefusesPurgeWhenLiveContentIsNewerThanPurgedAt() {
+        let catID = UUID()
+        let id = UUID()
+        let t0 = Date(timeIntervalSince1970: 1_700_000_000)
+        let purgedAt = t0.addingTimeInterval(500)
+        let purged = asset(id: id, categoryID: catID, isDeleted: true, deletedAt: t0,
+                           headModifyDate: t0, isPurged: true, purgedAt: purgedAt)
+        let editedAfterPurge = asset(id: id, categoryID: catID, baseProperties: [property()],
+                                     isDeleted: true, deletedAt: t0,
+                                     modifiedDate: purgedAt.addingTimeInterval(10))
+
+        let merged = SnapshotReconciler.joinAsset(purged, editedAfterPurge)
+        XCTAssertNotEqual(merged.isPurged, true, "content edited after the purge decision must survive")
+        XCTAssertEqual(merged.baseProperties.count, 1)
+        XCTAssertTrue(merged.isDeleted, "the tombstone still propagates even though the strip is refused")
+        XCTAssertEqual(merged.deletedAt, t0)
+    }
+
+    /// The mirror case: content edited BEFORE the purge decision has no protection — the purge
+    /// proceeds exactly as it would with no gate at all.
+    func testJoinAssetStillPurgesWhenLiveContentPredatesPurgedAt() {
+        let catID = UUID()
+        let id = UUID()
+        let t0 = Date(timeIntervalSince1970: 1_700_000_000)
+        let purgedAt = t0.addingTimeInterval(500)
+        let purged = asset(id: id, categoryID: catID, isDeleted: true, deletedAt: t0,
+                           headModifyDate: t0, isPurged: true, purgedAt: purgedAt)
+        let editedBeforePurge = asset(id: id, categoryID: catID, baseProperties: [property()],
+                                      isDeleted: true, deletedAt: t0,
+                                      modifiedDate: purgedAt.addingTimeInterval(-10))
+
+        let merged = SnapshotReconciler.joinAsset(purged, editedBeforePurge)
+        XCTAssertEqual(merged.isPurged, true)
+        XCTAssertTrue(merged.baseProperties.isEmpty)
+    }
+
+    func testJoinAssetPurgeRefusalIsCommutative() {
+        let catID = UUID()
+        let id = UUID()
+        let t0 = Date(timeIntervalSince1970: 1_700_000_000)
+        let purgedAt = t0.addingTimeInterval(500)
+        let purged = asset(id: id, categoryID: catID, isDeleted: true, deletedAt: t0,
+                           headModifyDate: t0, isPurged: true, purgedAt: purgedAt)
+        let editedAfterPurge = asset(id: id, categoryID: catID, baseProperties: [property()],
+                                     isDeleted: true, deletedAt: t0,
+                                     modifiedDate: purgedAt.addingTimeInterval(10))
+
+        let ab = SnapshotReconciler.joinAsset(purged, editedAfterPurge)
+        let ba = SnapshotReconciler.joinAsset(editedAfterPurge, purged)
+        XCTAssertEqual(ab.isPurged, ba.isPurged)
+        XCTAssertEqual(ab.baseProperties.count, ba.baseProperties.count)
+        XCTAssertEqual(ab.purgedAt, ba.purgedAt)
+    }
+
+    /// `purgedAt` accumulates via `max` regardless of fold order, so a later, larger purge
+    /// stamp folded in from a THIRD copy can still override an earlier refusal — worked out by
+    /// hand for both associations: live content at `mid` (between the two purge attempts)
+    /// survives a fold against the earlier attempt alone, but is still overridden once the
+    /// later attempt is incorporated, in either grouping.
+    func testJoinAssetPurgedAtFoldsToTheLaterStampRegardlessOfAssociation() {
+        let catID = UUID()
+        let id = UUID()
+        let t0 = Date(timeIntervalSince1970: 1_700_000_000)
+        let earlierPurgedAt = t0.addingTimeInterval(100)
+        let laterPurgedAt = t0.addingTimeInterval(300)
+        let mid = t0.addingTimeInterval(200)  // between the two purge attempts
+
+        // modifiedDate explicitly backdated on both — merged.modifiedDate is max(a,b), so an
+        // un-backdated (defaults to "now") modifiedDate here would leak into the FIRST join's
+        // output and pollute the SECOND join's content-stamp check (which reads it from
+        // `merged`, not from either original argument), independent of the actual scenario.
+        let purgedEarlier = asset(id: id, categoryID: catID, isDeleted: true, deletedAt: t0,
+                                  modifiedDate: t0, headModifyDate: t0, isPurged: true, purgedAt: earlierPurgedAt)
+        let purgedLater = asset(id: id, categoryID: catID, isDeleted: true, deletedAt: t0,
+                                modifiedDate: t0, headModifyDate: t0, isPurged: true, purgedAt: laterPurgedAt)
+        let liveAtMid = asset(id: id, categoryID: catID, baseProperties: [property()],
+                              isDeleted: true, deletedAt: t0, modifiedDate: mid)
+
+        let leftFirst = SnapshotReconciler.joinAsset(
+            SnapshotReconciler.joinAsset(liveAtMid, purgedEarlier), purgedLater)
+        let rightFirst = SnapshotReconciler.joinAsset(
+            liveAtMid, SnapshotReconciler.joinAsset(purgedEarlier, purgedLater))
+
+        for merged in [leftFirst, rightFirst] {
+            XCTAssertEqual(merged.isPurged, true, "the later purge attempt must still win once folded in")
+            XCTAssertTrue(merged.baseProperties.isEmpty)
+            XCTAssertEqual(merged.purgedAt, laterPurgedAt)
+        }
+    }
+
+    /// `purgeCategoryInPlace` blanks `name`/`iconName` without bumping `modifyDate`, so the
+    /// purged side can still win `pick`'s date-based header selection even when the strip
+    /// itself is refused — this pins the fix that restores the header from the live side rather
+    /// than surfacing a nameless category with its templates intact.
+    func testJoinCategoryRefusalRestoresTheLiveHeaderInsteadOfTheBlankedOne() {
+        let id = UUID()
+        let t0 = Date(timeIntervalSince1970: 1_700_000_000)
+        let purgedAt = t0.addingTimeInterval(500)
+        // Blanked name/icon, as purgeCategoryInPlace produces — modifyDate stamped at the
+        // original soft-delete (t0), not the purge instant, matching production behavior.
+        let purged = category(id: id, name: "", iconName: "", isDeleted: true, deletedAt: t0,
+                              modifyDate: t0, isPurged: true, purgedAt: purgedAt)
+        // The live side's OWN header was never touched (addTemplateProperty doesn't bump
+        // AssetCategory.modifyDate) — only a template was edited, after the purge. Its
+        // modifyDate predates `purged`'s (t0), so `pick` picks the PURGED side's blanked
+        // header — exactly the case the restoration fix exists for.
+        let editedTemplateAfterPurge = category(
+            id: id, name: "Appliances", iconName: "washer",
+            propertyTemplates: [property(modifyDate: purgedAt.addingTimeInterval(10))],
+            isDeleted: true, deletedAt: t0, modifyDate: t0.addingTimeInterval(-100))
+
+        let merged = SnapshotReconciler.joinCategory(purged, editedTemplateAfterPurge)
+        XCTAssertNotEqual(merged.isPurged, true)
+        XCTAssertEqual(merged.name, "Appliances", "the live header must survive, not the purged side's blanked one")
+        XCTAssertEqual(merged.iconName, "washer")
+        XCTAssertEqual(merged.propertyTemplates.count, 1)
+    }
+
+    func testStripPurgedPreservesPurgedAt() {
+        let catID = UUID()
+        let t0 = Date(timeIntervalSince1970: 1_700_000_000)
+        let full = asset(id: UUID(), categoryID: catID, isDeleted: true, deletedAt: t0,
+                         isPurged: true, purgedAt: t0.addingTimeInterval(10))
+        let stripped = SnapshotReconciler.stripPurged(full)
+        XCTAssertEqual(stripped.purgedAt, t0.addingTimeInterval(10))
+    }
+
+    func testStripPurgedCategoryPreservesPurgedAt() {
+        let t0 = Date(timeIntervalSince1970: 1_700_000_000)
+        let full = category(name: "Appliances", isDeleted: true, deletedAt: t0,
+                            isPurged: true, purgedAt: t0.addingTimeInterval(10))
+        let stripped = SnapshotReconciler.stripPurgedCategory(full)
+        XCTAssertEqual(stripped.purgedAt, t0.addingTimeInterval(10))
+    }
+
+    /// `reap`'s automatic transition stamps `purgedAt` from the tombstone's own `deletedAt`,
+    /// never a fresh wall-clock instant — otherwise two devices independently reaping the same
+    /// aged tombstone at different real times would produce different bytes and re-upload
+    /// forever. Runs `reap` "on two different devices" (two different `Date()`s standing in for
+    /// wall-clock skew) and checks the outputs are byte-identical.
+    func testReapStampsPurgedAtFromDeletedAtSoTwoDevicesProduceIdenticalBytes() {
+        let catID = UUID()
+        let t0 = Date(timeIntervalSince1970: 1_700_000_000)
+        let cutoff = t0.addingTimeInterval(100)
+        let expired = asset(id: UUID(), categoryID: catID, isDeleted: true, deletedAt: t0, modifiedDate: t0)
+        let snap = snapshot(categories: [category(id: catID)], assets: [expired])
+
+        let reapedNow = SnapshotReconciler.reap(snap, cutoff: cutoff)
+        // Simulate a second device reaping the same content at a very different wall-clock time.
+        Thread.sleep(forTimeInterval: 1.1)
+        let reapedLater = SnapshotReconciler.reap(snap, cutoff: cutoff)
+
+        XCTAssertEqual(bytes(reapedNow), bytes(reapedLater),
+                       "reap must never mint a fresh Date() for purgedAt — that would make the bytes differ per device")
+        XCTAssertEqual(reapedNow.assets.first?.purgedAt, t0)
     }
 
     // MARK: - Purge (isPurged)
@@ -560,8 +747,8 @@ final class SnapshotReconcilerTests: XCTestCase {
         let catID = UUID()
         let t0 = Date(timeIntervalSince1970: 1_700_000_000)
         let cutoff = t0.addingTimeInterval(100)
-        let agedCategory = category(id: catID, isDeleted: true, deletedAt: t0)
-        let agedAsset = asset(id: UUID(), categoryID: UUID(), isDeleted: true, deletedAt: t0)
+        let agedCategory = category(id: catID, isDeleted: true, deletedAt: t0, modifyDate: t0)
+        let agedAsset = asset(id: UUID(), categoryID: UUID(), isDeleted: true, deletedAt: t0, modifiedDate: t0)
         let snap = snapshot(categories: [agedCategory], assets: [agedAsset])
 
         let reaped = SnapshotReconciler.reap(snap, cutoff: cutoff, assetsMayBeIncomplete: true)

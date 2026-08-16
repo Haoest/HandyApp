@@ -148,7 +148,7 @@ struct AssetTab: View {
                 if store.hasAssetCapacity { newAssetPresented = true } else { paywallPresented = true }
             }
             .navigationDestination(item: $router.pendingAssetID) { id in
-                if let asset = store.assets[id], !asset.isDeleted {
+                if let asset = store.assets[id], !asset.isDeleted, !asset.isPurged {
                     AssetDetailView(asset: asset, orderedIDs: orderedAssetIDs)
                 } else {
                     ContentUnavailableView(
@@ -271,7 +271,7 @@ private struct AssetTreeRow: View {
 
     private var children: [Asset] {
         asset.children
-            .filter { !$0.isDeleted }
+            .filter { !$0.isDeleted && !$0.isPurged }
             .sorted { $0.name.localizedCompare($1.name) == .orderedAscending }
     }
     private var hasChildren: Bool { !children.isEmpty }

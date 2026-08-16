@@ -379,24 +379,28 @@ final class StoreFileLayout {
         // Orphan sweep last, and only with positive confidence the in-memory asset set reflects
         // everything on disk — otherwise a transient read failure on one file becomes a
         // permanent deletion of that file on the very next save.
+        //
+        // Candidates come from `digests` (what the last `read` actually saw), not from
+        // enumerating the live `Assets/` directory. A peer's asset file can materialize on disk
+        // between this device's last read and this write (iCloud downloads and app writes are
+        // not coordinated against each other) — enumerating the directory would treat that
+        // just-arrived file as an orphan and delete it, propagating a deletion the peer never
+        // made. A file this device never read has no entry in `digests`, so it's simply not a
+        // sweep candidate; the next `read` picks it up and folds it in normally.
         if lastReadWasComplete {
-            let assetsDir = baseDir.appendingPathComponent("Assets", isDirectory: true)
-            if let entries = try? fm.contentsOfDirectory(at: assetsDir, includingPropertiesForKeys: nil) {
-                for url in entries {
-                    guard url.pathExtension == "json",
-                          let id = UUID(uuidString: url.deletingPathExtension().lastPathComponent),
-                          !assetIDs.contains(id) else { continue }
-                    var removed = false
-                    Self.coordinatedAccess(at: url, options: .forDeleting, enabled: usesFileCoordination) {
-                        removed = (try? fm.removeItem(at: url)) != nil
-                    }
-                    if removed {
-                        digests.removeValue(forKey: "Assets/\(url.lastPathComponent)")
-                        report.deletedPaths.append("Assets/\(url.lastPathComponent)")
-                    }
+            let seenAssetPaths = digests.keys.filter { $0.hasPrefix("Assets/") }
+            for path in seenAssetPaths {
+                guard let id = UUID(uuidString: String(path.dropFirst("Assets/".count).dropLast(".json".count))),
+                      !assetIDs.contains(id) else { continue }
+                let url = baseDir.appendingPathComponent(path)
+                var removed = false
+                Self.coordinatedAccess(at: url, options: .forDeleting, enabled: usesFileCoordination) {
+                    removed = (try? fm.removeItem(at: url)) != nil
                 }
-            } else {
-                Self.logger.error("write: could not enumerate Assets/ for the orphan sweep — skipping rather than risk deleting nothing or everything")
+                if removed {
+                    digests.removeValue(forKey: path)
+                    report.deletedPaths.append(path)
+                }
             }
         } else {
             Self.logger.debug("write: skipping orphan sweep — the last read couldn't verify every asset file")

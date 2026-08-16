@@ -46,11 +46,23 @@ final class Asset: Identifiable, Equatable {
     /// visible to every peer: a stale device that still holds the full asset must see the strip
     /// and re-apply it, not resurrect the payload by unioning it back in on the next sync.
     ///
-    /// Cleared only by an explicit user-initiated import (`AssetStore.importJSON`) carrying a
-    /// live copy of this asset — an import that says a record is alive is treated as intent to
-    /// bring it back, rebuilding content and parentage from the incoming record. Cloud sync
-    /// (`applyInPlace`/`SnapshotReconciler`) never clears it: there the strip must always win.
+    /// Cleared by an explicit user-initiated import (`AssetStore.importJSON`) carrying a live
+    /// copy of this asset — an import that says a record is alive is treated as intent to bring
+    /// it back, rebuilding content and parentage from the incoming record. Cloud sync
+    /// (`applyInPlace`/`SnapshotReconciler.joinAsset`) also clears it, but only when the local
+    /// content is strictly newer than the purge decision (`purgedAt`) — see `purgedAt`'s doc
+    /// comment. Otherwise a purge always wins there.
     var isPurged: Bool = false
+
+    /// Instant this asset was actually stripped — set by `purgeInPlace`/`purgeHardDeleted`/
+    /// `SnapshotReconciler.reap` alongside `isPurged`. Distinct from `deletedAt` (when the user
+    /// *decided* to delete): purge normally happens automatically ~14 days later as retention
+    /// housekeeping, so a device that edits this asset offline during that window has content
+    /// newer than the delete but older than the purge. `SnapshotReconciler.joinAsset` compares
+    /// against this, not `deletedAt`, to decide whether a purge is allowed to destroy that
+    /// content — see the gate documented there. `nil` for a record purged before this field
+    /// existed, which makes it permanently unrefusable (matches the pre-gate behavior).
+    var purgedAt: Date? = nil
 
     /// Resolved in-memory reference to the parent. Set by AssetStore hierarchy methods.
     weak var parent: Asset?
@@ -80,6 +92,29 @@ final class Asset: Identifiable, Equatable {
         self.modifiedDate = modifiedDate
         self.parentageModifyDate = parentageModifyDate
         self.headModifyDate = headModifyDate
+    }
+
+    /// True when this asset's own content (a base/custom property edit, a photo/event/
+    /// transaction add) was made after `deletedAt` — or after an already-recorded purge
+    /// attempt's `purgedAt`, if later. Both `AssetStore.purgeHardDeleted`'s automatic retention
+    /// sweep and `SnapshotReconciler.joinAsset`'s sync-merge gate refuse to strip a record in
+    /// this state, so it sits in Trash indefinitely (restorable, or removable via an explicit
+    /// "delete now") instead of silently losing that content when the tombstone ages out.
+    /// `false` while still live — protection is only meaningful for something already deleted.
+    ///
+    /// `purgedAt` falls back to `.distantPast`, not `.distantFuture`, here — unlike
+    /// `SnapshotReconciler`'s DTO-level gate, which is only ever evaluated on a record that
+    /// already carries `isPurged == true` (where a nil `purgedAt` specifically flags a
+    /// pre-migration legacy record that must stay permanently unrefusable). This property is
+    /// evaluated on a record that is NOT purged — `purgedAt` is nil here in the ordinary case
+    /// (no purge attempted yet) and must be ignored rather than treated as an infinite block,
+    /// or this would report every deleted asset as unprotected regardless of content.
+    var isProtectedFromAutoPurge: Bool {
+        guard isDeleted, !isPurged else { return false }
+        let content = max(modifiedDate, headModifyDate).timeIntervalSince1970.rounded(.down)
+        let threshold = max(deletedAt ?? .distantPast, purgedAt ?? .distantPast)
+            .timeIntervalSince1970.rounded(.down)
+        return content > threshold
     }
 
     // MARK: - Property value convenience

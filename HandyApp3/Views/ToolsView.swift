@@ -277,6 +277,11 @@ private struct DeletedAssetRow: View {
             Text(subtitle)
                 .font(.caption)
                 .foregroundStyle(.secondary)
+            if asset.isProtectedFromAutoPurge {
+                Label("Edited after deletion — won't be auto-purged", systemImage: "shield")
+                    .font(.caption)
+                    .foregroundStyle(.orange)
+            }
         }
         .swipeActions(edge: .trailing) {
             Button(role: .destructive) {
@@ -299,6 +304,9 @@ private struct DeletedAssetRow: View {
     }
 
     private var subtitle: LocalizedStringKey {
+        // A protected asset won't age out on its own — "Purge in N days" would be misleading
+        // (implying an eventual auto-purge that the gate is specifically refusing to do).
+        guard !asset.isProtectedFromAutoPurge else { return "Kept until restored or deleted" }
         let elapsed = Calendar.current.dateComponents(
             [.day], from: asset.deletedAt ?? Date(), to: Date()
         ).day ?? 0
@@ -351,6 +359,11 @@ private struct DeletedCategoryRow: View {
             Text(subtitle(count: count))
                 .font(.caption)
                 .foregroundStyle(.secondary)
+            if count == 0 && category.isProtectedFromAutoPurge {
+                Label("Edited after deletion — won't be auto-purged", systemImage: "shield")
+                    .font(.caption)
+                    .foregroundStyle(.orange)
+            }
         }
         .swipeActions(edge: .trailing) {
             if count == 0 {
@@ -373,6 +386,9 @@ private struct DeletedCategoryRow: View {
         if count > 0 {
             return "Associated with ^[\(count) asset](inflect: true)"
         }
+        // A protected category won't age out on its own — "Purge in N days" would be
+        // misleading (implying an eventual auto-purge that the gate is specifically refusing).
+        guard !category.isProtectedFromAutoPurge else { return "Kept until restored or deleted" }
         let elapsed = Calendar.current.dateComponents(
             [.day], from: category.deletedAt ?? Date(), to: Date()
         ).day ?? 0

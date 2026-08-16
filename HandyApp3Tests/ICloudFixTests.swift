@@ -281,7 +281,15 @@ final class DeletionHygieneTests: XCTestCase {
         let thumbURL = PhotoStorage.thumbURL(id: photo.id)
 
         try store.softDeleteAsset(id: asset.id)
-        asset.deletedAt = Date().addingTimeInterval(-15 * 86_400)
+        // Backdate content stamps along with deletedAt — Asset.isProtectedFromAutoPurge
+        // (mirroring SnapshotReconciler's sync-merge gate) refuses to purge an asset whose own
+        // content is newer than its delete decision; leaving modifiedDate/headModifyDate at
+        // "now" would make this look like an edit after the delete and the purge below would
+        // be refused, leaving the photo files on disk.
+        let backdate = Date().addingTimeInterval(-15 * 86_400)
+        asset.deletedAt = backdate
+        asset.modifiedDate = backdate
+        asset.headModifyDate = backdate
         store.purgeHardDeleted(olderThan: TimeInterval(AppPreference.DaysToRetainDeletedItems) * 86_400)
 
         XCTAssertFalse(FileManager.default.fileExists(atPath: fullURL.path),
@@ -301,7 +309,14 @@ final class DeletionHygieneTests: XCTestCase {
         let createdDate = asset.createdDate
 
         try store.softDeleteAsset(id: asset.id)
-        asset.deletedAt = Date().addingTimeInterval(-15 * 86_400)
+        // Backdate content stamps along with deletedAt — see the identical comment in
+        // testPurgeRemovesExpiredAssetPhotoFiles. The photo/event/transaction/customProperty
+        // adds above already bumped modifiedDate to "now", so without this the purge below
+        // would be refused as protected content.
+        let backdate = Date().addingTimeInterval(-15 * 86_400)
+        asset.deletedAt = backdate
+        asset.modifiedDate = backdate
+        asset.headModifyDate = backdate
         store.purgeHardDeleted(olderThan: TimeInterval(AppPreference.DaysToRetainDeletedItems) * 86_400)
 
         let survivor = try XCTUnwrap(store.assets[asset.id], "purge must never remove the asset record — a peer that still has the full asset would resurrect it")

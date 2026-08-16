@@ -63,7 +63,13 @@ final class StoreIntegrityTests: XCTestCase {
     func testPurgeRemovesSoftDeletedCategoryWithNoRemainingReferences() throws {
         let category = try store.createCategory(name: "Empty")
         try store.softDeleteCategory(id: category.id)
-        category.deletedAt = Date(timeIntervalSinceNow: -100 * 86_400)
+        // Backdate modifyDate along with deletedAt — AssetCategory.isProtectedFromAutoPurge
+        // refuses to purge a category whose own content is newer than its delete decision;
+        // leaving modifyDate at "now" would make this look like an edit after the delete and
+        // the purge below would be refused.
+        let backdate = Date(timeIntervalSinceNow: -100 * 86_400)
+        category.deletedAt = backdate
+        category.modifyDate = backdate
 
         store.purgeHardDeleted(olderThan: 90 * 86_400)
 

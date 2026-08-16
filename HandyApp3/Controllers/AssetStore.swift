@@ -742,13 +742,18 @@ final class AssetStore {
         try addChild(assetID: assetID, toParentID: newParentID)
     }
 
+    /// Live (not deleted, not purged) top-level assets — same `!isDeleted && !isPurged` filter
+    /// as `allAssets`. A record can be `isPurged == true` with `isDeleted == false` after a sync
+    /// merge refuses a purge on `isDeleted` alone but a peer's stale strip briefly races it (see
+    /// `SnapshotReconciler.joinAsset`'s belt-and-braces `isDeleted` force) — filtering both here
+    /// keeps this in step with `allAssets` regardless.
     var rootAssets: [Asset] {
-        assets.values.filter(\.isRoot)
+        assets.values.filter { $0.isRoot && !$0.isDeleted && !$0.isPurged }
     }
 
     func rootAssets(ofCategoryID categoryID: UUID) throws -> [Asset] {
         guard categories[categoryID] != nil else { throw AssetStoreError.categoryNotFound(categoryID) }
-        return assets.values.filter { $0.isRoot && $0.category.id == categoryID }
+        return assets.values.filter { $0.isRoot && $0.category.id == categoryID && !$0.isDeleted && !$0.isPurged }
     }
 
     // MARK: - Attachments
@@ -965,7 +970,25 @@ final class AssetStore {
     /// soft-deleted; see `purgeHardDeleted` and `hardDeleteAsset`. Not `private`: `applyInPlace`
     /// (`AssetStore+Persistence.swift`) also calls it, to replace rather than additively merge
     /// content on a local asset a peer has already purged.
-    func purgeInPlace(_ asset: Asset) {
+    ///
+    /// `instant` is the purge decision's own timestamp, recorded in `asset.purgedAt` — not to be
+    /// confused with `deletedAt` (when the user decided to *delete*). Callers pick what it means:
+    /// `hardDeleteAsset`'s default (`Date()`, "now") is explicit intent that should be able to
+    /// outrank content edited since the original delete; `purgeHardDeleted`'s automatic retention
+    /// sweep passes `deletedAt` instead, so the stamp stays content-derived and identical however
+    /// many devices independently aged the same tombstone out; `applyInPlace` passes the merged
+    /// snapshot's own `dto.purgedAt` when it needs to actually apply an already-decided strip
+    /// locally. See `SnapshotReconciler.joinAsset` for what actually reads this.
+    ///
+    /// Ratchets `purgedAt` forward (keeps it if `instant` isn't later) rather than only setting
+    /// it once: `existing.purgedAt` can already be non-nil here even though `isPurged` was still
+    /// `false` a moment ago — `applyInPlace`'s refused-purge branch stamps `purgedAt` from a
+    /// merge's `dto.purgedAt` without setting `isPurged`, precisely so a *later*, more
+    /// authoritative purge decision (a bigger `max` fold, or an explicit "delete now") can still
+    /// win. A plain "set only if nil" would freeze the stamp at that first, possibly-refused
+    /// attempt and make every later purge decision for this record permanently unable to record
+    /// its own, more current, timestamp.
+    func purgeInPlace(_ asset: Asset, at instant: Date = Date()) {
         guard !asset.isPurged else { return }
         for photo in asset.photos { PhotoStorage.delete(id: photo.id) }
         asset.photos = []
@@ -978,6 +1001,7 @@ final class AssetStore {
             asset._removeChild(child, stampParentage: false)
         }
         asset.isPurged = true
+        if asset.purgedAt == nil || instant > asset.purgedAt! { asset.purgedAt = instant }
     }
 
     /// Strips a category down to a minimal tombstone — `id`, tombstone, and `modifyDate`
@@ -991,12 +1015,15 @@ final class AssetStore {
     /// already soft-deleted; see `purgeHardDeleted` and `hardDeleteCategory`. Not `private`:
     /// `applyInPlace` (`AssetStore+Persistence.swift`) also calls it, to replace rather than
     /// additively merge templates on a local category a peer has already purged.
-    func purgeCategoryInPlace(_ category: AssetCategory) {
+    /// See `purgeInPlace(_:at:)`'s doc comment for what `instant` means, who passes what, and
+    /// why the stamp ratchets forward instead of being set only once.
+    func purgeCategoryInPlace(_ category: AssetCategory, at instant: Date = Date()) {
         guard !category.isPurged else { return }
         category.name = ""
         category.iconName = ""
         category.propertyTemplates = []
         category.isPurged = true
+        if category.purgedAt == nil || instant > category.purgedAt! { category.purgedAt = instant }
     }
 
     /// Purges soft-deleted assets and categories whose deletedAt is older than `seconds` to
@@ -1010,11 +1037,20 @@ final class AssetStore {
     /// retained regardless of age to avoid dangling categoryIDs. Old activity-log entries whose
     /// owning asset is gone or purged are dropped once their own timestamp ages past cutoff —
     /// mirrors `SnapshotReconciler.reap`, so a local sweep and a sync merge converge.
+    ///
+    /// Both selection loops also skip a record flagged `isProtectedFromAutoPurge` — content
+    /// edited after `deletedAt` — mirroring `SnapshotReconciler`'s join-time gate exactly, so
+    /// this automatic sweep never destroys content a sync merge would have protected. Left
+    /// alone, that record simply stays a live tombstone in Trash — restorable, or removable via
+    /// an explicit "delete now" — rather than being aged out from under the user.
     func purgeHardDeleted(olderThan seconds: TimeInterval = 90 * 86_400) {
         let cutoff = Date().addingTimeInterval(-seconds)
         for asset in assets.values
-        where asset.isDeleted && (asset.deletedAt ?? .distantFuture) < cutoff && !asset.isPurged {
-            purgeInPlace(asset)
+        where asset.isDeleted && (asset.deletedAt ?? .distantFuture) < cutoff && !asset.isPurged
+            && !asset.isProtectedFromAutoPurge {
+            // deletedAt, not Date(): this is automatic housekeeping, not an explicit purge
+            // decision, so the stamp must stay content-derived — see purgeInPlace(_:at:).
+            purgeInPlace(asset, at: asset.deletedAt ?? Date())
         }
         // Photo bytes are freed here rather than at removePhoto time so a peer that hasn't
         // seen the delete can still resolve the file for the life of the tombstone.
@@ -1035,8 +1071,9 @@ final class AssetStore {
         let referencedCategoryIDs = Set(assets.values.filter { !$0.isPurged }.map { $0.category.id })
         for category in categories.values
         where category.isDeleted && (category.deletedAt ?? .distantFuture) < cutoff
-            && !referencedCategoryIDs.contains(category.id) {
-            purgeCategoryInPlace(category)
+            && !referencedCategoryIDs.contains(category.id)
+            && !category.isProtectedFromAutoPurge {
+            purgeCategoryInPlace(category, at: category.deletedAt ?? Date())
         }
         activityLog.removeAll { entry in
             let referenced = entry.owningAssetID ?? (entry.kind == .asset ? entry.recordID : nil)

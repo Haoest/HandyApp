@@ -189,6 +189,34 @@ final class StoreFileLayoutTests: XCTestCase {
             atPath: AssetStore.baseDir.appendingPathComponent("Assets/\(keepID.uuidString).json").path))
     }
 
+    // MARK: - 5b. Orphan sweep only touches files this layout has actually seen
+
+    func testFileArrivedAfterLastReadIsNotSweptAsAnOrphan() throws {
+        // Simulates a peer's asset file materializing via iCloud between this device's last
+        // read and its next write — the orphan sweep candidates now come from `digests` (what
+        // was actually read), not from enumerating the live Assets/ directory, so a file this
+        // layout instance never saw must never be treated as an orphan. Before this fix, a
+        // directory-listing sweep would delete it here, silently propagating a deletion the
+        // peer never made.
+        let catID = UUID()
+        let keepID = UUID()
+        let snap = makeSnapshot(categories: [makeCategoryDTO(id: catID)],
+                                assets: [makeAssetDTO(id: keepID, categoryID: catID)])
+        store.fileLayout.write(snap, baseDir: AssetStore.baseDir)
+        XCTAssertNotNil(store.fileLayout.read(baseDir: AssetStore.baseDir))
+
+        // A file this SAME layout instance never read or wrote — no entry in its digest cache.
+        let peerID = UUID()
+        let peerURL = AssetStore.baseDir.appendingPathComponent("Assets/\(peerID.uuidString).json")
+        try Data("irrelevant".utf8).write(to: peerURL)
+
+        // Writing the same snapshot again (still doesn't include peerID) must not sweep it.
+        let report = store.fileLayout.write(snap, baseDir: AssetStore.baseDir)
+        XCTAssertTrue(report.deletedPaths.isEmpty, "a file this layout never read must never be swept")
+        XCTAssertTrue(FileManager.default.fileExists(atPath: peerURL.path),
+                     "the just-arrived peer file must survive a save that doesn't know about it")
+    }
+
     // MARK: - 6. Selective write
 
     func testSelectiveWriteTouchesOnlyTheChangedAsset() throws {

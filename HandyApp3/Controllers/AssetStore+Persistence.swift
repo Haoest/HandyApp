@@ -170,6 +170,12 @@ extension AssetStore {
     func load() -> Bool {
         var result: StoreFileLayout.ReadResult?
         DispatchQueue.global(qos: .userInitiated).sync {
+            // Fold any NSFileVersion conflicts left over from the previous session (or from
+            // sync activity while this device was offline/backgrounded) into the shards before
+            // reading them — otherwise this read observes only whichever version iCloud
+            // arbitrarily picked as "current" and the app never sees the other side. See
+            // resolveConflicts's other two call sites for the same reasoning.
+            self.resolveConflicts()
             Self.primeCloudDownloads(timeout: 10)
             result = fileLayout.read(baseDir: Self.baseDir)
         }
@@ -209,10 +215,29 @@ extension AssetStore {
     /// not-yet-downloaded ubiquitous item still reports true for `fileExists` under its real
     /// name on modern iOS, so `fileExists` alone can never detect "still downloading."
     private static func primeCloudDownloads(timeout: TimeInterval) {
+        guard let structuralURLs = triggerCloudDownloads() else { return }
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline, !structuralURLs.allSatisfy(isDownloaded) {
+            Thread.sleep(forTimeInterval: 0.2)
+        }
+    }
+
+    /// Calls `startDownloadingUbiquitousItem` on every `.json`/`.jpg` under `baseDir`, with no
+    /// wait. `NSMetadataQuery` only reports that a file changed in the cloud — it does not fetch
+    /// it — so without an explicit trigger somewhere, a shard or photo that a peer adds *while
+    /// this device's app is already running* has no guaranteed path to actually materialize on
+    /// disk this session; it would only get pulled down at the next cold launch's
+    /// `primeCloudDownloads`. Called from `load()` (via `primeCloudDownloads`, which also
+    /// blocks on the structural set) and from `handleCloudMonitorNotification` (fire-and-forget,
+    /// since a notification means something already changed and blocking the merge on a full
+    /// download would delay every other device's edits from applying). Returns the structural
+    /// URLs (for `primeCloudDownloads`'s wait loop) or nil if cloud sync isn't active.
+    @discardableResult
+    private static func triggerCloudDownloads() -> [URL]? {
         let fm = FileManager.default
         guard iCloudSyncEnabled,
               baseDirOverride == nil,
-              fm.url(forUbiquityContainerIdentifier: nil) != nil else { return }
+              fm.url(forUbiquityContainerIdentifier: nil) != nil else { return nil }
         let dir = baseDir
         let structuralURLs = [
             "store.json",
@@ -229,11 +254,7 @@ extension AssetStore {
         for url in structuralURLs {
             try? fm.startDownloadingUbiquitousItem(at: url)
         }
-
-        let deadline = Date().addingTimeInterval(timeout)
-        while Date() < deadline, !structuralURLs.allSatisfy(isDownloaded) {
-            Thread.sleep(forTimeInterval: 0.2)
-        }
+        return structuralURLs
     }
 
     /// True if the item is fully downloaded, or if it can't be inspected at all — the latter
@@ -338,8 +359,11 @@ extension AssetStore {
     /// Must be called on a background thread.
     func save() {
         guard !savesSuspended else { return }
-        save(to: Self.baseDir)
+        // Fold conflicts before writing, not after — see load()'s call for why folding after
+        // the fact means this save's own snapshot (built from what's about to be read back)
+        // never reflects a divergence iCloud already flagged.
         resolveConflicts()
+        save(to: Self.baseDir)
     }
 
     /// Core save against any directory — no `savesSuspended` guard, no `NSFileVersion`
@@ -396,6 +420,14 @@ extension AssetStore {
         query.disableUpdates()
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             guard let self else { return }
+            // Fold conflicts and trigger downloads before reading — both change what's on disk,
+            // and this read (and the merge built from it) must see the result, not the state
+            // from before either ran. Folding late (the previous behavior: after applyInPlace)
+            // meant a divergence iCloud had already flagged as an NSFileVersion conflict was
+            // invisible to the merge that just ran, only picked up a round later once the fold
+            // itself changed the file and triggered another notification.
+            self.resolveConflicts()
+            Self.triggerCloudDownloads()
             let result = self.fileLayout.read(baseDir: Self.baseDir)
             DispatchQueue.main.async {
                 defer { query.enableUpdates() }
@@ -424,7 +456,6 @@ extension AssetStore {
                     self.applySnapshot(disk)
                     self.savesSuspended = false
                     self.lastSyncDate = Date()
-                    self.resolveConflicts()
                     return
                 }
 
@@ -436,7 +467,6 @@ extension AssetStore {
                 self.applyInPlace(merged)
                 self.savesSuspended = false
                 self.lastSyncDate = Date()
-                self.resolveConflicts()
                 // The merge may have pulled in content the peer doesn't have yet, or dropped a
                 // tombstone that expired locally but not there — write back so it reaches
                 // them. Content-diffed per shard, so an already-converged state costs nothing.
@@ -456,7 +486,23 @@ extension AssetStore {
         // v3 → v4 added modifyDate to CategoryDTO/ComboListDTO/CompositeTypeDTO and
         // headModifyDate to AssetDTO — same optional-with-fallback treatment inline in
         // applySnapshot/mergeSnapshot, no transform needed.
-        // Future: if s.schemaVersion < 5 { var s = s; /* transform */; return s }
+        //
+        // Back-fill purgedAt for any record purged before the field existed. Not schema-gated
+        // (storeSchemaVersion stays 4 — this field is additive-with-fallback like every prior
+        // one, and bumping the version would churn bytes across a mixed-version fleet via
+        // max(a.schemaVersion, b.schemaVersion)): this simply always runs, and is a no-op once
+        // every record has its own purgedAt. deletedAt, not Date() — the same reasoning as
+        // purgeHardDeleted's automatic sweep: the back-fill must be content-derived and produce
+        // the same result on every device that reads this record, not a fresh wall-clock stamp
+        // that would make the bytes differ (and re-upload) on every device's next load.
+        var s = s
+        for i in s.assets.indices where s.assets[i].isPurged == true && s.assets[i].purgedAt == nil {
+            s.assets[i].purgedAt = s.assets[i].deletedAt
+        }
+        for i in s.categories.indices where s.categories[i].isPurged == true && s.categories[i].purgedAt == nil {
+            s.categories[i].purgedAt = s.categories[i].deletedAt
+        }
+        // Future: if s.schemaVersion < 5 { /* transform */ }
         return s
     }
 
@@ -498,6 +544,7 @@ extension AssetStore {
             cat.isDeleted = dto.isDeleted
             cat.deletedAt = dto.deletedAt
             cat.isPurged = dto.isPurged ?? false
+            cat.purgedAt = dto.purgedAt
             catMap[dto.id] = cat
         }
 
@@ -542,6 +589,7 @@ extension AssetStore {
             asset.isDeleted = dto.isDeleted
             asset.deletedAt = dto.deletedAt
             asset.isPurged = isPurged
+            asset.purgedAt = dto.purgedAt
             asset.photos = dto.photos.map { photo(from: $0) }
             asset.events = dto.events.map { event(from: $0, fallbackModifyDate: dto.modifiedDate) }
             asset.transactions = dto.transactions.map { transaction(from: $0, fallbackModifyDate: dto.modifiedDate) }
@@ -635,6 +683,7 @@ extension AssetStore {
                 // emptied templates as an ordinary additive merge.
                 if existing.isPurged {
                     existing.isPurged = false
+                    existing.purgedAt = nil
                     existing.name = dto.name
                     existing.iconName = dto.iconName
                 }
@@ -664,7 +713,7 @@ extension AssetStore {
                 // local is overwritten, because a purged record has nothing left to protect.
                 // Parentage, which purge also stripped, is rebuilt by `mergeHierarchy` below.
                 let wasPurged = local.isPurged
-                if wasPurged { local.isPurged = false }
+                if wasPurged { local.isPurged = false; local.purgedAt = nil }
                 var changed = mergeAsset(local, from: dto, ctMap: ctMap, clMap: clMap)
                 // A live incoming record resurrects a locally-trashed one — the one place
                 // the merge deliberately overwrites local state rather than only adding.
@@ -974,7 +1023,7 @@ extension AssetStore {
                 CategoryDTO(id: cat.id, name: cat.name, iconName: cat.iconName,
                             propertyTemplates: cat.propertyTemplates.map { assetPropertyDTO($0) },
                             isDeleted: cat.isDeleted, deletedAt: cat.deletedAt, modifyDate: cat.modifyDate,
-                            isPurged: cat.isPurged)
+                            isPurged: cat.isPurged, purgedAt: cat.purgedAt)
             },
             assets: assets.values.map { asset in
                 AssetDTO(
@@ -987,7 +1036,7 @@ extension AssetStore {
                     parentID: asset.parentID, isDeleted: asset.isDeleted, deletedAt: asset.deletedAt,
                     createdDate: asset.createdDate, modifiedDate: asset.modifiedDate,
                     parentageModifyDate: asset.parentageModifyDate, headModifyDate: asset.headModifyDate,
-                    isPurged: asset.isPurged
+                    isPurged: asset.isPurged, purgedAt: asset.purgedAt
                 )
             },
             activityLog: activityLog.map {
@@ -1220,9 +1269,17 @@ extension AssetStore {
                     // (`SnapshotReconciler.joinCategory` ran before `applyInPlace` is called) —
                     // `upsertAssetProperties` is an additive-only union and would never clear
                     // templates this device still holds locally, so a purge replaces rather
-                    // than merges. Mirrors the asset branch below.
-                    purgeCategoryInPlace(existing)
+                    // than merges. Mirrors the asset branch below. `purgeCategoryInPlace` no-ops
+                    // if `existing` was already purged locally (its own `!isPurged` guard).
+                    purgeCategoryInPlace(existing, at: dto.purgedAt ?? Date())
                 } else {
+                    // `joinCategory`'s purge gate can un-purge a merge result relative to what
+                    // this device holds — a peer's strip is refused when local content is newer
+                    // than the purge decision. Without this assignment `existing.isPurged` would
+                    // stay `true` forever on this device even though the merged/disk state is
+                    // now live, hiding it from `allAssets` permanently.
+                    existing.isPurged = false
+                    existing.purgedAt = dto.purgedAt
                     existing.name = dto.name
                     existing.iconName = dto.iconName
                     upsertAssetProperties(dto.propertyTemplates, into: &existing.propertyTemplates,
@@ -1237,6 +1294,7 @@ extension AssetStore {
                 cat.isDeleted = dto.isDeleted
                 cat.deletedAt = dto.deletedAt
                 cat.isPurged = isPurged
+                cat.purgedAt = dto.purgedAt
                 newCategories.append(cat)
             }
         }
@@ -1282,9 +1340,17 @@ extension AssetStore {
                     // The merged snapshot already stripped this asset (`SnapshotReconciler.joinAsset`
                     // ran before `applyInPlace` is called) — the upsertX helpers below are
                     // additive-only unions and would never clear content this device still
-                    // holds locally, so a purge replaces rather than merges.
-                    purgeInPlace(existing)
+                    // holds locally, so a purge replaces rather than merges. `purgeInPlace`
+                    // no-ops if `existing` was already purged locally (its own `!isPurged` guard).
+                    purgeInPlace(existing, at: dto.purgedAt ?? Date())
                 } else {
+                    // `joinAsset`'s purge gate can un-purge a merge result relative to what this
+                    // device holds — a peer's strip is refused when local content is newer than
+                    // the purge decision. Without this assignment `existing.isPurged` would stay
+                    // `true` forever on this device even though the merged/disk state is now
+                    // live, hiding it from `allAssets` permanently.
+                    existing.isPurged = false
+                    existing.purgedAt = dto.purgedAt
                     upsertAssetProperties(dto.baseProperties, into: &existing.baseProperties,
                                           ctMap: ctMap, clMap: clMap, fallbackModifyDate: dto.modifiedDate)
                     upsertAssetProperties(dto.customProperties, into: &existing.customProperties,
@@ -1310,6 +1376,7 @@ extension AssetStore {
                 asset.isDeleted = dto.isDeleted
                 asset.deletedAt = dto.deletedAt
                 asset.isPurged = isPurged
+                asset.purgedAt = dto.purgedAt
                 asset.photos = dto.photos.map { photo(from: $0) }
                 asset.events = dto.events.map { event(from: $0, fallbackModifyDate: dto.modifiedDate) }
                 asset.transactions = dto.transactions.map { transaction(from: $0, fallbackModifyDate: dto.modifiedDate) }
