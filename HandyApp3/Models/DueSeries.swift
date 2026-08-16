@@ -1,8 +1,10 @@
 import Foundation
 
 enum DueDefaults {
-    /// Snap points for the due-window and device-notification sliders.
-    static let sliderSteps = [1, 7, 14, 30, 60]
+    /// Full range of the due-window and device-notification sliders, in days.
+    static let sliderRange = 1...60
+    /// Days marked with a tick on those sliders; dragging near one snaps to it.
+    static let sliderTickDays = [1, 2, 3, 7, 14, 30, 60]
     static let messageDaysBefore = 7
     static let messageDaysAfter = 7
     static let notifyDaysBefore = 7

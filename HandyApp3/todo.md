@@ -2,6 +2,7 @@
 -quick reporting
 -export data to excel by email
 -swiping to delete transaction/event carries the asset sheet under
+- change event/transaction "duplicate" label
 
 need to refine how notification works. have it open the transaction / event screen with information filled? post event or transaction to home for quick action?
 
