@@ -31,24 +31,63 @@ extension AssetStore {
     /// Presence-keyed, not liveness-keyed: a soft-deleted built-in list is still present in
     /// `comboListDefinitions` (see `AssetStore.allComboListDefinitions`), so the guard finds it
     /// and skips — a deliberate delete is not resurrected by the seeder.
+    ///
+    /// Also self-heals installs left with a stray duplicate of a built-in under some other id —
+    /// e.g. an install that seeded this list back when this guard was still name-keyed and
+    /// somehow ended up with it under a non-deterministic id, or a name freed up by soft-
+    /// deleting the original and later reused by a hand-created replacement. See
+    /// `resolveBuiltInComboList(for:)`.
     @discardableResult
     func seedBuiltInComboLists() -> [ComboListDefinition] {
         let templates: [ComboListDefinition] = [
             BuiltInTypes.powerSourceComboList(),
         ]
-        var seeded: [ComboListDefinition] = []
-        for template in templates {
-            guard comboListDefinitions[template.id] == nil else { continue }
-            let registered = createComboList(
-                id: template.id,
-                name: template.name,
-                systemOptions: template.systemOptions,
-                userOptions: template.userOptions,
+        return templates.compactMap { resolveBuiltInComboList(for: $0) }
+    }
+
+    /// Ensures exactly one live combo list represents `template`, at its deterministic id, and
+    /// folds in any stray duplicate sharing its name under a different id. Returns the record
+    /// only when this call newly created or updated the canonical one — a plain "already
+    /// present, nothing to do" skip returns `nil`, matching `seedBuiltInComboLists`'s old
+    /// `seeded`-array bookkeeping.
+    private func resolveBuiltInComboList(for template: ComboListDefinition) -> ComboListDefinition? {
+        let strays = allComboListDefinitions.filter {
+            $0.id != template.id && $0.name.caseInsensitiveCompare(template.name) == .orderedSame
+        }
+        guard !strays.isEmpty else {
+            guard comboListDefinitions[template.id] == nil else { return nil }
+            return createComboList(
+                id: template.id, name: template.name,
+                systemOptions: template.systemOptions, userOptions: template.userOptions,
                 isUserExtensible: template.isUserExtensible
             )
-            seeded.append(registered)
         }
-        return seeded
+
+        // `ComboListDefinition.id` is `let`, so a stray can't be relabeled onto the
+        // deterministic id — fold its accumulated options into whichever record ends up there
+        // and soft-delete the stray (recoverable in Trash, not silently discarded).
+        let strayOptions = strays.flatMap(\.allOptions)
+        for stray in strays { try? softDeleteComboList(id: stray.id) }
+
+        if let existing = comboListDefinitions[template.id] {
+            // Presence-keyed, not liveness-keyed, same as the simple path above: a deliberately
+            // soft-deleted built-in must not be resurrected just because a stray turned up.
+            guard !existing.isDeleted else { return nil }
+            for option in strayOptions where !existing.allOptions.contains(option) {
+                existing.userOptions.append(option)
+            }
+            existing.modifyDate = Date()
+            markDirty()
+            return nil
+        }
+        let carriedOptions = strayOptions.filter {
+            !template.systemOptions.contains($0) && !template.userOptions.contains($0)
+        }
+        return createComboList(
+            id: template.id, name: template.name,
+            systemOptions: template.systemOptions, userOptions: template.userOptions + carriedOptions,
+            isUserExtensible: template.isUserExtensible
+        )
     }
 
     /// Seeds a small set of starter assets. Idempotent (skips if name already exists in category).

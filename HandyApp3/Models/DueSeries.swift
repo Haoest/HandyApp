@@ -65,6 +65,24 @@ enum SeriesLogic {
         members(of: record, in: all).first ?? record
     }
 
+    /// A `createdAt` for a new member of `source`'s series, guaranteed to sort strictly newer
+    /// than every existing live series member (including `source` itself) — used when
+    /// duplicating a recurring event/transaction. `members`/`newest` compare `createdAt`
+    /// truncated to whole seconds (matching what survives an ISO-8601 round trip through
+    /// persistence), so two records created within the same wall-clock second — routine for a
+    /// duplicate created back-to-back with its source — would otherwise tie and fall back to
+    /// comparing `id` strings, an ordering unrelated to which one was actually created later.
+    /// The freshly duplicated record must always win that comparison, since it's the one meant
+    /// to carry the series' recurring reminders forward (`NotificationPlanner.plan` only plans
+    /// them for `SeriesLogic.newest`); bumps forward by a whole second — anything finer
+    /// wouldn't survive the round trip either — when `now` doesn't already clear the series'
+    /// current high-water mark.
+    static func createdAtForNewSeriesMember<R: SeriesRecord>(after source: R, in siblings: [R], now: Date = Date()) -> Date {
+        let seriesMembers = source.seriesID.map { id in siblings.filter { $0.seriesID == id } } ?? [source]
+        let latest = seriesMembers.map { truncated($0.createdAt) }.max() ?? truncated(source.createdAt)
+        return truncated(now) > latest ? now : Date(timeIntervalSince1970: latest + 1)
+    }
+
     /// True while `record`'s due-window is active: from `messageDaysBefore` days before the due
     /// date through `messageDaysAfter` days after, inclusive, at day granularity.
     static func isDueMessageActive<R: SeriesRecord>(_ record: R, calendar: Calendar = .current, now: Date = Date()) -> Bool {

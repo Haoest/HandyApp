@@ -985,8 +985,12 @@ final class AssetStore {
             }
             seriesID = source.seriesID
         }
+        // Guarantees the duplicate outranks `source` (and any earlier duplicates) as the
+        // series' newest member even when created within the same wall-clock second — see
+        // SeriesLogic.createdAtForNewSeriesMember's doc comment.
+        let createdAt = SeriesLogic.createdAtForNewSeriesMember(after: source, in: asset.liveEvents, now: now)
         let event = Event(title: title, date: date, notes: notes, recurrence: recurrence,
-                          dueDate: due.dueDate, seriesID: seriesID, createdAt: now,
+                          dueDate: due.dueDate, seriesID: seriesID, createdAt: createdAt,
                           messageDaysBefore: due.messageDaysBefore, messageDaysAfter: due.messageDaysAfter,
                           deviceNotificationOn: due.deviceNotificationOn,
                           deviceNotificationDaysBefore: due.deviceNotificationDaysBefore)
@@ -1095,8 +1099,10 @@ final class AssetStore {
             }
             seriesID = source.seriesID
         }
+        // See SeriesLogic.createdAtForNewSeriesMember's doc comment.
+        let createdAt = SeriesLogic.createdAtForNewSeriesMember(after: source, in: asset.liveTransactions, now: now)
         let txn = Transaction(details: details, amount: amount, date: date, kind: kind, payeeContactID: payeeContactID, notes: notes, recurrence: recurrence,
-                              dueDate: due.dueDate, seriesID: seriesID, createdAt: now,
+                              dueDate: due.dueDate, seriesID: seriesID, createdAt: createdAt,
                               messageDaysBefore: due.messageDaysBefore, messageDaysAfter: due.messageDaysAfter,
                               deviceNotificationOn: due.deviceNotificationOn,
                               deviceNotificationDaysBefore: due.deviceNotificationDaysBefore)

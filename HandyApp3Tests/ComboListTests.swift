@@ -105,6 +105,40 @@ final class ComboListTests: XCTestCase {
         XCTAssertTrue(store.comboListDefinitions[powerSource.id]?.isDeleted ?? false)
     }
 
+    /// Regression test for an install that ended up with "Power Source" under a
+    /// non-deterministic id (e.g. from before the seeder's presence check was id-keyed) —
+    /// the very first id-keyed seed must fold it into the canonical record rather than
+    /// creating a second live list alongside it.
+    func testSeedBuiltInComboListsMergesLegacyDuplicateUnderDifferentID() throws {
+        let legacy = store.createComboList(name: "Power Source", userOptions: ["Diesel"])
+        let deterministicID = BuiltInTypes.powerSourceComboList().id
+        XCTAssertNotEqual(legacy.id, deterministicID)
+
+        store.seedBuiltInComboLists()
+
+        XCTAssertEqual(store.allComboListDefinitions.filter { $0.name == "Power Source" }.count, 1)
+        let canonical = try XCTUnwrap(store.comboListDefinitions[deterministicID])
+        XCTAssertFalse(canonical.isDeleted)
+        XCTAssertTrue(canonical.allOptions.contains("Diesel"), "the legacy list's option must survive the merge")
+        XCTAssertTrue(store.comboListDefinitions[legacy.id]?.isDeleted ?? false, "the legacy duplicate must be soft-deleted, not lost")
+    }
+
+    /// Same bug, but the canonical deterministic-id record already exists (as it would after
+    /// this session's earlier id-keyed fix already seeded it once) with an orphaned legacy
+    /// duplicate still lingering from before that.
+    func testSeedBuiltInComboListsMergesStrayIntoAlreadyExistingCanonical() throws {
+        store.seedBuiltInComboLists()
+        let deterministicID = BuiltInTypes.powerSourceComboList().id
+        let legacy = store.createComboList(name: "Power Source", userOptions: ["Diesel"])
+
+        store.seedBuiltInComboLists()
+
+        XCTAssertEqual(store.allComboListDefinitions.filter { $0.name == "Power Source" }.count, 1)
+        let canonical = try XCTUnwrap(store.comboListDefinitions[deterministicID])
+        XCTAssertTrue(canonical.allOptions.contains("Diesel"))
+        XCTAssertTrue(store.comboListDefinitions[legacy.id]?.isDeleted ?? false)
+    }
+
     // MARK: - Auto-add across every write path
 
     func testAutoAddFromSetTemplatePropertyValue() throws {
