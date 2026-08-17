@@ -10,14 +10,39 @@ struct PropertyEditView: View {
     let existing: AssetProperty?
     let onSave: (PropertyDefinition, StoredValue?) -> Void
 
+    /// One entry per selectable row in the Type picker. Combo lists collapse to a single
+    /// "Combo list" row rather than one row per list — `selectedComboListID` (below) then picks
+    /// which list. `.composite`/`.comboList` carry the definition's id, not the value, so the
+    /// selection stays stable if `store.allCompositeTypes`/`allComboListDefinitions` change
+    /// while this sheet is open — an `Int` index into a rebuilt array would not.
+    private enum TypeChoice: Hashable {
+        case basic(BasicType)
+        case composite(UUID)
+        case comboList
+    }
+
     init(existing: AssetProperty? = nil, onSave: @escaping (PropertyDefinition, StoredValue?) -> Void) {
         self.existing = existing
         self.onSave = onSave
         _name = State(initialValue: existing?.definition.name ?? "")
+        if case .comboList(let list) = existing?.definition.type {
+            _typeChoice = State(initialValue: .comboList)
+            _selectedComboListID = State(initialValue: list.id)
+            _originalComboList = State(initialValue: list)
+        } else if case .composite(let ct) = existing?.definition.type {
+            _typeChoice = State(initialValue: .composite(ct.id))
+        } else if case .basic(let b) = existing?.definition.type {
+            _typeChoice = State(initialValue: .basic(b))
+        }
     }
 
     @State private var name: String
-    @State private var selectedTypeIndex: Int = 0
+    @State private var typeChoice: TypeChoice = .basic(.text)
+    @State private var selectedComboListID: UUID?
+    /// Captured from `existing` at init so a property typed on a since-soft-deleted combo list
+    /// still has its list available to pick — otherwise the second picker's selection wouldn't
+    /// be among its own options and SwiftUI would silently clear it.
+    @State private var originalComboList: ComboListDefinition?
     @State private var valueText: String = ""
     @State private var valueDate: Date = Date()
     @State private var valueDateEnabled: Bool = false
@@ -27,20 +52,33 @@ struct PropertyEditView: View {
     @State private var contactPickerPresented = false
     @FocusState private var nameFieldFocused: Bool
 
-    private var availableTypes: [PropertyType] {
-        let basics: [PropertyType] = [
-            .basic(.text), .basic(.number), .basic(.currency), .basic(.date), .basic(.contact),
-        ]
-        let composites = store.allCompositeTypes
-            .sorted { $0.name.localizedCompare($1.name) == .orderedAscending }
-            .map { PropertyType.composite($0) }
-        let combos = store.allComboListDefinitions
-            .sorted { $0.name.localizedCompare($1.name) == .orderedAscending }
-            .map { PropertyType.comboList($0) }
-        return basics + composites + combos
+    private var sortedComposites: [CompositeTypeDefinition] {
+        store.allCompositeTypes.sorted { $0.name.localizedCompare($1.name) == .orderedAscending }
     }
 
-    private var currentType: PropertyType { availableTypes[selectedTypeIndex] }
+    private var comboListChoices: [ComboListDefinition] {
+        var lists = store.allComboListDefinitions
+        if let originalComboList, !lists.contains(where: { $0.id == originalComboList.id }) {
+            lists.append(originalComboList)
+        }
+        return lists.sorted { $0.name.localizedCompare($1.name) == .orderedAscending }
+    }
+
+    /// Resolved from the raw store dict (not `allComboListDefinitions`) so a soft-deleted list
+    /// still resolves for a property already typed on it.
+    private var currentType: PropertyType? {
+        switch typeChoice {
+        case .basic(let b):
+            return .basic(b)
+        case .composite(let id):
+            return store.compositeTypes[id].map { .composite($0) }
+        case .comboList:
+            guard let id = selectedComboListID else { return nil }
+            if let list = store.comboListDefinitions[id] { return .comboList(list) }
+            if let originalComboList, originalComboList.id == id { return .comboList(originalComboList) }
+            return nil
+        }
+    }
 
     private var currentWord: String {
         name.components(separatedBy: " ").last ?? ""
@@ -76,7 +114,7 @@ struct PropertyEditView: View {
 
     private var hasEditableValue: Bool {
         switch currentType {
-        case .basic(.data), .composite: return false
+        case .basic(.data), .composite, .none: return false
         default: return true
         }
     }
@@ -101,14 +139,39 @@ struct PropertyEditView: View {
                 }
                 Section("Type") {
                     Picker("Type", selection: Binding(
-                        get: { selectedTypeIndex },
-                        set: { selectedTypeIndex = $0; clearValue() }
+                        get: { typeChoice },
+                        set: { typeChoice = $0; selectedComboListID = nil; clearValue() }
                     )) {
-                        ForEach(availableTypes.indices, id: \.self) { i in
-                            Text(availableTypes[i].displayName).tag(i)
+                        Text("Text").tag(TypeChoice.basic(.text))
+                        Text("Number").tag(TypeChoice.basic(.number))
+                        Text("Currency").tag(TypeChoice.basic(.currency))
+                        Text("Date").tag(TypeChoice.basic(.date))
+                        Text("Contact").tag(TypeChoice.basic(.contact))
+                        ForEach(sortedComposites) { ct in
+                            Text(ct.name).tag(TypeChoice.composite(ct.id))
                         }
+                        Text("Combo list").tag(TypeChoice.comboList)
                     }
                     .pickerStyle(.menu)
+
+                    if typeChoice == .comboList {
+                        if comboListChoices.isEmpty {
+                            Text("No combo lists yet. Create one in the Categories tab.")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        } else {
+                            Picker("List", selection: Binding(
+                                get: { selectedComboListID },
+                                set: { selectedComboListID = $0; clearValue() }
+                            )) {
+                                Text("Choose…").tag(UUID?.none)
+                                ForEach(comboListChoices) { list in
+                                    Text(list.name).tag(Optional(list.id))
+                                }
+                            }
+                            .pickerStyle(.menu)
+                        }
+                    }
                 }
                 if hasEditableValue {
                     Section("Value") {
@@ -131,14 +194,15 @@ struct PropertyEditView: View {
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Save") {
+                        guard let type = currentType else { return }
                         let def = PropertyDefinition(
                             name: name.trimmingCharacters(in: .whitespaces),
-                            type: availableTypes[selectedTypeIndex]
+                            type: type
                         )
                         onSave(def, enteredValue)
                         dismiss()
                     }
-                    .disabled(name.trimmingCharacters(in: .whitespaces).isEmpty)
+                    .disabled(name.trimmingCharacters(in: .whitespaces).isEmpty || currentType == nil)
                 }
             }
         }
@@ -174,14 +238,9 @@ struct PropertyEditView: View {
                     .labelsHidden()
             }
         case .comboList(let list):
-            Picker("", selection: $valueCombo) {
-                Text("None").tag("")
-                ForEach(list.allOptions, id: \.self) { option in
-                    Text(option).tag(option)
-                }
+            ComboListField(label: nil, list: list, current: valueCombo) { newValue in
+                valueCombo = newValue ?? ""
             }
-            .pickerStyle(.menu)
-            .labelsHidden()
         default:
             EmptyView()
         }
@@ -189,9 +248,6 @@ struct PropertyEditView: View {
 
     private func prepopulate() {
         if let existing {
-            if let idx = availableTypes.firstIndex(where: { $0 == existing.definition.type }) {
-                selectedTypeIndex = idx
-            }
             if let value = existing.value {
                 let type = existing.definition.type
                 switch value {

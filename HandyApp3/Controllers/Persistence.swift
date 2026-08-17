@@ -118,6 +118,11 @@ struct ComboListDTO: Codable {
     /// Optional: absent in files written before combo lists carried a timestamp.
     /// Decoders substitute `.distantPast`.
     var modifyDate: Date?
+    /// Optional: absent in files written before combo lists carried tombstones. Decoders
+    /// substitute `false`/`nil`. A build older than this field rewriting the file drops both —
+    /// the same accepted downgrade risk as other optional tombstone fields in this file.
+    var isDeleted: Bool?
+    var deletedAt: Date?
 }
 
 // MARK: - CategoryDTO

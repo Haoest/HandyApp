@@ -1,4 +1,5 @@
 import Foundation
+import Observation
 
 // MARK: - ComboListDefinition
 
@@ -14,6 +15,7 @@ import Foundation
 /// When `isUserExtensible` is `true`, application users may type a brand-new
 /// value to have it appended to `userOptions` automatically. When `false`,
 /// only the predefined options are accepted.
+@Observable
 final class ComboListDefinition: Identifiable, Equatable {
     let id: UUID
     var name: String
@@ -32,9 +34,17 @@ final class ComboListDefinition: Identifiable, Equatable {
     /// When `false`, only the options already present in `allOptions` are accepted.
     let isUserExtensible: Bool
 
-    /// Absolute instant `name` last changed. `userOptions` merges as a grow-only set rather
-    /// than by timestamp — see `SnapshotReconciler` — but the header still needs one so a
-    /// rename can be ordered against a peer's rename.
+    /// Soft-delete tombstone. A deleted list is hidden from pickers (`AssetStore.
+    /// allComboListDefinitions` filters it out) but never purged — see `AssetStore.
+    /// purgeHardDeleted`'s doc comment — so any property still typed on it keeps
+    /// resolving and rendering its full option set.
+    var isDeleted: Bool = false
+    var deletedAt: Date? = nil
+
+    /// Absolute instant `name`, `isUserExtensible`, or the delete/restore tombstone last
+    /// changed. `userOptions` merges as a grow-only set rather than by timestamp — see
+    /// `SnapshotReconciler` — but the header still needs one so a rename or a delete/restore
+    /// can be ordered against a peer's concurrent change.
     var modifyDate: Date
 
     init(
@@ -43,6 +53,8 @@ final class ComboListDefinition: Identifiable, Equatable {
         systemOptions: [String] = [],
         userOptions: [String] = [],
         isUserExtensible: Bool = true,
+        isDeleted: Bool = false,
+        deletedAt: Date? = nil,
         modifyDate: Date = Date()
     ) {
         self.id = id
@@ -50,6 +62,8 @@ final class ComboListDefinition: Identifiable, Equatable {
         self.systemOptions = systemOptions
         self.userOptions = userOptions
         self.isUserExtensible = isUserExtensible
+        self.isDeleted = isDeleted
+        self.deletedAt = deletedAt
         self.modifyDate = modifyDate
     }
 

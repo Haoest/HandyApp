@@ -192,19 +192,14 @@ private struct ComboListEditRow: View {
     let list: ComboListDefinition
     @Binding var value: StoredValue?
 
-    private var selection: Binding<String> {
-        Binding(
-            get: { if case .text(let s) = value { return s }; return "" },
-            set: { value = $0.isEmpty ? nil : .text($0) }
-        )
+    private var current: String {
+        if case .text(let s) = value { return s }
+        return ""
     }
 
     var body: some View {
-        Picker(label, selection: selection) {
-            Text("—").tag("")
-            ForEach(list.allOptions, id: \.self) { option in
-                Text(option).tag(option)
-            }
+        ComboListField(label: label, list: list, current: current) { newValue in
+            value = newValue.map { .text($0) }
         }
     }
 }

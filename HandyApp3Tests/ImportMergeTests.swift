@@ -574,6 +574,45 @@ final class ImportMergeTests: XCTestCase {
         XCTAssertEqual(Set(merged.userOptions), Set(["Blue", "Green"]), "userOptions must union, not duplicate or replace")
     }
 
+    func testImportedDeletedComboListDoesNotDeleteLiveLocal() throws {
+        // Import is a user-initiated merge, not a sync round: a foreign file carrying a delete
+        // for a list that's live locally must never delete it out from under the user.
+        let cl = store.createComboList(name: "Colors", userOptions: ["Blue"])
+        let export = try XCTUnwrap(store.exportJSON())
+        let doctored = try withJSON(export) { json in
+            guard var lists = json["comboLists"] as? [[String: Any]] else { return }
+            for i in lists.indices where (lists[i]["id"] as? String) == cl.id.uuidString {
+                lists[i]["isDeleted"] = true
+                lists[i]["deletedAt"] = ISO8601DateFormatter().string(from: Date())
+            }
+            json["comboLists"] = lists
+        }
+
+        try store.importJSON(data: doctored)
+
+        let merged = try XCTUnwrap(store.comboListDefinitions[cl.id])
+        XCTAssertFalse(merged.isDeleted, "a live local list must not be deleted by an imported tombstone")
+    }
+
+    func testImportedNewDeletedComboListInsertsAsDeleted() throws {
+        let cl = store.createComboList(name: "Colors", userOptions: ["Blue"])
+        let export = try XCTUnwrap(store.exportJSON())
+        let doctored = try withJSON(export) { json in
+            guard var lists = json["comboLists"] as? [[String: Any]] else { return }
+            for i in lists.indices where (lists[i]["id"] as? String) == cl.id.uuidString {
+                lists[i]["isDeleted"] = true
+                lists[i]["deletedAt"] = ISO8601DateFormatter().string(from: Date())
+            }
+            json["comboLists"] = lists
+        }
+
+        let store2 = makeSecondStore()
+        try store2.importJSON(data: doctored)
+
+        let inserted = try XCTUnwrap(store2.comboListDefinitions[cl.id])
+        XCTAssertTrue(inserted.isDeleted, "a list new to this device should honor the incoming tombstone")
+    }
+
     func testMergeDoesNotAlterExistingCompositeTypeFields() throws {
         let ct = store.createCompositeType(name: "2D Size", fields: [
             PropertyDefinition(name: "W", type: .basic(.number))

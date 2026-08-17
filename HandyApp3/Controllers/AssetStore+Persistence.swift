@@ -523,7 +523,9 @@ extension AssetStore {
             clMap[dto.id] = ComboListDefinition(
                 id: dto.id, name: dto.name,
                 systemOptions: dto.systemOptions, userOptions: dto.userOptions,
-                isUserExtensible: dto.isUserExtensible, modifyDate: dto.modifyDate ?? .distantPast
+                isUserExtensible: dto.isUserExtensible,
+                isDeleted: dto.isDeleted ?? false, deletedAt: dto.deletedAt,
+                modifyDate: dto.modifyDate ?? .distantPast
             )
         }
 
@@ -643,6 +645,10 @@ extension AssetStore {
 
         // 2. Combo lists (local ∪ incoming). On collision, union incoming userOptions —
         // systemOptions is private(set) on ComboListDefinition and not writable here anyway.
+        // The incoming tombstone is applied only to newly-inserted lists: this is a
+        // user-initiated import merge, not a sync round, so a foreign file that happens to carry
+        // a delete must never delete a live local list out from under the user (mirrors the
+        // existing stance on incoming soft-deleted categories below).
         var clMap = comboListDefinitions
         for dto in snap.comboLists {
             if let existing = clMap[dto.id] {
@@ -652,7 +658,9 @@ extension AssetStore {
                 clMap[dto.id] = ComboListDefinition(
                     id: dto.id, name: dto.name,
                     systemOptions: dto.systemOptions, userOptions: dto.userOptions,
-                    isUserExtensible: dto.isUserExtensible, modifyDate: dto.modifyDate ?? .distantPast
+                    isUserExtensible: dto.isUserExtensible,
+                    isDeleted: dto.isDeleted ?? false, deletedAt: dto.deletedAt,
+                    modifyDate: dto.modifyDate ?? .distantPast
                 )
             }
         }
@@ -1017,7 +1025,8 @@ extension AssetStore {
             comboLists: comboListDefinitions.values.map { cl in
                 ComboListDTO(id: cl.id, name: cl.name, systemOptions: cl.systemOptions,
                              userOptions: cl.userOptions, isUserExtensible: cl.isUserExtensible,
-                             modifyDate: cl.modifyDate)
+                             modifyDate: cl.modifyDate,
+                             isDeleted: cl.isDeleted, deletedAt: cl.deletedAt)
             },
             categories: categories.values.map { cat in
                 CategoryDTO(id: cat.id, name: cat.name, iconName: cat.iconName,
@@ -1253,17 +1262,24 @@ extension AssetStore {
         _upsertLoaded(compositeTypes: newCompositeTypes)
 
         // 2. Combo lists — mutate existing, insert new. systemOptions/isUserExtensible never
-        // change after creation, so only name/userOptions/modifyDate need updating in place.
+        // change after creation, so only name/userOptions/modifyDate/tombstone need updating
+        // in place. `snap` here is already the reconciled result of `SnapshotReconciler.merge`,
+        // so the delete/restore flag has already been resolved LWW against a peer — this just
+        // applies it.
         var newComboLists: [ComboListDefinition] = []
         for dto in snap.comboLists {
             if let existing = comboListDefinitions[dto.id] {
                 existing.name = dto.name
                 existing.userOptions = dto.userOptions
+                existing.isDeleted = dto.isDeleted ?? false
+                existing.deletedAt = dto.deletedAt
                 existing.modifyDate = dto.modifyDate ?? .distantPast
             } else {
                 newComboLists.append(ComboListDefinition(
                     id: dto.id, name: dto.name, systemOptions: dto.systemOptions, userOptions: dto.userOptions,
-                    isUserExtensible: dto.isUserExtensible, modifyDate: dto.modifyDate ?? .distantPast))
+                    isUserExtensible: dto.isUserExtensible,
+                    isDeleted: dto.isDeleted ?? false, deletedAt: dto.deletedAt,
+                    modifyDate: dto.modifyDate ?? .distantPast))
             }
         }
         _upsertLoaded(comboLists: newComboLists)

@@ -24,7 +24,13 @@ enum BuiltInTypes {
 
 extension AssetStore {
 
-    /// Registers all built-in combo list templates. Idempotent.
+    /// Registers all built-in combo list templates. Idempotent, keyed by the template's
+    /// deterministic id rather than its name: a name-keyed guard would treat a user's rename of
+    /// a built-in list as "not seeded yet" and re-seed a duplicate under the original id on the
+    /// next launch, silently reverting the rename and wiping any options accumulated since.
+    /// Presence-keyed, not liveness-keyed: a soft-deleted built-in list is still present in
+    /// `comboListDefinitions` (see `AssetStore.allComboListDefinitions`), so the guard finds it
+    /// and skips — a deliberate delete is not resurrected by the seeder.
     @discardableResult
     func seedBuiltInComboLists() -> [ComboListDefinition] {
         let templates: [ComboListDefinition] = [
@@ -32,7 +38,7 @@ extension AssetStore {
         ]
         var seeded: [ComboListDefinition] = []
         for template in templates {
-            guard !comboListDefinitions.values.contains(where: { $0.name == template.name }) else { continue }
+            guard comboListDefinitions[template.id] == nil else { continue }
             let registered = createComboList(
                 id: template.id,
                 name: template.name,

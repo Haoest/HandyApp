@@ -369,29 +369,23 @@ private struct ComboListDetailRow: View {
     let list: ComboListDefinition
     let onEditLabel: (() -> Void)?
 
-    private var selectionBinding: Binding<String> {
-        Binding(
-            get: { if case .text(let s) = property.value { return s }; return "" },
-            set: { option in
-                if option.isEmpty {
-                    try? store.removePropertyValue(forDefinitionID: property.definition.id, fromAssetID: assetID)
-                } else {
-                    try? store.setPropertyValue(.text(option), forDefinitionID: property.definition.id, onAssetID: assetID)
-                }
-            }
-        )
+    private var current: String {
+        if case .text(let s) = property.value { return s }
+        return ""
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            PropertyLabel(name: property.definition.name, onEditLabel: onEditLabel)
-            Picker("", selection: selectionBinding) {
-                Text("—").tag("")
-                ForEach(list.allOptions, id: \.self) { option in
-                    Text(option).tag(option)
-                }
+        ComboListField(
+            label: property.definition.name,
+            list: list,
+            current: current,
+            onEditLabel: onEditLabel
+        ) { newValue in
+            if let newValue {
+                try? store.setPropertyValue(.text(newValue), forDefinitionID: property.definition.id, onAssetID: assetID)
+            } else {
+                try? store.removePropertyValue(forDefinitionID: property.definition.id, fromAssetID: assetID)
             }
-            .labelsHidden()
         }
     }
 }

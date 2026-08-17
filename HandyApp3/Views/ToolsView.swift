@@ -92,6 +92,10 @@ struct ToolsTab: View {
                             Label("Deleted Categories", systemImage: "folder.badge.minus")
                         }
                         .listRowBackground(Color.white.opacity(0.5))
+                        NavigationLink(destination: DeletedComboListsView()) {
+                            Label("Deleted Combo Lists", systemImage: "list.bullet.rectangle")
+                        }
+                        .listRowBackground(Color.white.opacity(0.5))
                     }
 
                     Section("Communication") {
@@ -394,6 +398,64 @@ private struct DeletedCategoryRow: View {
         ).day ?? 0
         let remaining = max(0, AppPreference.DaysToRetainDeletedItems - elapsed)
         return "Purge in ^[\(remaining) day](inflect: true)"
+    }
+}
+
+// MARK: - Deleted combo lists
+
+struct DeletedComboListsView: View {
+    @Environment(AssetStore.self) private var store
+
+    private var sorted: [ComboListDefinition] {
+        store.deletedComboListDefinitions.sorted { $0.name.localizedCompare($1.name) == .orderedAscending }
+    }
+
+    var body: some View {
+        Group {
+            if sorted.isEmpty {
+                ContentUnavailableView("No Deleted Combo Lists", systemImage: "list.bullet.rectangle")
+            } else {
+                List {
+                    ForEach(sorted) { list in
+                        DeletedComboListRow(list: list)
+                    }
+                    Section {
+                        Text("Swipe on any row for actions")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                            .frame(maxWidth: .infinity, alignment: .center)
+                            .listRowBackground(Color.clear)
+                    }
+                }
+            }
+        }
+        .navigationTitle("Deleted Combo Lists")
+        .navigationBarTitleDisplayMode(.inline)
+    }
+}
+
+private struct DeletedComboListRow: View {
+    @Environment(AssetStore.self) private var store
+    let list: ComboListDefinition
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(list.name)
+            Text("Kept until restored — ^[\(list.allOptions.count) option](inflect: true)")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+        // No "Delete now": a combo list has no sync-safe hard-delete path (unlike assets/
+        // categories) — removing it from the store outright resurrects on the next sync and
+        // silently drops any property still typed on it. Restore only.
+        .swipeActions(edge: .trailing) {
+            Button {
+                try? store.restoreComboList(id: list.id)
+            } label: {
+                Label("Restore", systemImage: "arrow.uturn.backward")
+            }
+            .tint(.green)
+        }
     }
 }
 

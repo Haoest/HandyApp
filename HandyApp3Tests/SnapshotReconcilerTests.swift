@@ -78,10 +78,12 @@ final class SnapshotReconcilerTests: XCTestCase {
 
     private func comboList(
         id: UUID = UUID(), name: String = "List", systemOptions: [String] = [],
-        userOptions: [String] = [], isUserExtensible: Bool = true, modifyDate: Date? = Date()
+        userOptions: [String] = [], isUserExtensible: Bool = true, modifyDate: Date? = Date(),
+        isDeleted: Bool? = nil, deletedAt: Date? = nil
     ) -> ComboListDTO {
         ComboListDTO(id: id, name: name, systemOptions: systemOptions, userOptions: userOptions,
-                    isUserExtensible: isUserExtensible, modifyDate: modifyDate)
+                    isUserExtensible: isUserExtensible, modifyDate: modifyDate,
+                    isDeleted: isDeleted, deletedAt: deletedAt)
     }
 
     private func compositeType(
@@ -270,6 +272,44 @@ final class SnapshotReconcilerTests: XCTestCase {
 
         let merged = SnapshotReconciler.joinComboList(a, b)
         XCTAssertEqual(merged.name, "New Name")
+    }
+
+    func testComboListDeleteWinsOverOlderEdit() {
+        let listID = UUID()
+        let t0 = Date(timeIntervalSince1970: 1_700_000_000)
+        let edit = comboList(id: listID, userOptions: ["FromEdit"], modifyDate: t0)
+        let delete = comboList(id: listID, userOptions: ["FromDelete"], modifyDate: t0.addingTimeInterval(10),
+                                isDeleted: true, deletedAt: t0.addingTimeInterval(10))
+
+        let merged = SnapshotReconciler.joinComboList(edit, delete)
+        XCTAssertEqual(merged.isDeleted, true)
+    }
+
+    func testComboListNewerEditResurrectsOverOlderDelete() {
+        // Intentional consequence of plain LWW on the header, not a bug: a later edit on one
+        // peer always wins the whole header, including the tombstone.
+        let listID = UUID()
+        let t0 = Date(timeIntervalSince1970: 1_700_000_000)
+        let delete = comboList(id: listID, modifyDate: t0, isDeleted: true, deletedAt: t0)
+        let laterEdit = comboList(id: listID, name: "Renamed", modifyDate: t0.addingTimeInterval(10), isDeleted: false)
+
+        let merged = SnapshotReconciler.joinComboList(delete, laterEdit)
+        XCTAssertEqual(merged.isDeleted, false)
+        XCTAssertEqual(merged.name, "Renamed")
+    }
+
+    func testComboListUnionsUserOptionsAcrossDelete() {
+        // Options must still union even when the winning side is deleted, so a later restore
+        // is lossless.
+        let listID = UUID()
+        let t0 = Date(timeIntervalSince1970: 1_700_000_000)
+        let delete = comboList(id: listID, userOptions: ["FromDelete"], modifyDate: t0.addingTimeInterval(10),
+                                isDeleted: true, deletedAt: t0.addingTimeInterval(10))
+        let olderEdit = comboList(id: listID, userOptions: ["FromEdit"], modifyDate: t0)
+
+        let merged = SnapshotReconciler.joinComboList(delete, olderEdit)
+        XCTAssertEqual(merged.isDeleted, true)
+        XCTAssertEqual(Set(merged.userOptions), Set(["FromDelete", "FromEdit"]))
     }
 
     // MARK: - Category template tombstone survives merge (no resurrection from a peer)

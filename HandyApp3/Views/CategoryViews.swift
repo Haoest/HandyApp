@@ -4,6 +4,7 @@ import SwiftUI
 
 private enum CategoryDest: Hashable {
     case propertyDefs(UUID)
+    case comboList(UUID)
 }
 
 struct CategoryTab: View {
@@ -16,51 +17,73 @@ struct CategoryTab: View {
     @State private var categoryForNewAsset: AssetCategory?
     @State private var createdAssetID: UUID?
     @State private var paywallPresented = false
+    @State private var newComboListPresented = false
 
     private var sortedCategories: [AssetCategory] {
         store.allCategories.sorted { $0.name.localizedCompare($1.name) == .orderedAscending }
+    }
+
+    private var sortedComboLists: [ComboListDefinition] {
+        store.allComboListDefinitions.sorted { $0.name.localizedCompare($1.name) == .orderedAscending }
     }
 
     var body: some View {
         NavigationStack(path: $navigationPath) {
             ZStack {
                 AppBackground()
-                Group {
-                    if store.allCategories.isEmpty {
-                        ContentUnavailableView(
-                            "No Categories",
-                            systemImage: "folder",
-                            description: Text("Tap + to create your first category.")
-                        )
-                    } else {
-                        List(sortedCategories) { category in
-                            CategoryRow(
-                                category: category,
-                                isExpanded: expandedCategoryID == category.id,
-                                onToggle: {
-                                    withAnimation(.easeInOut(duration: 0.2)) {
-                                        expandedCategoryID = expandedCategoryID == category.id ? nil : category.id
+                List {
+                    Section("Categories") {
+                        if sortedCategories.isEmpty {
+                            Text("Tap + above to create your first category.")
+                                .foregroundStyle(.secondary)
+                                .listRowBackground(Color.white.opacity(0.5))
+                        } else {
+                            ForEach(sortedCategories) { category in
+                                CategoryRow(
+                                    category: category,
+                                    isExpanded: expandedCategoryID == category.id,
+                                    onToggle: {
+                                        withAnimation(.easeInOut(duration: 0.2)) {
+                                            expandedCategoryID = expandedCategoryID == category.id ? nil : category.id
+                                        }
+                                    },
+                                    onNewAsset: {
+                                        guard store.hasAssetCapacity else { paywallPresented = true; return }
+                                        categoryForNewAsset = category
+                                    },
+                                    onViewAssets: {
+                                        router.focusedCategoryID = category.id
+                                        router.selectedTab = .assets
+                                    },
+                                    onViewDefs: { navigationPath = .init(); navigationPath.append(CategoryDest.propertyDefs(category.id)) },
+                                    onDuplicate: { categoryToDuplicate = category },
+                                    onChangeIcon: { newIcon in
+                                        try? store.updateCategoryIcon(id: category.id, iconName: newIcon)
                                     }
-                                },
-                                onNewAsset: {
-                                    guard store.hasAssetCapacity else { paywallPresented = true; return }
-                                    categoryForNewAsset = category
-                                },
-                                onViewAssets: {
-                                    router.focusedCategoryID = category.id
-                                    router.selectedTab = .assets
-                                },
-                                onViewDefs: { navigationPath = .init(); navigationPath.append(CategoryDest.propertyDefs(category.id)) },
-                                onDuplicate: { categoryToDuplicate = category },
-                                onChangeIcon: { newIcon in
-                                    try? store.updateCategoryIcon(id: category.id, iconName: newIcon)
-                                }
-                            )
-                            .listRowBackground(Color.white.opacity(0.5))
+                                )
+                                .listRowBackground(Color.white.opacity(0.5))
+                            }
                         }
-                        .scrollContentBackground(.hidden)
+                    }
+                    Section {
+                        if sortedComboLists.isEmpty {
+                            Text("Tap + to create a list of reusable choices.")
+                                .foregroundStyle(.secondary)
+                                .listRowBackground(Color.white.opacity(0.5))
+                        } else {
+                            ForEach(sortedComboLists) { list in
+                                ComboListSummaryRow(list: list) {
+                                    navigationPath = .init()
+                                    navigationPath.append(CategoryDest.comboList(list.id))
+                                }
+                                .listRowBackground(Color.white.opacity(0.5))
+                            }
+                        }
+                    } header: {
+                        AddSectionHeader(title: "Combo Lists") { newComboListPresented = true }
                     }
                 }
+                .scrollContentBackground(.hidden)
                 .environment(\.colorScheme, .light)
             }
             .navigationTitle("Categories")
@@ -77,10 +100,13 @@ struct CategoryTab: View {
                 switch dest {
                 case .propertyDefs(let id):
                     if let cat = store.categories[id] { CategoryPropertyDefsView(category: cat) }
+                case .comboList(let id):
+                    if let list = store.comboListDefinitions[id] { ComboListDetailView(list: list) }
                 }
             }
             .sheet(isPresented: $newCategoryPresented) { CategoryNewView() }
             .sheet(item: $categoryToDuplicate) { category in CategoryNewView(duplicating: category) }
+            .sheet(isPresented: $newComboListPresented) { ComboListNewView() }
             .sheet(item: $categoryForNewAsset, onDismiss: {
                 // Hand off to the Assets tab after the sheet has finished dismissing —
                 // pushing while it's still animating away can be dropped by SwiftUI.

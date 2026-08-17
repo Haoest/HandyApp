@@ -147,7 +147,13 @@ final class AssetStore {
     var deletedAssets: [Asset] { assets.values.filter { $0.isDeleted && !$0.isPurged } }
     var deletedCategories: [AssetCategory] { categories.values.filter { $0.isDeleted && !$0.isPurged } }
     var allCompositeTypes: [CompositeTypeDefinition] { Array(compositeTypes.values) }
-    var allComboListDefinitions: [ComboListDefinition] { Array(comboListDefinitions.values) }
+    /// Live combo lists, for pickers. `comboListDefinitions` itself (the raw dict) must keep
+    /// soft-deleted entries — `resolvePropertyType` looks a property's type up there, and if a
+    /// referenced list were missing entirely the property would decode to nil and silently drop
+    /// (see `AssetStore+Persistence.propertyDefinition(from:)`). Filtering only here keeps that
+    /// resolution intact while hiding deleted lists from UI that lists choices to pick from.
+    var allComboListDefinitions: [ComboListDefinition] { comboListDefinitions.values.filter { !$0.isDeleted } }
+    var deletedComboListDefinitions: [ComboListDefinition] { comboListDefinitions.values.filter { $0.isDeleted } }
 
     /// Whether creating or restoring another asset is currently allowed under `assetCreationLimit`.
     var hasAssetCapacity: Bool { assetCreationLimit.map { allAssets.count < $0 } ?? true }
@@ -174,6 +180,11 @@ final class AssetStore {
         let trimmed = name.trimmingCharacters(in: .whitespaces)
         if categories.values.contains(where: { !$0.isPurged && $0.name.caseInsensitiveCompare(trimmed) == .orderedSame }) {
             throw AssetStoreError.duplicateCategoryName(trimmed)
+        }
+        for template in propertyTemplates {
+            if let value = template.value {
+                handleComboListAutoAdd(stored: value, type: template.definition.type)
+            }
         }
         let cat = AssetCategory(id: id, name: trimmed, iconName: iconName, propertyTemplates: propertyTemplates)
         categories[cat.id] = cat
@@ -217,6 +228,9 @@ final class AssetStore {
     @discardableResult
     func addTemplateProperty(_ property: AssetProperty, toCategoryID categoryID: UUID) throws -> AssetProperty {
         guard let cat = categories[categoryID] else { throw AssetStoreError.categoryNotFound(categoryID) }
+        if let value = property.value {
+            handleComboListAutoAdd(stored: value, type: property.definition.type)
+        }
         cat.propertyTemplates.append(property)
         markDirty()
         return property
@@ -228,6 +242,7 @@ final class AssetStore {
             throw AssetStoreError.propertyNotFound(propID)
         }
         try validate(stored: stored, against: prop.definition.type, definitionName: prop.definition.name)
+        handleComboListAutoAdd(stored: stored, type: prop.definition.type)
         prop.value = stored
         prop.touch()
         markDirty()
@@ -483,6 +498,7 @@ final class AssetStore {
         guard let asset = assets[assetID] else { throw AssetStoreError.assetNotFound(assetID) }
         if let stored = value {
             try validate(stored: stored, against: definition.type, definitionName: definition.name)
+            handleComboListAutoAdd(stored: stored, type: definition.type)
         }
         let prop = AssetProperty(definition: definition, value: value)
         asset.customProperties.append(prop)
@@ -503,6 +519,7 @@ final class AssetStore {
             throw AssetStoreError.propertyNotFound(propID)
         }
         try validate(stored: stored, against: prop.definition.type, definitionName: prop.definition.name)
+        handleComboListAutoAdd(stored: stored, type: prop.definition.type)
         let now = Date()
         prop.value = stored
         prop.touch(now)
@@ -554,6 +571,15 @@ final class AssetStore {
 
     // MARK: - ComboListDefinition CRUD
 
+    /// Trims and drops blank entries from `systemOptions`/`userOptions` — a combo list option
+    /// is meaningless empty, and every render site (`ComboListField`, the option pickers) would
+    /// otherwise have to defend against a stray blank pill.
+    private static func sanitizedOptions(_ options: [String]) -> [String] {
+        options
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .filter { !$0.isEmpty }
+    }
+
     @discardableResult
     func createComboList(
         id: UUID = UUID(),
@@ -562,7 +588,12 @@ final class AssetStore {
         userOptions: [String] = [],
         isUserExtensible: Bool = true
     ) -> ComboListDefinition {
-        let cl = ComboListDefinition(id: id, name: name, systemOptions: systemOptions, userOptions: userOptions, isUserExtensible: isUserExtensible)
+        let cl = ComboListDefinition(
+            id: id, name: name,
+            systemOptions: Self.sanitizedOptions(systemOptions),
+            userOptions: Self.sanitizedOptions(userOptions),
+            isUserExtensible: isUserExtensible
+        )
         comboListDefinitions[cl.id] = cl
         markDirty()
         return cl
@@ -575,28 +606,85 @@ final class AssetStore {
         markDirty()
     }
 
+    /// Case-insensitive uniqueness check over live lists, for the authoring UI.
+    /// `createComboList` itself does not enforce this (it's also the seeder's entry point).
+    func comboListNameIsAvailable(_ name: String, excluding id: UUID? = nil) -> Bool {
+        let trimmed = name.trimmingCharacters(in: .whitespaces)
+        return !allComboListDefinitions.contains {
+            $0.id != id && $0.name.caseInsensitiveCompare(trimmed) == .orderedSame
+        }
+    }
+
+    /// Tombstones a combo list. Live properties that reference it are unaffected — see
+    /// `allComboListDefinitions`'s doc comment — so any asset already using it keeps its value
+    /// and options. Never auto-purged; see `purgeHardDeleted`'s doc comment.
+    func softDeleteComboList(id: UUID) throws {
+        guard let cl = comboListDefinitions[id] else { throw AssetStoreError.comboListNotFound(id) }
+        let now = Date()
+        cl.isDeleted = true
+        cl.deletedAt = now
+        cl.modifyDate = now
+        markDirty()
+    }
+
+    func restoreComboList(id: UUID) throws {
+        guard let cl = comboListDefinitions[id] else { throw AssetStoreError.comboListNotFound(id) }
+        cl.isDeleted = false
+        cl.deletedAt = nil
+        cl.modifyDate = Date()
+        markDirty()
+    }
+
+    /// True removal — leaves no tombstone, so a peer that still has this list will union it
+    /// straight back on the next sync, and any property still typed on it silently drops (see
+    /// `allComboListDefinitions`'s doc comment). Not sync-safe; never call from UI — use
+    /// `softDeleteComboList`. Kept for tests only.
     func deleteComboList(id: UUID) throws {
         guard comboListDefinitions[id] != nil else { throw AssetStoreError.comboListNotFound(id) }
         comboListDefinitions.removeValue(forKey: id)
         markDirty()
     }
 
+    /// `isUserExtensible` governs whether an end user typing a value into a `ComboListField`
+    /// gets it auto-added (see `handleComboListAutoAdd`) — it does not gate definition-authoring
+    /// UI, which must be able to curate options on any list regardless of that flag.
     func addUserOption(_ option: String, toComboListID id: UUID) throws {
         guard let cl = comboListDefinitions[id] else { throw AssetStoreError.comboListNotFound(id) }
-        guard cl.isUserExtensible else { throw AssetStoreError.comboListNotExtensible(id) }
-        guard !cl.allOptions.contains(option) else { return }
-        cl.userOptions.append(option)
+        let trimmed = option.trimmingCharacters(in: .whitespaces)
+        guard !trimmed.isEmpty, !cl.allOptions.contains(trimmed) else { return }
+        cl.userOptions.append(trimmed)
         cl.modifyDate = Date()
         markDirty()
     }
 
     func removeUserOption(_ option: String, fromComboListID id: UUID) throws {
         guard let cl = comboListDefinitions[id] else { throw AssetStoreError.comboListNotFound(id) }
-        guard cl.isUserExtensible else { throw AssetStoreError.comboListNotExtensible(id) }
         guard !cl.systemOptions.contains(option) else {
             throw AssetStoreError.cannotModifySystemOption(listID: id, option: option)
         }
         cl.userOptions.removeAll { $0 == option }
+        cl.modifyDate = Date()
+        markDirty()
+    }
+
+    /// Renames a user option in place, preserving its position — the authoring UI's tap-to-edit
+    /// flow needs this rather than a remove+append, which would move the edited option to the
+    /// end of the list. A no-op if `oldOption` isn't a current user option. If `newOption`
+    /// collides with another option already on the list, the old entry is simply dropped rather
+    /// than creating a duplicate.
+    func renameUserOption(_ oldOption: String, to newOption: String, inComboListID id: UUID) throws {
+        guard let cl = comboListDefinitions[id] else { throw AssetStoreError.comboListNotFound(id) }
+        guard !cl.systemOptions.contains(oldOption) else {
+            throw AssetStoreError.cannotModifySystemOption(listID: id, option: oldOption)
+        }
+        guard let idx = cl.userOptions.firstIndex(of: oldOption) else { return }
+        let trimmed = newOption.trimmingCharacters(in: .whitespaces)
+        guard !trimmed.isEmpty, trimmed != oldOption else { return }
+        if cl.allOptions.contains(trimmed) {
+            cl.userOptions.remove(at: idx)
+        } else {
+            cl.userOptions[idx] = trimmed
+        }
         cl.modifyDate = Date()
         markDirty()
     }
@@ -1030,9 +1118,10 @@ final class AssetStore {
     private func handleComboListAutoAdd(stored: StoredValue, type: PropertyType) {
         guard case .comboList(let list) = type,
               case .text(let value) = stored,
-              list.isUserExtensible,
-              !list.allOptions.contains(value) else { return }
-        list.userOptions.append(value)
+              list.isUserExtensible else { return }
+        let trimmed = value.trimmingCharacters(in: .whitespaces)
+        guard !trimmed.isEmpty, !list.allOptions.contains(trimmed) else { return }
+        list.userOptions.append(trimmed)
         list.modifyDate = Date()
     }
 
@@ -1185,6 +1274,13 @@ final class AssetStore {
     /// this automatic sweep never destroys content a sync merge would have protected. Left
     /// alone, that record simply stays a live tombstone in Trash — restorable, or removable via
     /// an explicit "delete now" — rather than being aged out from under the user.
+    ///
+    /// Soft-deleted combo lists are deliberately never touched here — there is no purge/strip
+    /// path for them at all. A stripped combo list (name/options blanked, the way
+    /// `purgeCategoryInPlace` blanks a category) would leave any property still typed on it with
+    /// an empty option set instead of the values it actually holds; a tombstoned-but-intact list
+    /// costs only a handful of strings and keeps every reference resolvable indefinitely. See
+    /// `allComboListDefinitions`'s doc comment.
     func purgeHardDeleted(olderThan seconds: TimeInterval = 90 * 86_400) {
         let cutoff = Date().addingTimeInterval(-seconds)
         for asset in assets.values

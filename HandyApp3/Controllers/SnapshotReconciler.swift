@@ -145,12 +145,18 @@ enum SnapshotReconciler {
         pick(a, b, stamp: { $0.modifyDate ?? .distantPast })
     }
 
-    /// Header (`name`, `isUserExtensible`, `systemOptions`) by last-writer-wins; `userOptions`
-    /// as a grow-only union — the winner's array first, then the loser's missing options in the
-    /// loser's own order. Never loses a concurrently-added option; the accepted cost is that
-    /// `removeUserOption` doesn't propagate — a peer's still-live copy resurrects it on the
-    /// next merge. `systemOptions` never diverges between devices (nothing mutates it after
-    /// creation), so taking it from the winner is safe.
+    /// Header (`name`, `isUserExtensible`, `systemOptions`, and now the `isDeleted`/`deletedAt`
+    /// tombstone) by last-writer-wins; `userOptions` as a grow-only union — the winner's array
+    /// first, then the loser's missing options in the loser's own order. Never loses a
+    /// concurrently-added option; the accepted cost is that `removeUserOption` doesn't
+    /// propagate — a peer's still-live copy resurrects it on the next merge. `systemOptions`
+    /// never diverges between devices (nothing mutates it after creation), so taking it from the
+    /// winner is safe.
+    ///
+    /// Because the tombstone rides in the LWW header while `userOptions` merges independently: a
+    /// newer edit on one peer beats an older delete on another (plain LWW, same as a rename-vs-
+    /// rename race) — the delete is lost, and the list comes back live. A delete beats an older
+    /// edit while still unioning in the edit's options, so a later restore is lossless.
     static func joinComboList(_ a: ComboListDTO, _ b: ComboListDTO) -> ComboListDTO {
         let (winner, loser) = order(a, b, stamp: { $0.modifyDate ?? .distantPast })
         var merged = winner

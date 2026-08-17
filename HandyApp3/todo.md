@@ -2,23 +2,18 @@
 -quick reporting
 -export data to excel by email
 -swiping to delete transaction/event carries the asset sheet under
-- change event/transaction "duplicate" label
-
-need to refine how notification works. have it open the transaction / event screen with information filled? post event or transaction to home for quick action?
-
 
 revisit paywall ensure transaction and event has a limited free count
 
 -improve asset navigation, especially in tree mode, when going into details view. 
 
 - reorganize categories, remove specific appliances
-- rework combo list, allow custom text values to be entered, and the new values becomes pre-selectable for the next 
-combo list field
 
-
-- definition deletes (composite types, combo lists, combo list option removal) don't propagate over sync — a
-peer's still-live copy resurrects them on the next merge, since there's no tombstone on those two DTOs. Needs the
-same isDeleted/deletedAt treatment assets/categories already have, plus join/reap support.
+- definition deletes (composite types, combo list option removal) don't propagate over sync — a peer's still-live
+copy resurrects them on the next merge, since there's no tombstone on CompositeTypeDTO and removeUserOption still
+merges as a grow-only union. Combo lists themselves now have isDeleted/deletedAt (see below) — CompositeTypeDefinition
+still needs the same treatment, and combo list *options* still need their own tombstone if per-option removal is to
+survive sync.
 - purge deletes a photo's JPEG files immediately, even when the owning asset's strip gets refused by the new
 auto-purge protection (see below) — the record survives but the images may already be gone. Possible fix: stage
 purged photos in a local non-synced holding dir for a grace period instead of deleting outright.
@@ -27,6 +22,9 @@ purged photos in a local non-synced holding dir for a grace period instead of de
 
 improve localization to read more like asset management app
 improve combo list feature
+rework combo list: dedicated ComboListField (textbox + tap-to-fill suggestions, typed values
+auto-add to the list), full CRUD + soft delete in a new Categories tab section, single
+"Combo list" entry in the property Type picker (replacing one flattened entry per list)
 siri intergration
     - add asset
     - open asset
@@ -46,3 +44,5 @@ tombstone in Trash, restorable, instead of a prompt~
 - build on recurring event/transaction notification
 
 - data import should merge with live data instead of replace
+- change event/transaction "duplicate" label
+- need to refine how notification works. have it open the transaction / event screen with information filled? post event or transaction to home for quick action?
