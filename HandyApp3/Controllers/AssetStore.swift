@@ -280,7 +280,8 @@ final class AssetStore {
         id propID: UUID,
         inCategoryID categoryID: UUID,
         name: String? = nil,
-        type: PropertyType? = nil
+        type: PropertyType? = nil,
+        isRequired: Bool? = nil
     ) throws {
         guard let cat = categories[categoryID] else { throw AssetStoreError.categoryNotFound(categoryID) }
         guard let prop = cat.propertyTemplates.first(where: { $0.id == propID }) else {
@@ -291,6 +292,7 @@ final class AssetStore {
             prop.definition.type = type
             prop.value = nil
         }
+        if let isRequired { prop.definition.isRequired = isRequired }
         prop.touch()
         markDirty()
     }

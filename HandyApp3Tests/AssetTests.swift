@@ -122,6 +122,40 @@ final class AssetTests: XCTestCase {
         }
     }
 
+    // appliance's "Type" field is a required combo list seeded with the built-in appliance
+    // types, all writable (not locked) so the user can rename or remove them
+    func testApplianceTypeFieldIsRequiredComboListWithWritableOptions() throws {
+        store.seedBuiltInComboLists()
+        store.seedBuiltInCategories()
+
+        let category = try XCTUnwrap(store.allCategories.first { $0.name == SystemCategory.appliance.rawValue })
+        let typeTemplate = try XCTUnwrap(category.propertyTemplates.first { $0.definition.name == "Type" })
+
+        XCTAssertTrue(typeTemplate.definition.isRequired)
+        guard case .comboList(let list) = typeTemplate.definition.type else {
+            return XCTFail("Type should be a combo list field")
+        }
+        XCTAssertEqual(list.name, "Appliance Type")
+        XCTAssertEqual(list.allOptions, ["Range", "Refrigerator", "Oven", "Cloth Washer", "Cloth Dryer", "HVAC", "Dish washer"])
+        XCTAssertTrue(list.systemOptions.isEmpty, "built-in appliance types must be writable user options, not locked")
+    }
+
+    // appliance's "Power source" field is an optional combo list, not required like "Type"
+    func testAppliancePowerSourceFieldIsOptionalComboList() throws {
+        store.seedBuiltInComboLists()
+        store.seedBuiltInCategories()
+
+        let category = try XCTUnwrap(store.allCategories.first { $0.name == SystemCategory.appliance.rawValue })
+        let powerSourceTemplate = try XCTUnwrap(category.propertyTemplates.first { $0.definition.name == "Power source" })
+
+        XCTAssertFalse(powerSourceTemplate.definition.isRequired)
+        guard case .comboList(let list) = powerSourceTemplate.definition.type else {
+            return XCTFail("Power source should be a combo list field")
+        }
+        XCTAssertEqual(list.name, "Power Source")
+        XCTAssertEqual(list.allOptions, ["Electricity", "Natural Gas"])
+    }
+
     // removing a child from its parent clears both directions of the relationship
     func testDisassociatingParenthoodClearsBothSides() throws {
         store.seedBuiltInCategories()

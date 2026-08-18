@@ -41,6 +41,8 @@ extension AssetStore {
     func seedBuiltInComboLists() -> [ComboListDefinition] {
         let templates: [ComboListDefinition] = [
             BuiltInTypes.powerSourceComboList(),
+            BuiltInTypes.retailerComboList(),
+            BuiltInTypes.applianceTypeComboList(),
         ]
         return templates.compactMap { resolveBuiltInComboList(for: $0) }
     }
@@ -151,6 +153,54 @@ extension AssetStore {
             }
         }
         return seeded
+    }
+
+    /// Upgrade phase, run after `seedBuiltInCategories`: merges canonical `categoryTemplates`
+    /// changes into categories an install already seeded before the change shipped — e.g.
+    /// Appliance's "Retailer" field moving from free text to a combo list. Without this pass,
+    /// `seedBuiltInCategories`'s "create if the category doesn't exist yet" guard would leave
+    /// an existing install stuck on whatever template shape it first seeded.
+    ///
+    /// Matches both the category and each field by deterministic id, same as
+    /// `seedBuiltInCategories`, so a user rename doesn't read as "missing" and re-add. A field
+    /// the user tombstoned (`removeTemplateProperty`) is left alone rather than resurrected or
+    /// edited — same presence-keyed-not-liveness-keyed rule `resolveBuiltInComboList` uses for
+    /// combo lists. Categories the user deleted or that were purged are skipped entirely.
+    ///
+    /// Retirement is a separate first pass: `BuiltInTypes.retiredFieldIDs` tombstones a field
+    /// outright rather than mutating its type in place, so its replacement (a different id in
+    /// `categoryTemplates`) comes in clean through the normal "missing canonical field" pass
+    /// below instead of inheriting the old field's stored value or history.
+    @discardableResult
+    func upgradeBuiltInCategories() -> Int {
+        var changed = 0
+        for (key, retiredIDs) in BuiltInTypes.retiredFieldIDs {
+            let categoryID = BuiltInTypes.deterministicID("category.\(key.rawValue)")
+            guard let cat = categories[categoryID], !cat.isDeleted, !cat.isPurged else { continue }
+            for retiredID in retiredIDs {
+                guard let prop = cat.propertyTemplates.first(where: { $0.id == retiredID }), !prop.isDeleted else { continue }
+                try? removeTemplateProperty(id: retiredID, fromCategoryID: cat.id)
+                changed += 1
+            }
+        }
+        for (key, defs) in BuiltInTypes.categoryTemplates {
+            let categoryID = BuiltInTypes.deterministicID("category.\(key.rawValue)")
+            guard let cat = categories[categoryID], !cat.isDeleted, !cat.isPurged else { continue }
+            for def in defs {
+                if let existing = cat.propertyTemplates.first(where: { $0.id == def.id }) {
+                    guard !existing.isDeleted, existing.definition != def else { continue }
+                    try? updateTemplateProperty(
+                        id: def.id, inCategoryID: cat.id,
+                        name: def.name, type: def.type, isRequired: def.isRequired
+                    )
+                    changed += 1
+                } else {
+                    try? addTemplateProperty(AssetProperty(id: def.id, definition: def), toCategoryID: cat.id)
+                    changed += 1
+                }
+            }
+        }
+        return changed
     }
 
     /// Registers built-in composite *value* types (2D Size, 3D Size). Idempotent.

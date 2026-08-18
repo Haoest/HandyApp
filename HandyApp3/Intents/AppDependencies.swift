@@ -20,6 +20,7 @@ final class AppDependencies {
         // Built-in seeds are idempotent — always run to pick up new types added in app updates
         s.seedBuiltInComboLists()
         s.seedBuiltInCategories()
+        s.upgradeBuiltInCategories()
         s.seedBuiltInTypes()
         switch AssetStore.coldStartAction(
             loaded: wasLoaded,

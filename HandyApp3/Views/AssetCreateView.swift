@@ -1,10 +1,12 @@
 import SwiftUI
 
-/// Minimal new-asset form: category (read-only), name, and an optional parent.
+/// Minimal new-asset form: category (read-only), name, and an optional parent. Base
+/// properties are otherwise filled in afterwards on the asset detail screen — the one
+/// exception is a category's required "Type" combo-list field (e.g. Appliance's), surfaced
+/// here because picking it drives the Name auto-fill below.
 /// Holds the draft locally and creates nothing in the store until Save, so an
 /// abandoned form (Cancel, or swiping the sheet away) leaves no asset behind and no
-/// stray "asset created" entry in the activity log. Base properties are filled in
-/// afterwards on the asset detail screen.
+/// stray "asset created" entry in the activity log.
 struct AssetCreateView: View {
     @Environment(AssetStore.self) private var store
 
@@ -27,7 +29,32 @@ struct AssetCreateView: View {
     @State private var paywallPresented = false
     @State private var errorMessage: String?
 
+    /// The category's required "Type" combo-list field, if it has one (currently just
+    /// Appliance). Surfaced directly on this otherwise property-free create form because
+    /// picking it drives the Name auto-fill below.
+    @State private var typeValue: StoredValue?
+    /// The last name this view generated on the user's behalf — from `prefillDraft`'s default,
+    /// or from a prior Type selection. As long as `name` still equals this, the user hasn't
+    /// typed anything of their own, so a new Type selection is free to overwrite it again.
+    @State private var autoFilledName: String?
+
     private var trimmedName: String { name.trimmingCharacters(in: .whitespaces) }
+
+    private var typeDefinition: PropertyDefinition? {
+        category.propertyTemplates.first {
+            !$0.isDeleted && $0.definition.name == "Type" && isComboList($0.definition.type)
+        }?.definition
+    }
+
+    private func isComboList(_ type: PropertyType) -> Bool {
+        if case .comboList = type { return true }
+        return false
+    }
+
+    private var isTypeMissing: Bool {
+        guard let typeDefinition, typeDefinition.isRequired else { return false }
+        return typeValue == nil
+    }
 
     var body: some View {
         Form {
@@ -35,6 +62,10 @@ struct AssetCreateView: View {
                 VStack(alignment: .leading, spacing: 4) {
                     PropertyLabel(name: "Category", onEditLabel: nil)
                     Label(category.name, systemImage: category.iconName)
+                }
+                if let typeDefinition {
+                    PropertyEditRow(definition: typeDefinition, value: $typeValue)
+                        .onChange(of: typeValue) { _, newValue in applyTypeSelection(newValue) }
                 }
                 VStack(alignment: .leading, spacing: 4) {
                     PropertyLabel(name: "Name", onEditLabel: nil)
@@ -63,7 +94,7 @@ struct AssetCreateView: View {
             }
             ToolbarItem(placement: .confirmationAction) {
                 Button("Save") { save() }
-                    .disabled(trimmedName.isEmpty)
+                    .disabled(trimmedName.isEmpty || isTypeMissing)
             }
         }
         .onAppear { prefillDraft() }
@@ -82,7 +113,8 @@ struct AssetCreateView: View {
 
     /// Seeds the draft once, so retyping the name (or re-picking a parent) isn't
     /// clobbered on re-appear. Default name mirrors the previous behavior:
-    /// "<Category> <n+1>", unless a name was supplied.
+    /// "<Category> <n+1>", unless a name was supplied. A supplied name is treated as
+    /// intentional, not an autofill placeholder, so a later Type pick won't overwrite it.
     private func prefillDraft() {
         guard !didPrefill else { return }
         didPrefill = true
@@ -92,13 +124,30 @@ struct AssetCreateView: View {
         } else {
             let count = (try? store.assets(ofCategoryID: category.id))?.count ?? 0
             name = "\(category.name) \(count + 1)"
+            autoFilledName = name
         }
     }
 
+    /// Regenerates Name from the picked Type option — "<option> (<n+1>)" — but only while
+    /// `name` still matches the last value this view set on its own. Once the user types
+    /// something else, `name` and `autoFilledName` diverge and further Type picks stop
+    /// touching Name.
+    private func applyTypeSelection(_ newValue: StoredValue?) {
+        guard case .text(let optionName) = newValue, !optionName.isEmpty else { return }
+        guard name == (autoFilledName ?? "") else { return }
+        let count = (try? store.assets(ofCategoryID: category.id))?.count ?? 0
+        let generated = "\(optionName) (\(count + 1))"
+        name = generated
+        autoFilledName = generated
+    }
+
     private func save() {
-        guard !trimmedName.isEmpty else { return }
+        guard !trimmedName.isEmpty, !isTypeMissing else { return }
         do {
             let asset = try store.createAsset(name: trimmedName, categoryID: category.id)
+            if let typeDefinition, let typeValue {
+                try? store.setPropertyValue(typeValue, forDefinitionID: typeDefinition.id, onAssetID: asset.id)
+            }
             // A brand-new asset has no parent yet, so addChild (not moveAsset) applies.
             if let parentID { try? store.addChild(assetID: asset.id, toParentID: parentID) }
             onCreated(asset)

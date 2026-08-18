@@ -282,6 +282,7 @@ extension AssetStore {
         backgroundTheme = .mist
         seedBuiltInComboLists()
         seedBuiltInCategories()
+        upgradeBuiltInCategories()
         seedBuiltInTypes()
         seedBuiltInAssets()
         seedSampleAutomobile()

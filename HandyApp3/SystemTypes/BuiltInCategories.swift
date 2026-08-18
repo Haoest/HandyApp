@@ -6,13 +6,25 @@ extension BuiltInTypes {
 
     /// Shared appliance fields in display order.
     static let applianceBaseDefinitions: [PropertyDefinition] = [
+        PropertyDefinition(id: deterministicID("field.appliance.Type"),          name: "Type",          type: .comboList(applianceTypeComboList()), isRequired: true),
+        PropertyDefinition(id: deterministicID("field.appliance.Power source"),  name: "Power source",   type: .comboList(powerSourceComboList()), isRequired: false),
         PropertyDefinition(id: deterministicID("field.appliance.Make"),          name: "Make",          type: .basic(.text),          isRequired: true),
         PropertyDefinition(id: deterministicID("field.appliance.Purchase date"), name: "Purchase date", type: .basic(.date),          isRequired: false),
         PropertyDefinition(id: deterministicID("field.appliance.Price"),         name: "Price",         type: .basic(.currency),      isRequired: false),
         PropertyDefinition(id: deterministicID("field.appliance.Size"),          name: "Size",          type: .composite(size3D()),   isRequired: false),
         PropertyDefinition(id: deterministicID("field.appliance.Warranty"),      name: "Warranty",      type: .basic(.text),          isRequired: false),
-        PropertyDefinition(id: deterministicID("field.appliance.Retailer"),      name: "Retailer",      type: .basic(.text),          isRequired: false),
+        PropertyDefinition(id: deterministicID("field.appliance.Retailer.comboList"), name: "Retailer", type: .comboList(retailerComboList()), isRequired: false),
         PropertyDefinition(id: deterministicID("field.appliance.Notes"),         name: "Notes",         type: .basic(.text),          isRequired: false),
+    ]
+
+    /// Field ids retired by a template change, keyed by the category that carried them —
+    /// e.g. Appliance's old free-text "Retailer" field, superseded by a combo-list-typed
+    /// field under a new id (`field.appliance.Retailer.comboList` above) rather than an
+    /// in-place type change. The upgrade phase tombstones these on installs that still carry
+    /// them; the replacement field is then picked up by the normal "missing canonical field"
+    /// pass, since it lives under a different id. See `AssetStore.upgradeBuiltInCategories`.
+    static let retiredFieldIDs: [SystemCategory: [UUID]] = [
+        .appliance: [deterministicID("field.appliance.Retailer")],
     ]
 
     /// SF Symbol name for each system category.
