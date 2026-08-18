@@ -122,28 +122,6 @@ final class AssetTests: XCTestCase {
         }
     }
 
-    // range appliance with power source, color, and installation type
-    func testRangeAssetWithPowerSourceAndCustomAttributes() throws {
-        store.seedBuiltInCategories()
-
-        let category = try XCTUnwrap(store.allCategories.first { $0.name == SystemCategory.range.rawValue })
-        let asset = try store.createAsset(name: "Range", categoryID: category.id)
-
-        let powerSourceProp = try XCTUnwrap(asset.baseProperties.first { $0.definition.name == "Power source" })
-        try store.setPropertyValue(.text("Natural Gas"), forDefinitionID: powerSourceProp.definition.id, onAssetID: asset.id)
-
-        try store.addCustomProperty(definition: PropertyDefinition(name: "Color", type: .basic(.text)), value: .text("black"), toAssetID: asset.id)
-        try store.addCustomProperty(definition: PropertyDefinition(name: "Installation type", type: .basic(.text)), value: .text("slide in"), toAssetID: asset.id)
-
-        XCTAssertEqual(asset.value(for: powerSourceProp.definition.id), .text("Natural Gas"))
-
-        let colorProp = try XCTUnwrap(asset.customProperties.first { $0.definition.name == "Color" })
-        XCTAssertEqual(colorProp.value, .text("black"))
-
-        let installProp = try XCTUnwrap(asset.customProperties.first { $0.definition.name == "Installation type" })
-        XCTAssertEqual(installProp.value, .text("slide in"))
-    }
-
     // removing a child from its parent clears both directions of the relationship
     func testDisassociatingParenthoodClearsBothSides() throws {
         store.seedBuiltInCategories()

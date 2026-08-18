@@ -340,10 +340,6 @@ final class StoreFileLayoutTests: XCTestCase {
         let appliance = try XCTUnwrap(reloaded.categories.values.first { $0.name == SystemCategory.appliance.rawValue })
         XCTAssertNotNil(appliance.propertyTemplates.first { $0.definition.name == "Size" },
                         "Appliance must keep its Size template across a save/load round trip")
-
-        let range = try XCTUnwrap(reloaded.categories.values.first { $0.name == SystemCategory.range.rawValue })
-        XCTAssertNotNil(range.propertyTemplates.first { $0.definition.name == "Power source" },
-                        "Range must keep its Power source template across a save/load round trip")
     }
 
     /// Seeding the same built-ins on two independent stores (simulating two devices that each

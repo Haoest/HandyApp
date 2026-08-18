@@ -4,10 +4,7 @@ import Foundation
 
 extension BuiltInTypes {
 
-    /// Shared appliance fields in display order. Shared verbatim across Appliance,
-    /// Refrigerator and HVAC (see `categoryTemplates` below), so these ids are also what
-    /// keeps those three categories' fields identical to each other, not just stable
-    /// across launches.
+    /// Shared appliance fields in display order.
     static let applianceBaseDefinitions: [PropertyDefinition] = [
         PropertyDefinition(id: deterministicID("field.appliance.Make"),          name: "Make",          type: .basic(.text),          isRequired: true),
         PropertyDefinition(id: deterministicID("field.appliance.Purchase date"), name: "Purchase date", type: .basic(.date),          isRequired: false),
@@ -18,7 +15,7 @@ extension BuiltInTypes {
         PropertyDefinition(id: deterministicID("field.appliance.Notes"),         name: "Notes",         type: .basic(.text),          isRequired: false),
     ]
 
-    /// SF Symbol name for each system category. Appliance descendants share the appliance icon.
+    /// SF Symbol name for each system category.
     static let categoryIcons: [SystemCategory: String] = {
         let applianceIcon = "washer"
         return [
@@ -26,9 +23,6 @@ extension BuiltInTypes {
             .rentalHome:         "house.and.flag",
             .automobile:         "car",
             .appliance:          applianceIcon,
-            .refrigerator:       applianceIcon,
-            .hvac:               applianceIcon,
-            .range:              applianceIcon,
             .noCategory:         "tray",
         ]
     }()
@@ -36,7 +30,6 @@ extension BuiltInTypes {
     /// Keyed by SystemCategory; value is the ordered list of property definitions.
     static let categoryTemplates: [SystemCategory: [PropertyDefinition]] = {
         let applianceBase = applianceBaseDefinitions
-        let powerSourceField = PropertyDefinition(id: deterministicID("field.range.Power source"), name: "Power source", type: .comboList(powerSourceComboList()), isRequired: true)
         return [
             .residentialHousing: [
                 PropertyDefinition(id: deterministicID("field.residentialHousing.Address"),       name: "Address",       type: .basic(.text),    isRequired: true),
@@ -58,9 +51,6 @@ extension BuiltInTypes {
                 PropertyDefinition(id: deterministicID("field.automobile.Oil Filter"),    name: "Oil Filter",    type: .basic(.text),   isRequired: false),
             ],
             .appliance:    applianceBase,
-            .refrigerator: applianceBase,
-            .hvac:         applianceBase,
-            .range:      applianceBase + [powerSourceField],
             .noCategory: [
                 PropertyDefinition(id: deterministicID("field.noCategory.Notes"), name: "Notes", type: .basic(.text), isRequired: false),
             ],
