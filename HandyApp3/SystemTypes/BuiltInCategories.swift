@@ -56,8 +56,10 @@ extension BuiltInTypes {
             .automobile: [
                 PropertyDefinition(id: deterministicID("field.automobile.Make"),          name: "Make",          type: .basic(.text),   isRequired: true),
                 PropertyDefinition(id: deterministicID("field.automobile.Model"),         name: "Model",         type: .basic(.text),   isRequired: true),
+                PropertyDefinition(id: deterministicID("field.automobile.Trim"),          name: "Trim",          type: .basic(.text),   isRequired: false),
                 PropertyDefinition(id: deterministicID("field.automobile.Year"),          name: "Year",          type: .basic(.number), isRequired: false),
                 PropertyDefinition(id: deterministicID("field.automobile.License Plate"), name: "License Plate", type: .basic(.text),   isRequired: false),
+                PropertyDefinition(id: deterministicID("field.automobile.Registration Number"), name: "Registration Number", type: .basic(.text), isRequired: false),
                 PropertyDefinition(id: deterministicID("field.automobile.VIN"),           name: "VIN",           type: .basic(.text),   isRequired: false),
                 PropertyDefinition(id: deterministicID("field.automobile.Engine Oil"),    name: "Engine Oil",    type: .basic(.text),   isRequired: false),
                 PropertyDefinition(id: deterministicID("field.automobile.Oil Filter"),    name: "Oil Filter",    type: .basic(.text),   isRequired: false),
