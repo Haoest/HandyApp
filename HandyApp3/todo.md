@@ -9,6 +9,8 @@ revisit paywall ensure transaction and event has a limited free count
 
 - reorganize categories, remove specific appliances
 
+- update category to be able to automatically create sub items such as water heater, hvac
+
 - definition deletes (composite types, combo list option removal) don't propagate over sync — a peer's still-live
 copy resurrects them on the next merge, since there's no tombstone on CompositeTypeDTO and removeUserOption still
 merges as a grow-only union. Combo lists themselves now have isDeleted/deletedAt (see below) — CompositeTypeDefinition
