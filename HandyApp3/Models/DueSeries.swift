@@ -36,7 +36,10 @@ protocol SeriesRecord: AnyObject, Identifiable where ID == UUID {
 
 enum SeriesLogic {
     private static let yyyyMMPattern = try! NSRegularExpression(pattern: #"\b\d{4}-(0[1-9]|1[0-2])\b"#)
-    private static let trailingCountSuffixPattern = try! NSRegularExpression(pattern: #"\s*\(\d+\)$"#)
+    /// An existing "(n)" tag immediately following a matched yyyy-MM — anchored to the *start*
+    /// of the remainder after that match, not the end of the whole string, so it's found
+    /// correctly even when the date isn't the very last thing in the description.
+    private static let leadingCountSuffixPattern = try! NSRegularExpression(pattern: #"^\s*\(\d+\)"#)
     private static let trailingCountCapturePattern = try! NSRegularExpression(pattern: #"\((\d+)\)$"#)
 
     /// `createdAt` truncated to whole seconds, matching the persisted whole-second ISO-8601
@@ -126,36 +129,55 @@ enum SeriesLogic {
         return calendar.date(byAdding: component, value: value, to: dueDate) ?? dueDate
     }
 
-    /// Title for a new duplicate created at `creationDate`. Tries appending " yyyy-MM"; if
-    /// `source` already contains a yyyy-MM pattern, appends/increments a "(n)" suffix instead,
-    /// scanning `seriesTitles` (the other live series members) plus `source` itself for the
-    /// highest existing suffix.
+    /// Title for a new duplicate created at `creationDate`.
+    ///
+    /// 1. No yyyy-MM found anywhere in `source` → append the current one.
+    /// 2. A yyyy-MM found but it isn't the current month → replace it (and any "(n)" it
+    ///    carried, now meaningless) with the plain current month — a fresh month starts
+    ///    unstamped, same as rule 1.
+    /// 3. A yyyy-MM found and it *is* the current month → the description is being duplicated
+    ///    again within the same month, so it needs a "(n)" disambiguator. The number is one
+    ///    past the highest "(n)" already trailing this same current-month stamp on any live
+    ///    series member (`seriesTitles`) or on `source` itself; absent any, it starts at 1.
     static func duplicateTitle(source: String, seriesTitles: [String], creationDate: Date, calendar: Calendar = .current) -> String {
         let formatter = DateFormatter()
         formatter.locale = Locale(identifier: "en_US_POSIX")
         formatter.calendar = calendar
         formatter.timeZone = calendar.timeZone
         formatter.dateFormat = "yyyy-MM"
-        let yyyyMM = formatter.string(from: creationDate)
+        let currentYYYYMM = formatter.string(from: creationDate)
 
         let fullRange = NSRange(source.startIndex..., in: source)
-        guard yyyyMMPattern.firstMatch(in: source, range: fullRange) != nil else {
-            return source + " " + yyyyMM
+        guard let dateMatch = yyyyMMPattern.firstMatch(in: source, range: fullRange),
+              let dateRange = Range(dateMatch.range, in: source) else {
+            return source + " " + currentYYYYMM
         }
 
-        let base = trailingCountSuffixPattern.stringByReplacingMatches(
-            in: source, range: NSRange(source.startIndex..., in: source), withTemplate: ""
-        )
+        // Extend the span to be replaced past any "(n)" already trailing the matched date —
+        // stale in the month-changed case, and recomputed fresh in the same-month case either way.
+        let afterDate = source[dateRange.upperBound...]
+        var replacedRange = dateRange
+        if let suffixMatch = leadingCountSuffixPattern.firstMatch(
+            in: String(afterDate), range: NSRange(afterDate.startIndex..., in: afterDate)
+        ), let suffixRange = Range(suffixMatch.range, in: afterDate) {
+            replacedRange = dateRange.lowerBound..<suffixRange.upperBound
+        }
 
-        var highest = 1
+        let matchedYYYYMM = String(source[dateRange])
+        guard matchedYYYYMM == currentYYYYMM else {
+            return source.replacingCharacters(in: replacedRange, with: currentYYYYMM)
+        }
+
+        var highest = 0
         for title in seriesTitles + [source] {
-            let range = NSRange(title.startIndex..., in: title)
-            guard let match = trailingCountCapturePattern.firstMatch(in: title, range: range),
-                  let numRange = Range(match.range(at: 1), in: title),
-                  let n = Int(title[numRange]) else { continue }
+            guard let occurrence = title.range(of: currentYYYYMM) else { continue }
+            let after = title[occurrence.upperBound...]
+            guard let match = trailingCountCapturePattern.firstMatch(
+                in: String(after), range: NSRange(after.startIndex..., in: after)
+            ), let numRange = Range(match.range(at: 1), in: after), let n = Int(after[numRange]) else { continue }
             highest = max(highest, n)
         }
-        return base + " (\(highest + 1))"
+        return source.replacingCharacters(in: replacedRange, with: "\(currentYYYYMM) (\(highest + 1))")
     }
 }
 

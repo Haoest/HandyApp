@@ -10,6 +10,8 @@ revisit paywall ensure transaction and event has a limited free count
 - reorganize categories, remove specific appliances
 
 - update category to be able to automatically create sub items such as water heater, hvac
+- set a hard length on each form field
+
 
 - definition deletes (composite types, combo list option removal) don't propagate over sync — a peer's still-live
 copy resurrects them on the next merge, since there's no tombstone on CompositeTypeDTO and removeUserOption still

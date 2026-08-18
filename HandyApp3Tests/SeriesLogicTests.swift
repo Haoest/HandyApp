@@ -16,25 +16,51 @@ final class SeriesLogicTests: XCTestCase {
         XCTAssertEqual(title, "Rent 2026-08")
     }
 
-    func testDuplicateTitleAlreadyContainingYearMonthAppendsCount() {
+    // a stale month stamp (from a prior duplication) is replaced with the current month,
+    // unstamped — a new month starts fresh, it doesn't inherit the old month's count
+    func testDuplicateTitleReplacesStaleMonthWithCurrentMonth() {
         let title = SeriesLogic.duplicateTitle(source: "Rent 2026-01", seriesTitles: [], creationDate: date(2026, 8, 15), calendar: calendar)
-        XCTAssertEqual(title, "Rent 2026-01 (2)")
+        XCTAssertEqual(title, "Rent 2026-08")
     }
 
-    func testDuplicateTitleIncrementsPastHighestExistingSuffix() {
-        let title = SeriesLogic.duplicateTitle(source: "Rent 2026-01", seriesTitles: ["Rent 2026-01 (3)", "Rent 2026-01 (2)"], creationDate: date(2026, 8, 15), calendar: calendar)
-        XCTAssertEqual(title, "Rent 2026-01 (4)")
-    }
-
-    func testDuplicateTitleStripsExistingSuffixBeforeReappending() {
+    // a stale month's own "(n)" suffix is dropped along with the stale month, not carried
+    // forward into the fresh, unstamped current month
+    func testDuplicateTitleReplacingStaleMonthDropsItsSuffix() {
         let title = SeriesLogic.duplicateTitle(source: "Rent 2026-01 (2)", seriesTitles: [], creationDate: date(2026, 8, 15), calendar: calendar)
+        XCTAssertEqual(title, "Rent 2026-08")
+    }
+
+    // duplicating again within the same month as the existing stamp, with no prior same-month
+    // duplicate on record, gets tag "(1)" — not "(2)": nothing before it claimed a number
+    func testDuplicateTitleSameMonthFirstDuplicateGetsTagOne() {
+        let title = SeriesLogic.duplicateTitle(source: "Rent 2026-08", seriesTitles: [], creationDate: date(2026, 8, 15), calendar: calendar)
+        XCTAssertEqual(title, "Rent 2026-08 (1)")
+    }
+
+    // duplicating again within the same month as an already-numbered stamp strips that number
+    // and recomputes its own, one past what's already there
+    func testDuplicateTitleSameMonthStripsExistingSuffixBeforeReappending() {
+        let title = SeriesLogic.duplicateTitle(source: "Rent 2026-01 (2)", seriesTitles: [], creationDate: date(2026, 1, 20), calendar: calendar)
         XCTAssertEqual(title, "Rent 2026-01 (3)")
+    }
+
+    // the next same-month tag is one past the highest "(n)" already on record for that month
+    // across every live series member, not just `source`
+    func testDuplicateTitleSameMonthIncrementsPastHighestExistingSuffix() {
+        let title = SeriesLogic.duplicateTitle(source: "Rent 2026-01", seriesTitles: ["Rent 2026-01 (3)", "Rent 2026-01 (2)"], creationDate: date(2026, 1, 15), calendar: calendar)
+        XCTAssertEqual(title, "Rent 2026-01 (4)")
     }
 
     func testDuplicateTitleInvalidMonthDoesNotMatchYearMonthPattern() {
         // "2026-13" has no valid month, so the yyyy-MM check fails and the date suffix appends.
         let title = SeriesLogic.duplicateTitle(source: "Rent 2026-13", seriesTitles: [], creationDate: date(2026, 8, 15), calendar: calendar)
         XCTAssertEqual(title, "Rent 2026-13 2026-08")
+    }
+
+    // the yyyy-MM stamp need not be at the very end of the description to be found and replaced
+    func testDuplicateTitleReplacesStaleMonthInMiddleOfDescription() {
+        let title = SeriesLogic.duplicateTitle(source: "Rent 2026-01 payment", seriesTitles: [], creationDate: date(2026, 8, 15), calendar: calendar)
+        XCTAssertEqual(title, "Rent 2026-08 payment")
     }
 
     // MARK: - members / newest
