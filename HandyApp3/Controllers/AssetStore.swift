@@ -120,6 +120,17 @@ final class AssetStore {
     /// assets) would get unioned into the peer's real data instead of being replaced by it.
     var hasAuthoritativeLocalState: Bool { !savesSuspended }
 
+    /// True when the on-disk store, or a snapshot that arrived via cloud sync, was written by a
+    /// newer build — its schemaVersion exceeds this code's `storeSchemaVersion`. While set,
+    /// `save()`/`markDirty()` are no-ops: this build would decode-drop DTO fields it doesn't
+    /// know about, and `buildSnapshot()` always stamps its own (older) `storeSchemaVersion`, so
+    /// writing would silently strip the newer build's data and re-stamp the manifest down. The
+    /// store still loads and displays read-only. Not persisted — re-derived from the manifest
+    /// on every launch. Not `@ObservationIgnored`: `ContentView`'s banner and `ToolsView`'s
+    /// status line read it directly. Cleared only by `factoryReset` (an explicit, confirmed
+    /// destructive act) or by relaunching on a build whose `storeSchemaVersion` has caught up.
+    var storeRequiresNewerApp = false
+
     /// The whole-store digest (see `StoreFileLayout.storeDigest`) last written to, or read from,
     /// disk by this process — no longer literal bytes now that the store is many files, but the
     /// same role: the cloud monitor compares against this to tell foreign changes from echoes of
@@ -1153,7 +1164,7 @@ final class AssetStore {
     /// Schedules a background save ~2 s after the last mutation. Cancels and replaces
     /// any pending save, so rapid mutations collapse into one write.
     func markDirty() {
-        guard !savesSuspended else { return }
+        guard !savesSuspended, !storeRequiresNewerApp else { return }
         saveTask?.cancel()
         saveTask = Task.detached(priority: .utility) { [weak self] in
             try? await Task.sleep(for: .seconds(2))

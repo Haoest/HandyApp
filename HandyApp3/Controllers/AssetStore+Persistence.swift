@@ -194,8 +194,17 @@ extension AssetStore {
     private func applyLoadedResult(_ result: StoreFileLayout.ReadResult?, root: URL) -> Bool {
         guard let result else { return false }
         lastPersistedData = fileLayout.storeDigest
-        applySnapshot(migrate(result.snapshot))
-        if result.wasMigratedFromLegacy {
+        if result.snapshot.schemaVersion > storeSchemaVersion {
+            // This build is older than whatever last wrote this store (dev builds and the
+            // phone can share the same iCloud container). Still render it — read-only, via the
+            // save guards storeRequiresNewerApp trips — rather than refusing to load at all.
+            storeRequiresNewerApp = true
+        }
+        // MigrationBackup is deliberately not wired in here — hd exports manually via
+        // Tools > Export Data before installing a build that bumps storeSchemaVersion, so an
+        // automatic local backup on top of that would just be a second, unused copy.
+        applySnapshot(StoreMigrator.migrate(result.snapshot))
+        if result.wasMigratedFromLegacy, !storeRequiresNewerApp {
             persistenceLogger.notice("load: migrated a legacy single-file store to the multi-file layout")
             // Must be durable before anything else runs: the in-memory state now reflects the
             // new layout, and store.legacy-v3.json is the only remaining copy of the old one.
@@ -268,6 +277,10 @@ extension AssetStore {
 
     func factoryReset() {
         savesSuspended = false
+        // Factory reset is an explicit, confirmed destructive act ("type RESET to confirm") —
+        // the one place an older build may legitimately stomp a store a newer build wrote. This
+        // is also the only way a user stuck with an old build ever recovers a writable store.
+        storeRequiresNewerApp = false
         let photosDir = Self.baseDir.appendingPathComponent("Photos", isDirectory: true)
         if let files = try? FileManager.default.contentsOfDirectory(at: photosDir, includingPropertiesForKeys: nil) {
             for file in files { try? FileManager.default.removeItem(at: file) }
@@ -359,7 +372,7 @@ extension AssetStore {
     /// Encodes the current store state and writes only the shards that changed.
     /// Must be called on a background thread.
     func save() {
-        guard !savesSuspended else { return }
+        guard !savesSuspended, !storeRequiresNewerApp else { return }
         // Fold conflicts before writing, not after — see load()'s call for why folding after
         // the fact means this save's own snapshot (built from what's about to be read back)
         // never reflects a divergence iCloud already flagged.
@@ -448,6 +461,13 @@ extension AssetStore {
                 guard let result, self.fileLayout.storeDigest != self.lastPersistedData else { return }
                 self.lastPersistedData = self.fileLayout.storeDigest
                 let disk = self.migrate(result.snapshot)
+                if disk.schemaVersion > storeSchemaVersion {
+                    // A peer running a newer build pushed a snapshot this build's DTOs can't
+                    // fully represent. Still apply it for display below — never refuse a
+                    // peer's data — but the write guards this flag trips keep this device from
+                    // writing it back stripped.
+                    self.storeRequiresNewerApp = true
+                }
 
                 guard self.hasAuthoritativeLocalState else {
                     // We've only ever seeded, never persisted or confirmed the cloud was
@@ -471,40 +491,24 @@ extension AssetStore {
                 // The merge may have pulled in content the peer doesn't have yet, or dropped a
                 // tombstone that expired locally but not there — write back so it reaches
                 // them. Content-diffed per shard, so an already-converged state costs nothing.
-                self.markDirty()
+                // Skipped under storeRequiresNewerApp: save()/markDirty() already no-op there,
+                // this just avoids scheduling a task that can only ever do nothing.
+                if !self.storeRequiresNewerApp {
+                    self.markDirty()
+                }
             }
         }
     }
 
     // MARK: - Migration
 
+    /// Delegates to `StoreMigrator` (`StoreMigration.swift`/`StoreMigrationV5.swift`). This call
+    /// site never needs the backup hook: `importJSON`'s source file is its own backup, and the
+    /// cloud-monitor path is migrating a peer's snapshot, not this device's own on-disk store.
+    /// `applyLoadedResult` calls `StoreMigrator.migrate` directly instead, with the hook that
+    /// writes a local `MigrationBackup` before this device's on-disk data changes shape.
     private func migrate(_ s: StoreSnapshotDTO) -> StoreSnapshotDTO {
-        // v1 → v2 added modifyDate/isDeleted/deletedAt to Event/Transaction/Photo; the fields
-        // are optional with a decode-time fallback (see event/transaction/photo(from:)), so no
-        // transform is needed here.
-        // v2 → v3 added isDeleted/deletedAt to AssetPropertyDTO (custom properties); same
-        // optional-with-fallback treatment in assetProperty(from:), no transform needed.
-        // v3 → v4 added modifyDate to CategoryDTO/ComboListDTO/CompositeTypeDTO and
-        // headModifyDate to AssetDTO — same optional-with-fallback treatment inline in
-        // applySnapshot/mergeSnapshot, no transform needed.
-        //
-        // Back-fill purgedAt for any record purged before the field existed. Not schema-gated
-        // (storeSchemaVersion stays 4 — this field is additive-with-fallback like every prior
-        // one, and bumping the version would churn bytes across a mixed-version fleet via
-        // max(a.schemaVersion, b.schemaVersion)): this simply always runs, and is a no-op once
-        // every record has its own purgedAt. deletedAt, not Date() — the same reasoning as
-        // purgeHardDeleted's automatic sweep: the back-fill must be content-derived and produce
-        // the same result on every device that reads this record, not a fresh wall-clock stamp
-        // that would make the bytes differ (and re-upload) on every device's next load.
-        var s = s
-        for i in s.assets.indices where s.assets[i].isPurged == true && s.assets[i].purgedAt == nil {
-            s.assets[i].purgedAt = s.assets[i].deletedAt
-        }
-        for i in s.categories.indices where s.categories[i].isPurged == true && s.categories[i].purgedAt == nil {
-            s.categories[i].purgedAt = s.categories[i].deletedAt
-        }
-        // Future: if s.schemaVersion < 5 { /* transform */ }
-        return s
+        StoreMigrator.migrate(s)
     }
 
     // MARK: - Snapshot → live objects (main thread)

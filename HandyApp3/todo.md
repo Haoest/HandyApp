@@ -9,18 +9,11 @@ revisit paywall ensure transaction and event has a limited free count
 
 - reorganize categories, remove specific appliances
 
-- update category to be able to automatically create sub items such as water heater, hvac
 - set a hard length on each form field
 -provide option to propagate category properties to assets retroactively
-
-- definition deletes (composite types, combo list option removal) don't propagate over sync — a peer's still-live
-copy resurrects them on the next merge, since there's no tombstone on CompositeTypeDTO and removeUserOption still
-merges as a grow-only union. Combo lists themselves now have isDeleted/deletedAt (see below) — CompositeTypeDefinition
-still needs the same treatment, and combo list *options* still need their own tombstone if per-option removal is to
-survive sync.
-- purge deletes a photo's JPEG files immediately, even when the owning asset's strip gets refused by the new
-auto-purge protection (see below) — the record survives but the images may already be gone. Possible fix: stage
-purged photos in a local non-synced holding dir for a grace period instead of deleting outright.
+- revisit siri command
+- switch off store migration backup
+-property sort order
 
 == completed ==
 

@@ -240,6 +240,11 @@ final class TwoDeviceRelayTests: XCTestCase {
         let asset = try storeA.createAsset(name: "Car", categoryID: cat.id)
         relay(from: storeA, into: storeB)
 
+        // Every stamp the reconciler compares truncates to whole seconds — without this, the
+        // removal below can land in the same second as creation, and the merge's tombstone-vs-
+        // still-live tie falls to a byte-order tie-break instead of recency, making the outcome
+        // depend on that run's random UUIDs. See testConcurrentEditsToDifferentAssetsBothSurvive.
+        Thread.sleep(forTimeInterval: 1.1)
         try storeA.removeTemplateProperty(id: vinTemplateID, fromCategoryID: cat.id)
         relay(from: storeA, into: storeB)   // both sides now see the template tombstoned
 

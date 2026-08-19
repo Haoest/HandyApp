@@ -131,9 +131,11 @@ final class TemplatePropagationTests: XCTestCase {
             AssetProperty(definition: PropertyDefinition(name: "Make", type: .basic(.text)))
         ])
         let asset = try store.createAsset(name: "Fridge", categoryID: cat.id)
-        let originalModifiedDate = asset.modifiedDate
         let originalCount = asset.baseProperties.count
         try store.softDeleteAsset(id: asset.id)
+        // Captured after the soft delete, which itself stamps modifiedDate — the assertion
+        // below is about propagateTemplates leaving it alone from here, not about the delete.
+        let originalModifiedDate = asset.modifiedDate
 
         try store.addTemplateProperty(
             AssetProperty(definition: PropertyDefinition(name: "Notes", type: .basic(.text), isRequired: false)),

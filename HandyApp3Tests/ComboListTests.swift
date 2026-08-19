@@ -85,6 +85,7 @@ final class ComboListTests: XCTestCase {
 
     func testSeedBuiltInComboListsIsIdempotentAfterRename() throws {
         store.seedBuiltInComboLists()
+        XCTAssertEqual(store.comboListDefinitions.count, 2)
         let powerSource = try XCTUnwrap(store.allComboListDefinitions.first(where: { $0.name == "Power Source" }))
         try store.updateComboList(id: powerSource.id, name: "Energy")
 

@@ -26,11 +26,31 @@ struct ContentView: View {
                     .tabItem { Image(systemName: "gearshape") }
                     .tag(AppTab.preferences)
             }
-            if store.savesSuspended {
+            if store.storeRequiresNewerApp {
+                UpdateRequiredBanner()
+            } else if store.savesSuspended {
                 SyncSuspendedBanner()
             }
         }
         .animation(.default, value: store.savesSuspended)
+        .animation(.default, value: store.storeRequiresNewerApp)
+    }
+}
+
+/// Shown when this build is older than whatever last wrote the store — see
+/// `AssetStore.storeRequiresNewerApp`. Takes priority over `SyncSuspendedBanner`: both reflect
+/// a store that currently can't be written to, but this one means an app update is required,
+/// not just a wait.
+private struct UpdateRequiredBanner: View {
+    var body: some View {
+        Label("Update the app to keep editing — changes aren't being saved", systemImage: "exclamationmark.arrow.triangle.2.circlepath")
+            .font(.footnote)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 6)
+            .background(.thinMaterial, in: Capsule())
+            .shadow(radius: 2)
+            .padding(.top, 4)
+            .transition(.move(edge: .top).combined(with: .opacity))
     }
 }
 

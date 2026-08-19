@@ -52,6 +52,7 @@ struct ToolsTab: View {
     private var iCloudStatusText: String {
         guard AssetStore.iCloudSyncEnabled else { return "Not enabled" }
         guard FileManager.default.url(forUbiquityContainerIdentifier: nil) != nil else { return "iCloud unavailable" }
+        if store.storeRequiresNewerApp { return "App update required" }
         if store.savesSuspended { return "Waiting for iCloud…" }
         guard let lastSync = store.lastSyncDate else { return "On" }
         let formatter = RelativeDateTimeFormatter()

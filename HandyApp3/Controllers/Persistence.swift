@@ -2,7 +2,7 @@ import Foundation
 
 // MARK: - Schema version
 
-let storeSchemaVersion = 4
+let storeSchemaVersion = 5
 
 /// File layout version, independent of `storeSchemaVersion` (which versions the DTO shapes).
 /// Bump this when the on-disk file/directory structure changes, not when a DTO field is added.
