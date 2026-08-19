@@ -24,7 +24,9 @@ final class Asset: Identifiable, Equatable {
     var category: AssetCategory
 
     /// Properties copied from the category's templates at creation time.
-    /// Values are filled in per-instance; definitions come from the category snapshot.
+    /// Values are filled in per-instance; definitions come from the category snapshot. A later
+    /// edit to the category's templates does not reach this array automatically — see
+    /// `AssetStore.propagateTemplates(forCategoryID:)`.
     var baseProperties: [AssetProperty]
 
     /// Per-instance properties defined by the user specifically for this asset.
@@ -121,7 +123,7 @@ final class Asset: Identifiable, Equatable {
 
     /// Returns the stored value for a given definition id, checking base then custom properties.
     func value(for definitionID: UUID) -> StoredValue? {
-        if let bp = baseProperties.first(where: { $0.definition.id == definitionID }) { return bp.value }
+        if let bp = liveBaseProperties.first(where: { $0.definition.id == definitionID }) { return bp.value }
         return liveCustomProperties.first(where: { $0.definition.id == definitionID })?.value
     }
 
@@ -132,12 +134,13 @@ final class Asset: Identifiable, Equatable {
 
     // MARK: - Inline record convenience
 
-    /// Inline records excluding tombstones. Deleted events/transactions/photos/custom
+    /// Inline records excluding tombstones. Deleted events/transactions/photos/base/custom
     /// properties stay in the arrays until `AssetStore.purgeHardDeleted` reaps them, so every
     /// read site — display, lookup, notification planning, paywall counting — must go through these.
     var livePhotos: [Photo] { photos.filter { !$0.isDeleted } }
     var liveEvents: [Event] { events.filter { !$0.isDeleted } }
     var liveTransactions: [Transaction] { transactions.filter { !$0.isDeleted } }
+    var liveBaseProperties: [AssetProperty] { baseProperties.filter { !$0.isDeleted } }
     var liveCustomProperties: [AssetProperty] { customProperties.filter { !$0.isDeleted } }
 
     // MARK: - Hierarchy traversal

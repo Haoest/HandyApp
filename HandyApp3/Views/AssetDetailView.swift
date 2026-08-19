@@ -234,7 +234,11 @@ private struct AssetDetailContent: View {
     @State private var childToOpen: UUID?
 
     private var sortedBase: [AssetProperty] {
-        asset.baseProperties.sorted { $0.sortOrder < $1.sortOrder }
+        // `isDeleted` lives on the child AssetProperty, not on `asset` itself, so a tombstone
+        // flip alone doesn't invalidate a view keyed only on the array — read `modifiedDate`
+        // (bumped alongside every base-property tombstone) so the row actually disappears.
+        _ = asset.modifiedDate
+        return asset.liveBaseProperties.sorted { $0.sortOrder < $1.sortOrder }
     }
 
     private var sortedCustom: [AssetProperty] {

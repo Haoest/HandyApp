@@ -410,6 +410,24 @@ final class SnapshotReconcilerTests: XCTestCase {
         XCTAssertNotEqual(reaped.assets.first { $0.id == fresh.id }?.isPurged, true)
     }
 
+    /// Base-property tombstones (from `AssetStore.propagateTemplates` removing a field) must
+    /// age out the same way `customProperties`/`photos`/`events`/`transactions` already do —
+    /// otherwise the local `purgeHardDeleted` sweep and this `reap` pass disagree, and an asset
+    /// bounces the tombstone back and forth forever across every sync.
+    func testReapStripsExpiredBasePropertyTombstone() {
+        let catID = UUID()
+        let t0 = Date(timeIntervalSince1970: 1_700_000_000)
+        let cutoff = t0.addingTimeInterval(100)
+        let expiredProp = property(id: UUID(), name: "Removed", isDeleted: true, deletedAt: t0)
+        let freshProp = property(id: UUID(), name: "StillLive")
+        let assetDTO = asset(id: UUID(), categoryID: catID, baseProperties: [expiredProp, freshProp])
+        let snap = snapshot(categories: [category(id: catID)], assets: [assetDTO])
+
+        let reaped = SnapshotReconciler.reap(snap, cutoff: cutoff)
+
+        XCTAssertEqual(reaped.assets.first { $0.id == assetDTO.id }?.baseProperties.map(\.id), [freshProp.id])
+    }
+
     func testReapNeverExpiresATombstoneWithNoDeletedAt() {
         let catID = UUID()
         var neverExpiring = asset(id: UUID(), categoryID: catID, isDeleted: true)

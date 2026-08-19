@@ -456,6 +456,7 @@ enum SnapshotReconciler {
             result.assets[i].photos.removeAll { isExpired($0.isDeleted ?? false, $0.deletedAt, before: cutoff) }
             result.assets[i].events.removeAll { isExpired($0.isDeleted ?? false, $0.deletedAt, before: cutoff) }
             result.assets[i].transactions.removeAll { isExpired($0.isDeleted ?? false, $0.deletedAt, before: cutoff) }
+            result.assets[i].baseProperties.removeAll { isExpired($0.isDeleted ?? false, $0.deletedAt, before: cutoff) }
             result.assets[i].customProperties.removeAll { isExpired($0.isDeleted ?? false, $0.deletedAt, before: cutoff) }
         }
 

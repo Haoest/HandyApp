@@ -10,6 +10,9 @@ struct CategoryPropertyDefsView: View {
     @State private var addPropertyPresented = false
     @State private var propertyToEdit: AssetProperty?
     @State private var deleteConfirmationPresented = false
+    @State private var propagationPreview: TemplatePropagationSummary?
+    @State private var propagateConfirmationPresented = false
+    @State private var propagationResultMessage: LocalizedStringKey?
 
     var body: some View {
         Form {
@@ -51,6 +54,27 @@ struct CategoryPropertyDefsView: View {
                 Text("Default Values")
             } footer: {
                 Text("These values are copied into new assets created from this category.")
+                    .font(.caption)
+            }
+
+            Section {
+                Button {
+                    let summary = (try? store.previewTemplatePropagation(forCategoryID: category.id)) ?? .init()
+                    if summary.isEmpty {
+                        propagationResultMessage = "Every asset in this category already matches these fields."
+                    } else {
+                        propagationPreview = summary
+                        propagateConfirmationPresented = true
+                    }
+                } label: {
+                    HStack {
+                        Spacer()
+                        Text("Update Existing Assets")
+                        Spacer()
+                    }
+                }
+            } footer: {
+                Text("Adds new fields, removes deleted ones, and refreshes renamed or retyped fields on assets already created from this category. Values you've entered are kept where they still fit.")
                     .font(.caption)
             }
 
@@ -110,6 +134,40 @@ struct CategoryPropertyDefsView: View {
         } message: {
             Text("The category will be removed. Existing assets will not be affected.")
         }
+        .confirmationDialog(
+            "Update ^[\(propagationPreview?.affectedAssetCount ?? 0) asset](inflect: true)?",
+            isPresented: $propagateConfirmationPresented,
+            titleVisibility: .visible
+        ) {
+            Button("Update Assets") {
+                if let result = try? store.propagateTemplates(forCategoryID: category.id) {
+                    propagationResultMessage = Self.resultMessage(result)
+                }
+                propagationPreview = nil
+            }
+            Button("Cancel", role: .cancel) { propagationPreview = nil }
+        } message: {
+            Text(Self.changeMessage(propagationPreview ?? TemplatePropagationSummary()))
+        }
+        .alert("Update Existing Assets", isPresented: Binding(
+            get: { propagationResultMessage != nil },
+            set: { if !$0 { propagationResultMessage = nil } }
+        )) {
+            Button("OK", role: .cancel) { propagationResultMessage = nil }
+        } message: {
+            Text(propagationResultMessage ?? "")
+        }
+    }
+
+    private static func changeMessage(_ s: TemplatePropagationSummary) -> LocalizedStringKey {
+        "^[\(s.added) field](inflect: true) added, ^[\(s.removed) field](inflect: true) removed, ^[\(s.refreshed) field](inflect: true) updated. Values you've already entered are kept where they still fit."
+    }
+
+    private static func resultMessage(_ s: TemplatePropagationSummary) -> LocalizedStringKey {
+        if s.valuesCleared > 0 {
+            return "Updated ^[\(s.affectedAssetCount) asset](inflect: true). Cleared ^[\(s.valuesCleared) value](inflect: true) that no longer fit its field's new type."
+        }
+        return "Updated ^[\(s.affectedAssetCount) asset](inflect: true)."
     }
 }
 

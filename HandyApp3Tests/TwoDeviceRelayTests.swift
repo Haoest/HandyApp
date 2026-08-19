@@ -201,4 +201,82 @@ final class TwoDeviceRelayTests: XCTestCase {
         let afterA = CanonicalCodec.encode(storeA.buildSnapshot().canonicalized())
         XCTAssertEqual(beforeA, afterA, "relaying an already-converged snapshot must be a no-op")
     }
+
+    // MARK: - Template propagation convergence
+
+    /// The direct regression test for `propagateTemplates`'s deterministic `AssetProperty.id`:
+    /// each device appends the same new field to the same asset independently — a realistic
+    /// race if the user runs the action on two devices before they next sync — and the merge
+    /// must resolve to exactly one property, not a live/shadowed duplicate pair.
+    func testIndependentPropagationOnBothDevicesConvergesToOneProperty() throws {
+        let cat = try storeA.createCategory(name: "Vehicle")
+        let asset = try storeA.createAsset(name: "Car", categoryID: cat.id)
+        let vinDef = PropertyDefinition(name: "VIN", type: .basic(.text), isRequired: false)
+        try storeA.addTemplateProperty(AssetProperty(definition: vinDef), toCategoryID: cat.id)
+        relay(from: storeA, into: storeB)   // both sides now hold the new template
+
+        let summaryA = try storeA.propagateTemplates(forCategoryID: cat.id)
+        let summaryB = try storeB.propagateTemplates(forCategoryID: cat.id)
+        XCTAssertEqual(summaryA.added, 1)
+        XCTAssertEqual(summaryB.added, 1, "device B must actually do the work, or this test proves nothing")
+
+        settle(storeA, storeB)
+
+        for store in [storeA!, storeB!] {
+            let merged = try XCTUnwrap(store.assets[asset.id])
+            XCTAssertEqual(merged.baseProperties.filter { $0.definition.id == vinDef.id }.count, 1)
+        }
+    }
+
+    /// Same race for the removal side: both devices independently tombstone the same base
+    /// property. The merge must not end up with two records for one definition id either way.
+    func testIndependentRemovalOnBothDevicesConvergesToOneTombstone() throws {
+        let cat = try storeA.createCategory(name: "Vehicle", propertyTemplates: [
+            AssetProperty(definition: PropertyDefinition(name: "Make", type: .basic(.text))),
+            AssetProperty(definition: PropertyDefinition(name: "VIN", type: .basic(.text), isRequired: false))
+        ])
+        let vinDefID = cat.propertyTemplates[1].definition.id
+        let vinTemplateID = cat.propertyTemplates[1].id
+        let asset = try storeA.createAsset(name: "Car", categoryID: cat.id)
+        relay(from: storeA, into: storeB)
+
+        try storeA.removeTemplateProperty(id: vinTemplateID, fromCategoryID: cat.id)
+        relay(from: storeA, into: storeB)   // both sides now see the template tombstoned
+
+        try storeA.propagateTemplates(forCategoryID: cat.id)
+        try storeB.propagateTemplates(forCategoryID: cat.id)
+        settle(storeA, storeB)
+
+        for store in [storeA!, storeB!] {
+            let merged = try XCTUnwrap(store.assets[asset.id])
+            let matches = merged.baseProperties.filter { $0.definition.id == vinDefID }
+            XCTAssertEqual(matches.count, 1)
+            XCTAssertTrue(matches[0].isDeleted)
+        }
+    }
+
+    /// Documents the accepted trade-off of per-property whole-record LWW (`joinAssetProperty`
+    /// in `SnapshotReconciler`): a later edit to ANY field of a property — even just its
+    /// definition, via propagation — wins the whole record, so an earlier-but-still-live value
+    /// edit on the losing side survives here only because it's the side that's later.
+    func testLaterValueEditBeatsEarlierPropagatedRename() throws {
+        let cat = try storeA.createCategory(name: "Vehicle", propertyTemplates: [
+            AssetProperty(definition: PropertyDefinition(name: "Make", type: .basic(.text)))
+        ])
+        let makeDefID = cat.propertyTemplates[0].definition.id
+        let asset = try storeA.createAsset(name: "Car", categoryID: cat.id)
+        relay(from: storeA, into: storeB)
+
+        try storeA.updateTemplateProperty(id: cat.propertyTemplates[0].id, inCategoryID: cat.id, name: "Manufacturer")
+        try storeA.propagateTemplates(forCategoryID: cat.id)
+
+        Thread.sleep(forTimeInterval: 1.1)
+        try storeB.setPropertyValue(.text("Toyota"), forDefinitionID: makeDefID, onAssetID: asset.id)
+        settle(storeA, storeB)
+
+        let merged = try XCTUnwrap(storeA.assets[asset.id])
+        let prop = try XCTUnwrap(merged.baseProperties.first { $0.definition.id == makeDefID })
+        XCTAssertEqual(prop.value, .text("Toyota"), "the later whole-record edit wins")
+        XCTAssertEqual(prop.definition.name, "Make", "...including its definition, which reverts the earlier rename")
+    }
 }

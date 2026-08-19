@@ -578,7 +578,7 @@ struct BulkCommunicationView: View {
         var built: [ContactRow] = []
         let rootAssets = store.allAssets.filter(\.isRoot).sorted { $0.name.localizedCompare($1.name) == .orderedAscending }
         for asset in rootAssets {
-            for prop in asset.baseProperties + asset.liveCustomProperties {
+            for prop in asset.liveBaseProperties + asset.liveCustomProperties {
                 guard case .basic(.contact) = prop.definition.type,
                       case .contact(let identifier) = prop.value,
                       let contact = try? ContactResolver.shared.contact(for: identifier)

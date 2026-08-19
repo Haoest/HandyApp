@@ -258,8 +258,10 @@ final class AssetStore {
         markDirty()
     }
 
-    /// Tombstones a template property on a category — does not affect existing assets, whose
-    /// baseProperties were deep-copied at creation and are untouched by a later template edit.
+    /// Tombstones a template property on a category — does not by itself affect existing assets,
+    /// whose baseProperties were deep-copied at creation and stay untouched by a later template
+    /// edit unless the user explicitly runs `propagateTemplates(forCategoryID:)`
+    /// (`AssetStore+TemplatePropagation.swift`) to reconcile them.
     /// Soft, not a hard remove: an incoming sync/import that still has this template live must
     /// not resurrect it, which only works if the removal itself is a record the merge can see
     /// and a peer's later re-add can still outrace (see `SnapshotReconciler`'s per-template LWW).
@@ -300,6 +302,8 @@ final class AssetStore {
     // MARK: - Asset CRUD
 
     /// Creates an Asset, deep-copying the category's property templates into baseProperties.
+    /// A later template edit does not retroactively reach this asset — see
+    /// `propagateTemplates(forCategoryID:)` for the explicit, user-triggered reconciliation.
     @discardableResult
     func createAsset(name: String, categoryID: UUID) throws -> Asset {
         if let limit = assetCreationLimit, allAssets.count >= limit {
@@ -443,7 +447,7 @@ final class AssetStore {
         onAssetID assetID: UUID
     ) throws -> AssetProperty {
         guard let asset = assets[assetID] else { throw AssetStoreError.assetNotFound(assetID) }
-        if let prop = asset.baseProperties.first(where: { $0.definition.id == definitionID }) {
+        if let prop = asset.liveBaseProperties.first(where: { $0.definition.id == definitionID }) {
             try validate(stored: stored, against: prop.definition.type, definitionName: prop.definition.name)
             handleComboListAutoAdd(stored: stored, type: prop.definition.type)
             let now = Date()
@@ -469,7 +473,7 @@ final class AssetStore {
     /// Clears the value on a base or custom property. Does not remove the property itself.
     func removePropertyValue(forDefinitionID definitionID: UUID, fromAssetID assetID: UUID) throws {
         guard let asset = assets[assetID] else { throw AssetStoreError.assetNotFound(assetID) }
-        if let prop = asset.baseProperties.first(where: { $0.definition.id == definitionID }) {
+        if let prop = asset.liveBaseProperties.first(where: { $0.definition.id == definitionID }) {
             let now = Date()
             prop.value = nil
             prop.touch(now)
@@ -1123,7 +1127,10 @@ final class AssetStore {
         activityLog.append(ActivityLogEntry(recordID: recordID, kind: kind, owningAssetID: owningAssetID))
     }
 
-    private func handleComboListAutoAdd(stored: StoredValue, type: PropertyType) {
+    /// Registers a text value on an extensible combo list if it's new. Not `private`: also
+    /// called from `AssetStore+TemplatePropagation.swift` when a propagated definition change
+    /// preserves an asset's existing value against a combo list it wasn't yet registered on.
+    func handleComboListAutoAdd(stored: StoredValue, type: PropertyType) {
         guard case .comboList(let list) = type,
               case .text(let value) = stored,
               list.isUserExtensible else { return }
@@ -1268,7 +1275,7 @@ final class AssetStore {
     /// Purges soft-deleted assets and categories whose deletedAt is older than `seconds` to
     /// minimal tombstones (see `purgeInPlace`/`purgeCategoryInPlace`) — never removes the
     /// record — then the same age-based reaping as before for tombstoned
-    /// events/transactions/photos/custom properties inside assets that are not (yet) purged,
+    /// events/transactions/photos/base/custom properties inside assets that are not (yet) purged,
     /// and for aged-out category property-template tombstones on categories that are not (yet)
     /// purged. Categories are evaluated after assets — a category kept alive only by a
     /// now-purged asset is eligible for purging in the same sweep, since a purged asset no
@@ -1307,6 +1314,7 @@ final class AssetStore {
             asset.photos.removeAll { Self.isExpiredTombstone($0.isDeleted, $0.deletedAt, before: cutoff) }
             asset.events.removeAll { Self.isExpiredTombstone($0.isDeleted, $0.deletedAt, before: cutoff) }
             asset.transactions.removeAll { Self.isExpiredTombstone($0.isDeleted, $0.deletedAt, before: cutoff) }
+            asset.baseProperties.removeAll { Self.isExpiredTombstone($0.isDeleted, $0.deletedAt, before: cutoff) }
             asset.customProperties.removeAll { Self.isExpiredTombstone($0.isDeleted, $0.deletedAt, before: cutoff) }
         }
         for category in categories.values where !category.isPurged {
