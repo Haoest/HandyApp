@@ -49,6 +49,9 @@ struct AssetDetailView: View {
     /// Frames of the form's content rows; a drag starting inside one of these is left to
     /// that element (its own swipe-to-delete, scroll, or nothing), not used for paging.
     @State private var swipeableRows = SwipeableRowRegistry()
+    /// Whether the in-flight drag belongs to a content row, decided once at the drag's
+    /// start and held for its whole life. See `suppressesPaging(_:)`.
+    @State private var suppressionLatch: SuppressionLatch?
 
     /// Section to scroll to when first shown — set by deep links from the activity log
     /// (e.g. "Photo added to …" jumps to the Photos section). Applies only to the
@@ -120,7 +123,7 @@ struct AssetDetailView: View {
             .onChanged { value in
                 // A drag that begins on a content row belongs to that element (its own
                 // swipe-to-delete, scroll, or nothing) — only the form's blank areas page.
-                guard !startsOnSwipeableRow(value) else { return }
+                guard !suppressesPaging(value) else { return }
                 let dx = value.translation.width
                 let dy = value.translation.height
                 // Only drag-follow when the swipe is clearly horizontal AND there is
@@ -133,7 +136,9 @@ struct AssetDetailView: View {
                 dragOffset = rubberBand(dx, limit: width / 2)
             }
             .onEnded { value in
-                guard !startsOnSwipeableRow(value) else { return }
+                let suppressed = suppressesPaging(value)
+                suppressionLatch = nil
+                guard !suppressed else { return }
                 // A non-zero offset means we were rubber-banding at an end: spring back.
                 if dragOffset != 0 {
                     withAnimation(.spring(response: 0.35, dampingFraction: 0.6)) { dragOffset = 0 }
@@ -146,10 +151,21 @@ struct AssetDetailView: View {
             }
     }
 
-    /// True when the drag began inside a content row, in which case paging must stand
-    /// down and let that element consume (or ignore) the gesture.
-    private func startsOnSwipeableRow(_ value: DragGesture.Value) -> Bool {
-        swipeableRows.contains(value.startLocation)
+    /// True when the drag began on a content row, in which case paging must stand down
+    /// and let that element consume (or ignore) the gesture.
+    ///
+    /// The answer is computed once per drag and latched, because the registry is live:
+    /// a row being swiped moves, rows can appear or disappear mid-drag, and re-asking on
+    /// every `onChanged` let a long swipe-to-delete escape the row it started on and page
+    /// the asset. Latching keys off `startLocation`, so a new drag (or one whose `onEnded`
+    /// never arrived, e.g. a cancelled gesture) re-decides rather than inheriting.
+    private func suppressesPaging(_ value: DragGesture.Value) -> Bool {
+        if let latch = suppressionLatch, latch.start == value.startLocation {
+            return latch.suppressed
+        }
+        let suppressed = swipeableRows.contains(value.startLocation)
+        suppressionLatch = SuppressionLatch(start: value.startLocation, suppressed: suppressed)
+        return suppressed
     }
 
     /// True when a swipe in `dx`'s direction has no asset to page to (swipe left → next,

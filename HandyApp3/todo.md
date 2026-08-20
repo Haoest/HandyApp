@@ -1,13 +1,11 @@
 - improve localization with domain vocabulary
 -quick reporting
 -export data to excel by email
--swiping to delete transaction/event carries the asset sheet under
 
 revisit paywall ensure transaction and event has a limited free count
 
 -improve asset navigation, especially in tree mode, when going into details view. 
 
-- reorganize categories, remove specific appliances
 
 - set a hard length on each form field
 -provide option to propagate category properties to assets retroactively
@@ -43,3 +41,5 @@ tombstone in Trash, restorable, instead of a prompt~
 - data import should merge with live data instead of replace
 - change event/transaction "duplicate" label
 - need to refine how notification works. have it open the transaction / event screen with information filled? post event or transaction to home for quick action?
+-swiping to delete transaction/event carries the asset sheet under
+- reorganize categories, remove specific appliances

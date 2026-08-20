@@ -12,9 +12,16 @@ import SwiftUI
 final class SwipeableRowRegistry {
     var frames: [String: CGRect] = [:]
 
-    /// True when `point` (in global coordinates) lies inside any registered row.
+    /// True when `point` (in global coordinates) falls on any registered row.
+    ///
+    /// Deliberately a vertical-band test rather than full rect containment: rows are
+    /// full-width `Form` cells, and while a row's swipe action is being revealed `List`
+    /// translates the cell — and with it the frame recorded above — horizontally. Testing
+    /// `x` too would make a row stop matching its own drag once it had slid far enough
+    /// that its trailing edge passed the finger, handing a deep swipe-to-delete back to
+    /// the paging gesture. `y` doesn't move, so it alone identifies the row.
     func contains(_ point: CGPoint) -> Bool {
-        frames.values.contains { $0.contains(point) }
+        frames.values.contains { point.y >= $0.minY && point.y <= $0.maxY }
     }
 }
 
@@ -43,4 +50,12 @@ extension View {
     func pagingExcludedRow(id: String) -> some View {
         modifier(PagingExcludedRow(id: id))
     }
+}
+
+/// One drag's paging verdict, held from the drag's first event to its last so a moving
+/// or changing `SwipeableRowRegistry` can't flip it partway through. `start` identifies
+/// the drag it was taken for.
+struct SuppressionLatch: Equatable {
+    let start: CGPoint
+    let suppressed: Bool
 }
