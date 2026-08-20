@@ -32,13 +32,23 @@ final class SyncRelay {
     }
 
     private func relativePaths(under root: URL) -> [String] {
-        guard let enumerator = FileManager.default.enumerator(at: root, includingPropertiesForKeys: [.isRegularFileKey]) else { return [] }
-        var prefix = root.path
+        // Both sides must be normalized the same way. On macOS `temporaryDirectory` is
+        // `/var/folders/...` but the enumerator reports `/private/var/folders/...`, and
+        // `resolvingSymlinksInPath()` *strips* a leading `/private` rather than adding one —
+        // so it has to be applied to the enumerated URLs too, not just the base. Without
+        // that, the prefix lengths disagree, every relative path comes out mangled, and
+        // `push` silently sends nothing. (Doesn't bite on the iOS simulator, where the temp
+        // directory involves no such symlink.)
+        let base = root.resolvingSymlinksInPath()
+        guard let enumerator = FileManager.default.enumerator(at: base, includingPropertiesForKeys: [.isRegularFileKey]) else { return [] }
+        var prefix = base.path
         if !prefix.hasSuffix("/") { prefix += "/" }
         var paths: [String] = []
         for case let url as URL in enumerator {
             guard (try? url.resourceValues(forKeys: [.isRegularFileKey]))?.isRegularFile == true else { continue }
-            paths.append(String(url.path.dropFirst(prefix.count)))
+            let full = url.resolvingSymlinksInPath().path
+            guard full.hasPrefix(prefix) else { continue }
+            paths.append(String(full.dropFirst(prefix.count)))
         }
         return paths
     }

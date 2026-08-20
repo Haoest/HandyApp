@@ -5,7 +5,7 @@
 revisit paywall ensure transaction and event has a limited free count
 
 -improve asset navigation, especially in tree mode, when going into details view. 
-
+- asset detail form sluggish
 - set a hard length on each form field
 
 - revisit siri command

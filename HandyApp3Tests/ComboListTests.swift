@@ -84,25 +84,31 @@ final class ComboListTests: XCTestCase {
     // MARK: - Seeding idempotency
 
     func testSeedBuiltInComboListsIsIdempotentAfterRename() throws {
-        store.seedBuiltInComboLists()
-        XCTAssertEqual(store.comboListDefinitions.count, 2)
+        // Counted against what the seeder reports rather than a literal, so adding a new
+        // built-in list doesn't silently falsify this test.
+        let seeded = store.seedBuiltInComboLists()
+        XCTAssertFalse(seeded.isEmpty)
+        XCTAssertEqual(store.comboListDefinitions.count, seeded.count)
+
         let powerSource = try XCTUnwrap(store.allComboListDefinitions.first(where: { $0.name == "Power Source" }))
         try store.updateComboList(id: powerSource.id, name: "Energy")
 
         store.seedBuiltInComboLists()
 
-        XCTAssertEqual(store.comboListDefinitions.count, 1)
+        // The rename frees the name "Power Source", but the record still sits at the
+        // deterministic id — re-seeding must neither add a second one nor undo the rename.
+        XCTAssertEqual(store.comboListDefinitions.count, seeded.count)
         XCTAssertEqual(store.comboListDefinitions[powerSource.id]?.name, "Energy")
     }
 
     func testSeedBuiltInComboListsDoesNotResurrectDeleted() throws {
-        store.seedBuiltInComboLists()
+        let seeded = store.seedBuiltInComboLists()
         let powerSource = try XCTUnwrap(store.allComboListDefinitions.first(where: { $0.name == "Power Source" }))
         try store.softDeleteComboList(id: powerSource.id)
 
         store.seedBuiltInComboLists()
 
-        XCTAssertEqual(store.comboListDefinitions.count, 1)
+        XCTAssertEqual(store.comboListDefinitions.count, seeded.count, "no live replacement record")
         XCTAssertTrue(store.comboListDefinitions[powerSource.id]?.isDeleted ?? false)
     }
 
