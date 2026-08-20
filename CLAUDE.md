@@ -10,6 +10,32 @@ iOS/SwiftUI app for tracking physical assets the user owns (a house, a car, appl
 
 - don't use embedded simulator in claude. i'll build with xcode
 
+### Running the tests from the command line
+
+`Package.swift` at the repo root is a **CLI test harness**, not a real dependency of the
+app — Xcode still builds the app exactly as before and knows nothing about the package.
+It points at the source files where they already live, so `swift test` compiles the
+logic layer and runs all of `HandyApp3Tests/` headlessly in ~11s, with no simulator and
+no asset catalog (which is what `xcodebuild` chokes on here).
+
+```
+swift test                                     # all ~485 tests
+swift test --filter SyncRelayTests             # one suite
+swift test --filter ComboListTests/testSeedBuiltInComboListsIsIdempotentAfterRename
+```
+
+The package target covers `Models/`, `Controllers/`, `SystemTypes/`, plus
+`Intents/AssetNameMatcher.swift` and `Views/HomeActivityDigest.swift` (both
+Foundation-only). It excludes `Views/`, the AppIntents files, and
+`Controllers/ReceiptScanner.swift` — the only Controller importing UIKit. **Anything the
+tests need must stay free of SwiftUI/UIKit**; if a new pure rule is written inside a
+view file, move the rule down to `Models/` and let the view call it (see
+`ComboListDefinition.matchingOptions`, `BackgroundTheme`, `AppPreference`).
+
+Caveat: `swift test` builds for macOS, so it verifies logic, not iOS-specific runtime
+behavior. Anything involving layout, gestures, or first-render still needs ⌘U / ⌘B in
+Xcode.
+
 ## Layout
 
 - `HandyApp3/HandyApp3App.swift`, `ContentView.swift` — SwiftUI app entry & root view

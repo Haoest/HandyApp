@@ -235,26 +235,26 @@ final class ComboListTests: XCTestCase {
         XCTAssertTrue(store.comboListNameIsAvailable("Colors"))
     }
 
-    // MARK: - ComboListField.matches (pure function)
+    // MARK: - ComboListDefinition.matchingOptions (pure function)
 
     func testComboListFieldMatchesEmptyDraftReturnsAllOptions() {
         let list = ComboListDefinition(name: "Materials", systemOptions: ["Wood", "Metal", "Plastic"])
-        XCTAssertEqual(ComboListField.matches(for: "", in: list), ["Wood", "Metal", "Plastic"])
+        XCTAssertEqual(list.matchingOptions(for: ""), ["Wood", "Metal", "Plastic"])
     }
 
     func testComboListFieldMatchesFiltersCaseInsensitively() {
         let list = ComboListDefinition(name: "Materials", systemOptions: ["Wood", "Metal", "Plastic"])
-        XCTAssertEqual(ComboListField.matches(for: "me", in: list), ["Metal"])
+        XCTAssertEqual(list.matchingOptions(for: "me"), ["Metal"])
     }
 
     func testComboListFieldMatchesReturnsEmptyOnExactSingleMatch() {
         let list = ComboListDefinition(name: "Materials", systemOptions: ["Wood"])
-        XCTAssertEqual(ComboListField.matches(for: "Wood", in: list), [])
+        XCTAssertEqual(list.matchingOptions(for: "Wood"), [])
     }
 
     func testComboListFieldMatchesCapsAtTen() {
         let options = (1...15).map { "Option \($0)" }
         let list = ComboListDefinition(name: "Many", systemOptions: options)
-        XCTAssertEqual(ComboListField.matches(for: "", in: list).count, 10)
+        XCTAssertEqual(list.matchingOptions(for: "").count, 10)
     }
 }

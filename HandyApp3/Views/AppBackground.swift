@@ -12,21 +12,9 @@ struct ThemePalette {
     let iconTint: Color
 }
 
-/// User-selectable app backdrop. Each case is a calm, light, geometric gradient with a
-/// matching foreground palette; the choice lives on `AssetStore.backgroundTheme`.
-enum BackgroundTheme: String, CaseIterable, Identifiable {
-    case mist, sand, facets
-
-    var id: String { rawValue }
-
-    var displayName: String {
-        switch self {
-        case .mist: return "Mist"
-        case .sand: return "Sand"
-        case .facets: return "Facets"
-        }
-    }
-
+/// Colors for each `BackgroundTheme`. The theme identity itself lives in
+/// `Models/BackgroundTheme.swift` — this extension is the view-layer half.
+extension BackgroundTheme {
     var palette: ThemePalette {
         switch self {
         case .mist:

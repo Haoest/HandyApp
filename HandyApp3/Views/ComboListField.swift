@@ -42,18 +42,9 @@ struct ComboListField: View {
     /// Options matching `draft`, case- and diacritic-insensitive, capped at 10 (matching
     /// `PropertyEditView.suggestions`). An empty draft returns every option. Returns `[]` once
     /// the draft already exactly matches its only remaining match — nothing left to suggest.
+    /// Forwards to the model-layer rule so the view and its tests share one definition.
     static func matches(for draft: String, in list: ComboListDefinition) -> [String] {
-        let trimmed = draft.trimmingCharacters(in: .whitespaces)
-        // Defensive: an empty option should never be stored (see AssetStore.createComboList/
-        // addUserOption), but never render one as a pill if one somehow is.
-        let all = list.allOptions.filter { !$0.trimmingCharacters(in: .whitespaces).isEmpty }
-        let filtered = trimmed.isEmpty
-            ? all
-            : all.filter { $0.localizedCaseInsensitiveContains(trimmed) }
-        if filtered.count == 1, filtered[0].caseInsensitiveCompare(trimmed) == .orderedSame {
-            return []
-        }
-        return Array(filtered.prefix(10))
+        list.matchingOptions(for: draft)
     }
 
     var body: some View {

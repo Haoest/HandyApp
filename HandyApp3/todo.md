@@ -6,9 +6,8 @@ revisit paywall ensure transaction and event has a limited free count
 
 -improve asset navigation, especially in tree mode, when going into details view. 
 
-
 - set a hard length on each form field
--provide option to propagate category properties to assets retroactively
+
 - revisit siri command
 - switch off store migration backup
 -property sort order
@@ -43,3 +42,4 @@ tombstone in Trash, restorable, instead of a prompt~
 - need to refine how notification works. have it open the transaction / event screen with information filled? post event or transaction to home for quick action?
 -swiping to delete transaction/event carries the asset sheet under
 - reorganize categories, remove specific appliances
+-provide option to propagate category properties to assets retroactively
