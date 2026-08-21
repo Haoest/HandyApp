@@ -22,6 +22,45 @@ enum ImageScaling {
     }
 }
 
+// MARK: - Decoded-image cache
+
+/// Decoded thumbnails, keyed by photo id.
+///
+/// `UIImage(data:)` is a JPEG decode. Doing it inline in a view body meant every
+/// re-evaluation of the asset detail form — one per store mutation, and one per frame of the
+/// keyboard's presentation animation — re-decoded every visible thumbnail on the main thread.
+/// The cached images are also pre-decoded (`preparingForDisplay`), so Core Animation doesn't
+/// repeat the work lazily at draw time either.
+enum ThumbnailCache {
+    private final class Entry {
+        let image: UIImage
+        /// Guards against a stale hit if the photo's bytes are replaced under the same id.
+        let byteCount: Int
+        init(image: UIImage, byteCount: Int) {
+            self.image = image
+            self.byteCount = byteCount
+        }
+    }
+
+    private static let cache: NSCache<NSUUID, Entry> = {
+        let cache = NSCache<NSUUID, Entry>()
+        cache.countLimit = 300
+        return cache
+    }()
+
+    /// The photo's thumbnail, decoded once and reused. Nil until its bytes have been
+    /// loaded from disk (see the `.task` in `PhotosSection.thumbnailCell`).
+    static func image(for photo: Photo) -> UIImage? {
+        guard let data = photo.thumbnailData else { return nil }
+        let key = photo.id as NSUUID
+        if let hit = cache.object(forKey: key), hit.byteCount == data.count { return hit.image }
+        guard let decoded = UIImage(data: data) else { return nil }
+        let image = decoded.preparingForDisplay() ?? decoded
+        cache.setObject(Entry(image: image, byteCount: data.count), forKey: key)
+        return image
+    }
+}
+
 // MARK: - Photos section
 
 struct PhotosSection: View {
@@ -57,13 +96,18 @@ struct PhotosSection: View {
 
     @ViewBuilder
     private func thumbnailCell(_ photo: Photo) -> some View {
-        let img = photo.thumbnailData.flatMap { UIImage(data: $0) } ?? UIImage()
         Button { selectedPhoto = photo } label: {
-            Image(uiImage: img)
-                .resizable()
-                .scaledToFill()
-                .frame(width: 80, height: 80)
-                .clipShape(RoundedRectangle(cornerRadius: 8))
+            Group {
+                if let img = ThumbnailCache.image(for: photo) {
+                    Image(uiImage: img)
+                        .resizable()
+                        .scaledToFill()
+                } else {
+                    Color.secondary.opacity(0.15)
+                }
+            }
+            .frame(width: 80, height: 80)
+            .clipShape(RoundedRectangle(cornerRadius: 8))
         }
         .buttonStyle(.plain)
         .task(id: photo.id) {
@@ -89,6 +133,10 @@ struct PhotoViewerSheet: View {
     let photo: Photo
     @State private var caption: String
     @FocusState private var captionFocused: Bool
+    /// The full-size image, loaded and decoded once off the main thread. Held here rather
+    /// than decoded in `body`: the caption field re-evaluates this body on every keystroke,
+    /// and reading the JPEG back off disk and decoding it each time made typing crawl.
+    @State private var fullImage: UIImage?
     @State private var isScanning = false
     @State private var analysis: ReceiptAnalysis?
     @State private var pendingPrefill: Transaction?
@@ -106,9 +154,8 @@ struct PhotoViewerSheet: View {
         NavigationStack {
             ScrollView {
                 VStack(spacing: 16) {
-                    if let data = photo.imageData ?? PhotoStorage.loadFull(id: photo.id),
-                       let img = UIImage(data: data) {
-                        Image(uiImage: img)
+                    if let fullImage {
+                        Image(uiImage: fullImage)
                             .resizable()
                             .scaledToFit()
                             .clipShape(RoundedRectangle(cornerRadius: 10))
@@ -194,11 +241,18 @@ struct PhotoViewerSheet: View {
                 PaywallView(reason: .transactions)
             }
             .task(id: photo.id) {
-                guard photo.imageData == nil else { return }
+                // Photos load lazily from disk; a freshly synced one may not have arrived yet,
+                // hence the retry loop. Decoding happens off the main thread and the result is
+                // held in `fullImage` so re-rendering the caption field never repeats it.
                 for _ in 0..<10 {
                     if Task.isCancelled { return }
-                    if let data = PhotoStorage.loadFull(id: photo.id) {
+                    if let data = photo.imageData ?? PhotoStorage.loadFull(id: photo.id) {
                         photo.imageData = data
+                        let decoded = await Task.detached(priority: .userInitiated) {
+                            UIImage(data: data)?.preparingForDisplay()
+                        }.value
+                        if Task.isCancelled { return }
+                        fullImage = decoded
                         return
                     }
                     try? await Task.sleep(for: .seconds(1))

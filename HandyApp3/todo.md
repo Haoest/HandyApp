@@ -9,7 +9,7 @@ revisit paywall ensure transaction and event has a limited free count
 - set a hard length on each form field
 
 - revisit siri command
-- switch off store migration backup
+
 -property sort order
 
 == completed ==

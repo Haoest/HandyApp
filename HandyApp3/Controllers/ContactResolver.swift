@@ -12,7 +12,20 @@ final class ContactResolver {
     static let shared = ContactResolver()
     private let store = CNContactStore()
 
-    private init() {}
+    /// Memoized `displayName(for:)` results, including misses (a `nil` value means "looked up,
+    /// not found"). Each miss-free lookup is a cross-process query into the Contacts database,
+    /// and views call this from `body` — the asset detail form re-evaluates on every store
+    /// mutation and on every frame of the keyboard animation, so an uncached fetch there shows
+    /// up directly as input lag. Invalidated wholesale whenever Contacts reports a change.
+    private var nameCache: [String: String?] = [:]
+
+    private init() {
+        NotificationCenter.default.addObserver(
+            forName: .CNContactStoreDidChange, object: nil, queue: .main
+        ) { [weak self] _ in
+            self?.nameCache.removeAll()
+        }
+    }
 
     // MARK: - Permission
 
@@ -43,7 +56,16 @@ final class ContactResolver {
     }
 
     /// Convenience: display name for a contact identifier, or `nil` if unresolvable.
+    ///
+    /// Cached — see `nameCache`. Safe to call from a view body.
     func displayName(for identifier: String) -> String? {
+        if let cached = nameCache[identifier] { return cached }
+        let name = fetchDisplayName(for: identifier)
+        nameCache[identifier] = name
+        return name
+    }
+
+    private func fetchDisplayName(for identifier: String) -> String? {
         guard let c = try? contact(for: identifier) else { return nil }
         let full = [c.givenName, c.familyName]
             .filter { !$0.isEmpty }

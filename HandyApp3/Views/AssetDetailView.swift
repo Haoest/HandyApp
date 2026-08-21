@@ -46,12 +46,14 @@ struct AssetDetailView: View {
     /// Live horizontal offset used only for the rubber-band bounce at the ends of the
     /// sequence (when there is no asset to page to in the swipe's direction).
     @State private var dragOffset: CGFloat = 0
-    /// Frames of the form's content rows; a drag starting inside one of these is left to
-    /// that element (its own swipe-to-delete, scroll, or nothing), not used for paging.
+    /// Vertical bands of the form's content rows; a drag starting inside one of these is left
+    /// to that element (its own swipe-to-delete, scroll, or nothing), not used for paging.
     @State private var swipeableRows = SwipeableRowRegistry()
     /// Whether the in-flight drag belongs to a content row, decided once at the drag's
     /// start and held for its whole life. See `suppressesPaging(_:)`.
     @State private var suppressionLatch: SuppressionLatch?
+    /// Width of the screen, used only to scale the rubber-band bounce. See `body`.
+    @State private var screenWidth: CGFloat = 0
 
     /// Section to scroll to when first shown — set by deep links from the activity log
     /// (e.g. "Photo added to …" jumps to the Photos section). Applies only to the
@@ -86,27 +88,37 @@ struct AssetDetailView: View {
     }
 
     var body: some View {
-        GeometryReader { geo in
-            ZStack {
-                if let asset = store.assets[currentID], !asset.isDeleted {
-                    AssetDetailContent(asset: asset, scrollTo: currentID == initialAssetID ? initialAnchor : nil)
-                        .id(currentID)
-                        .transition(slideTransition)
-                } else {
-                    ContentUnavailableView(
-                        "Asset Not Found",
-                        systemImage: "shippingbox",
-                        description: Text("This asset no longer exists.")
-                    )
-                }
+        ZStack {
+            if let asset = store.assets[currentID], !asset.isDeleted {
+                AssetDetailContent(asset: asset, scrollTo: currentID == initialAssetID ? initialAnchor : nil)
+                    .id(currentID)
+                    .transition(slideTransition)
+            } else {
+                ContentUnavailableView(
+                    "Asset Not Found",
+                    systemImage: "shippingbox",
+                    description: Text("This asset no longer exists.")
+                )
             }
-            .frame(width: geo.size.width, height: geo.size.height)
-            .offset(x: dragOffset)
-            .environment(swipeableRows)
-            // simultaneousGesture so the Form keeps scrolling and tapping; we only claim
-            // the gesture for paging once a drag is clearly horizontal and long enough.
-            .simultaneousGesture(pagingGesture(width: geo.size.width))
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .offset(x: dragOffset)
+        .environment(swipeableRows)
+        // Screen width, for the rubber-band limit only. Read from a background probe rather
+        // than by hosting the screen inside a `GeometryReader`: as a container that would
+        // re-measure — and re-lay out the entire form beneath it — on every frame of the
+        // keyboard's presentation animation, which is exactly when the screen has to stay
+        // responsive. It only actually changes on rotation.
+        .background(
+            GeometryReader { geo in
+                Color.clear
+                    .onAppear { screenWidth = geo.size.width }
+                    .onChange(of: geo.size.width) { _, width in screenWidth = width }
+            }
+        )
+        // simultaneousGesture so the Form keeps scrolling and tapping; we only claim
+        // the gesture for paging once a drag is clearly horizontal and long enough.
+        .simultaneousGesture(pagingGesture(width: screenWidth))
     }
 
     /// New screen enters from `slideEdge`; old screen exits the opposite edge so the
