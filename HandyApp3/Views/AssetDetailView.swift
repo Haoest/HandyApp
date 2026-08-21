@@ -266,12 +266,12 @@ private struct AssetDetailContent: View {
         // flip alone doesn't invalidate a view keyed only on the array — read `modifiedDate`
         // (bumped alongside every base-property tombstone) so the row actually disappears.
         _ = asset.modifiedDate
-        return asset.liveBaseProperties.sorted { $0.sortOrder < $1.sortOrder }
+        return asset.liveBaseProperties.sorted(by: SortOrdering.precedes)
     }
 
     private var sortedCustom: [AssetProperty] {
         _ = asset.modifiedDate
-        return asset.liveCustomProperties.sorted { $0.sortOrder < $1.sortOrder }
+        return asset.liveCustomProperties.sorted(by: SortOrdering.precedes)
     }
 
     private var sortedChildren: [Asset] {
@@ -317,6 +317,9 @@ private struct AssetDetailContent: View {
                             PropertyDetailRow(assetID: asset.id, property: prop)
                                 .pagingExcludedRow(id: prop.id.uuidString)
                         }
+                        .onMove { fromOffsets, toOffset in
+                            try? store.moveBaseProperties(fromOffsets: fromOffsets, toOffset: toOffset, onAssetID: asset.id)
+                        }
                     }
                     .id(DetailAnchor.category)
                 }
@@ -334,6 +337,9 @@ private struct AssetDetailContent: View {
                                     }
                                 }
                                 .pagingExcludedRow(id: prop.id.uuidString)
+                        }
+                        .onMove { fromOffsets, toOffset in
+                            try? store.moveCustomProperties(fromOffsets: fromOffsets, toOffset: toOffset, onAssetID: asset.id)
                         }
                     }
                 } header: {

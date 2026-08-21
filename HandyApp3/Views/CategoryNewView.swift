@@ -80,6 +80,9 @@ struct CategoryNewView: View {
                             }
                         }
                     }
+                    .onMove { fromOffsets, toOffset in
+                        properties.move(fromOffsets: fromOffsets, toOffset: toOffset)
+                    }
                     Button {
                         addPropertyPresented = true
                     } label: {
@@ -108,7 +111,8 @@ struct CategoryNewView: View {
             }
             .sheet(isPresented: $addPropertyPresented) {
                 PropertyEditView { definition, value in
-                    properties.append(AssetProperty(definition: definition, value: value))
+                    let sortOrder = SortOrdering.next(after: properties.map(\.sortOrder))
+                    properties.append(AssetProperty(definition: definition, value: value, sortOrder: sortOrder))
                 }
             }
             .sheet(item: $propertyToEdit) { prop in
@@ -127,6 +131,15 @@ struct CategoryNewView: View {
     }
 
     private func save() {
+        // Renumbers to match `properties`' final array order — the order the user left it in
+        // after any drag — rather than trusting each row's carried-over `sortOrder` (stale
+        // after a reorder, or a duplicated category's original values). Safe to renormalize
+        // freely here, unlike `AssetStore`'s reorder methods: nothing has been saved or synced
+        // yet, so there's no cross-device merge blast radius to minimize.
+        let values = SortOrdering.normalized(count: properties.count)
+        for (index, prop) in properties.enumerated() {
+            prop.sortOrder = values[index]
+        }
         do {
             try store.createCategory(
                 name: name.trimmingCharacters(in: .whitespaces),

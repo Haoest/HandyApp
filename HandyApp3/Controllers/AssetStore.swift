@@ -235,7 +235,9 @@ final class AssetStore {
         markDirty()
     }
 
-    /// Appends a new property template to an existing category.
+    /// Appends a new property template to an existing category, honoring whatever `sortOrder`
+    /// the caller put on `property` — used by `upgradeBuiltInCategories`, which places a newly
+    /// shipped built-in field at its declared position rather than at the end.
     @discardableResult
     func addTemplateProperty(_ property: AssetProperty, toCategoryID categoryID: UUID) throws -> AssetProperty {
         guard let cat = categories[categoryID] else { throw AssetStoreError.categoryNotFound(categoryID) }
@@ -245,6 +247,35 @@ final class AssetStore {
         cat.propertyTemplates.append(property)
         markDirty()
         return property
+    }
+
+    /// Adds a new property template to an existing category, placed after every template the
+    /// category already has (`SortOrdering.next`). This is the path the "＋" button on the
+    /// category screen uses — `addTemplateProperty` above is for a caller that already knows
+    /// where the new field belongs.
+    @discardableResult
+    func appendTemplateProperty(definition: PropertyDefinition, value: StoredValue? = nil, toCategoryID categoryID: UUID) throws -> AssetProperty {
+        guard let cat = categories[categoryID] else { throw AssetStoreError.categoryNotFound(categoryID) }
+        let sortOrder = SortOrdering.next(after: cat.propertyTemplates.map(\.sortOrder))
+        let prop = AssetProperty(definition: definition, value: value, sortOrder: sortOrder)
+        return try addTemplateProperty(prop, toCategoryID: categoryID)
+    }
+
+    /// Reorders a category's property templates: `fromOffsets`/`toOffset` index the same
+    /// sorted, live list `CategoryPropertyDefsView` renders (`SwiftUI`'s `.onMove` convention).
+    func moveTemplateProperties(fromOffsets: IndexSet, toOffset: Int, inCategoryID categoryID: UUID) throws {
+        guard let cat = categories[categoryID] else { throw AssetStoreError.categoryNotFound(categoryID) }
+        let writes = Self.moveWrites(fromOffsets: fromOffsets, toOffset: toOffset, live: cat.liveTemplates.sorted(by: SortOrdering.precedes))
+        guard !writes.isEmpty else { return }
+        let now = Date()
+        var byID: [UUID: AssetProperty] = [:]
+        for prop in cat.propertyTemplates { byID[prop.id] = prop }
+        for (id, sortOrder) in writes {
+            guard let prop = byID[id] else { continue }
+            prop.sortOrder = sortOrder
+            prop.touch(now)
+        }
+        markDirty()
     }
 
     func setTemplatePropertyValue(_ stored: StoredValue, forPropertyID propID: UUID, inCategoryID categoryID: UUID) throws {
@@ -321,9 +352,11 @@ final class AssetStore {
             throw AssetStoreError.freeLimitReached(limit: limit)
         }
         guard let cat = categories[categoryID] else { throw AssetStoreError.categoryNotFound(categoryID) }
-        let baseProperties = cat.liveTemplates.enumerated().map { index, template in
-            AssetProperty(definition: template.definition, value: template.value,
-                          sortOrder: Double(index) * AssetProperty.sortOrderIncrement)
+        // Copies the template's own `sortOrder` rather than deriving one from array position,
+        // so a freshly created asset matches whatever order the category's templates were
+        // reordered into.
+        let baseProperties = cat.liveTemplates.map { template in
+            AssetProperty(definition: template.definition, value: template.value, sortOrder: template.sortOrder)
         }
         let asset = Asset(name: name, category: cat, baseProperties: baseProperties)
         assets[asset.id] = asset
@@ -505,7 +538,10 @@ final class AssetStore {
 
     // MARK: - Custom property management on assets
 
-    /// Adds a new per-asset custom property with an optional initial value.
+    /// Adds a new per-asset custom property with an optional initial value. Placed after every
+    /// custom property the asset already has (`SortOrdering.next`), against the raw array —
+    /// matching `appendMissingProperties`' convention on the sync-import path — so a new field
+    /// lands at the bottom instead of tying at 0 with every other custom property.
     @discardableResult
     func addCustomProperty(
         definition: PropertyDefinition,
@@ -517,11 +553,48 @@ final class AssetStore {
             try validate(stored: stored, against: definition.type, definitionName: definition.name)
             handleComboListAutoAdd(stored: stored, type: definition.type)
         }
-        let prop = AssetProperty(definition: definition, value: value)
+        let sortOrder = SortOrdering.next(after: asset.customProperties.map(\.sortOrder))
+        let prop = AssetProperty(definition: definition, value: value, sortOrder: sortOrder)
         asset.customProperties.append(prop)
         asset.modifiedDate = Date()
         markDirty()
         return prop
+    }
+
+    /// Reorders an asset's base (category-derived) properties: `fromOffsets`/`toOffset` index
+    /// the same sorted, live list `AssetDetailView` renders.
+    func moveBaseProperties(fromOffsets: IndexSet, toOffset: Int, onAssetID assetID: UUID) throws {
+        guard let asset = assets[assetID] else { throw AssetStoreError.assetNotFound(assetID) }
+        let writes = Self.moveWrites(fromOffsets: fromOffsets, toOffset: toOffset, live: asset.liveBaseProperties.sorted(by: SortOrdering.precedes))
+        guard !writes.isEmpty else { return }
+        let now = Date()
+        var byID: [UUID: AssetProperty] = [:]
+        for prop in asset.baseProperties { byID[prop.id] = prop }
+        for (id, sortOrder) in writes {
+            guard let prop = byID[id] else { continue }
+            prop.sortOrder = sortOrder
+            prop.touch(now)
+        }
+        asset.modifiedDate = now
+        markDirty()
+    }
+
+    /// Reorders an asset's custom properties: `fromOffsets`/`toOffset` index the same sorted,
+    /// live list `AssetDetailView` renders.
+    func moveCustomProperties(fromOffsets: IndexSet, toOffset: Int, onAssetID assetID: UUID) throws {
+        guard let asset = assets[assetID] else { throw AssetStoreError.assetNotFound(assetID) }
+        let writes = Self.moveWrites(fromOffsets: fromOffsets, toOffset: toOffset, live: asset.liveCustomProperties.sorted(by: SortOrdering.precedes))
+        guard !writes.isEmpty else { return }
+        let now = Date()
+        var byID: [UUID: AssetProperty] = [:]
+        for prop in asset.customProperties { byID[prop.id] = prop }
+        for (id, sortOrder) in writes {
+            guard let prop = byID[id] else { continue }
+            prop.sortOrder = sortOrder
+            prop.touch(now)
+        }
+        asset.modifiedDate = now
+        markDirty()
     }
 
     /// Replaces the value on an existing custom property.
@@ -1133,6 +1206,36 @@ final class AssetStore {
 
 
     // MARK: - Private helpers
+
+    /// Computes the `sortOrder` writes needed to realize an `.onMove`-style reorder of `live`
+    /// (a live `[AssetProperty]` — a category's templates, or one asset's base/custom
+    /// properties). `fromOffsets`/`toOffset` are `.onMove`'s own arguments, and they index the
+    /// row order the user was looking at — so `live` MUST be sorted by `SortOrdering.precedes`,
+    /// the same comparator every display site uses. Passing the raw array is wrong the moment
+    /// array order and `sortOrder` order diverge, which the first reorder guarantees (a move
+    /// rewrites `sortOrder` in place and never repositions the array).
+    ///
+    /// Returns `(id, newSortOrder)` pairs for every row that must change — normally just the
+    /// moved block (`SortOrdering.values`), but the whole list when that can't find room (see
+    /// `SortOrdering`'s doc comment on why, including how this self-heals today's all-zero-
+    /// `sortOrder` custom properties on their first move). Callers apply the writes and stamp
+    /// `touch()`/`asset.modifiedDate` themselves, since that differs between a category's
+    /// templates and an asset's properties.
+    private static func moveWrites(fromOffsets: IndexSet, toOffset: Int, live: [AssetProperty]) -> [(id: UUID, sortOrder: Double)] {
+        let movedIDs = Set(fromOffsets.map { live[$0].id })
+        let reordered = SortOrdering.moved(live, fromOffsets: fromOffsets, toOffset: toOffset)
+        guard let firstMovedIndex = reordered.firstIndex(where: { movedIDs.contains($0.id) }) else { return [] }
+        let movedCount = movedIDs.count
+        let movedSlice = Array(reordered[firstMovedIndex..<(firstMovedIndex + movedCount)])
+        let prev = firstMovedIndex > 0 ? reordered[firstMovedIndex - 1].sortOrder : nil
+        let afterIndex = firstMovedIndex + movedCount
+        let next = afterIndex < reordered.count ? reordered[afterIndex].sortOrder : nil
+        if let values = SortOrdering.values(count: movedCount, after: prev, before: next) {
+            return Array(zip(movedSlice.map(\.id), values))
+        }
+        let values = SortOrdering.normalized(count: reordered.count)
+        return Array(zip(reordered.map(\.id), values))
+    }
 
     private func logCreation(of recordID: UUID, kind: LoggedRecordKind, owningAssetID: UUID? = nil) {
         activityLog.append(ActivityLogEntry(recordID: recordID, kind: kind, owningAssetID: owningAssetID))

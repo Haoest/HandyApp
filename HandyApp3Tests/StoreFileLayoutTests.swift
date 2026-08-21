@@ -298,6 +298,30 @@ final class StoreFileLayoutTests: XCTestCase {
         XCTAssertEqual(prop.value, .composite(["Width": .number(8), "Length": .number(10)]))
     }
 
+    // A reordered `sortOrder` — the fractional midpoint values `SortOrdering` produces, not
+    // just the clean `0/10/20…` ladder — must survive an actual save/load round trip through
+    // `StoreFileLayout`'s JSON encoding.
+    func testReorderedSortOrderSurvivesSaveAndLoad() throws {
+        let cat = try store.createCategory(name: "Appliance", propertyTemplates: [
+            AssetProperty(definition: PropertyDefinition(name: "Make", type: .basic(.text)), sortOrder: 0),
+            AssetProperty(definition: PropertyDefinition(name: "Model", type: .basic(.text)), sortOrder: 10),
+        ])
+        let asset = try store.createAsset(name: "Fridge", categoryID: cat.id)
+        try store.moveBaseProperties(fromOffsets: [1], toOffset: 0, onAssetID: asset.id)
+        let expectedOrder = asset.baseProperties.sorted(by: SortOrdering.precedes).map(\.definition.name)
+        let expectedSortOrders = Dictionary(uniqueKeysWithValues: asset.baseProperties.map { ($0.definition.name, $0.sortOrder) })
+        store.save()
+
+        let reloaded = AssetStore()
+        XCTAssertTrue(reloaded.load())
+
+        let reloadedAsset = try XCTUnwrap(reloaded.assets[asset.id])
+        XCTAssertEqual(reloadedAsset.baseProperties.sorted(by: SortOrdering.precedes).map(\.definition.name), expectedOrder)
+        for prop in reloadedAsset.baseProperties {
+            XCTAssertEqual(prop.sortOrder, expectedSortOrders[prop.definition.name])
+        }
+    }
+
     // MARK: - 9. Determinism
 
     func testWritingSameSnapshotToTwoDirsProducesByteIdenticalFiles() throws {

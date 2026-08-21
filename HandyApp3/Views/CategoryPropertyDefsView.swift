@@ -14,6 +14,14 @@ struct CategoryPropertyDefsView: View {
     @State private var propagateConfirmationPresented = false
     @State private var propagationResultMessage: LocalizedStringKey?
 
+    /// `category.liveTemplates` sorted for display — `.onMove` below writes only `sortOrder`
+    /// (see `AssetStore.moveTemplateProperties`), it never physically reorders the backing
+    /// array, so every render must re-sort rather than trust array order. Matches the on-disk
+    /// canonical order (`AssetPropertyDTO.canonicalOrder`).
+    private var sortedTemplates: [AssetProperty] {
+        category.liveTemplates.sorted(by: SortOrdering.precedes)
+    }
+
     var body: some View {
         Form {
             Section {
@@ -40,7 +48,7 @@ struct CategoryPropertyDefsView: View {
             }
 
             Section {
-                ForEach(category.liveTemplates) { prop in
+                ForEach(sortedTemplates) { prop in
                     TemplatePropertyRow(categoryID: category.id, property: prop, onEditLabel: { propertyToEdit = prop })
                         .swipeActions(edge: .trailing, allowsFullSwipe: false) {
                             Button(role: .destructive) {
@@ -49,6 +57,9 @@ struct CategoryPropertyDefsView: View {
                                 Label("Delete", systemImage: "trash")
                             }
                         }
+                }
+                .onMove { fromOffsets, toOffset in
+                    try? store.moveTemplateProperties(fromOffsets: fromOffsets, toOffset: toOffset, inCategoryID: category.id)
                 }
             } header: {
                 Text("Default Values")
@@ -107,8 +118,7 @@ struct CategoryPropertyDefsView: View {
         }
         .sheet(isPresented: $addPropertyPresented) {
             PropertyEditView { definition, value in
-                let prop = AssetProperty(definition: definition, value: value)
-                try? store.addTemplateProperty(prop, toCategoryID: category.id)
+                try? store.appendTemplateProperty(definition: definition, value: value, toCategoryID: category.id)
             }
         }
         .sheet(item: $propertyToEdit) { prop in
@@ -160,7 +170,7 @@ struct CategoryPropertyDefsView: View {
     }
 
     private static func changeMessage(_ s: TemplatePropagationSummary) -> LocalizedStringKey {
-        "^[\(s.added) field](inflect: true) added, ^[\(s.removed) field](inflect: true) removed, ^[\(s.refreshed) field](inflect: true) updated. Values you've already entered are kept where they still fit."
+        "^[\(s.added) field](inflect: true) added, ^[\(s.removed) field](inflect: true) removed, ^[\(s.refreshed) field](inflect: true) updated, ^[\(s.reordered) field](inflect: true) reordered. Values you've already entered are kept where they still fit."
     }
 
     private static func resultMessage(_ s: TemplatePropagationSummary) -> LocalizedStringKey {

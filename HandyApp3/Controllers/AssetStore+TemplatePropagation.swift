@@ -18,8 +18,12 @@ struct TemplatePropagationSummary: Equatable {
     /// Of `refreshed`, how many also lost a stored value that no longer validates against the
     /// refreshed type. Always ≤ `refreshed`.
     var valuesCleared = 0
+    /// Base properties whose `sortOrder` was brought in line with its template's — i.e. the
+    /// asset had reordered its own copy (via `AssetStore.moveBaseProperties`) since the
+    /// category's own order last changed.
+    var reordered = 0
 
-    var isEmpty: Bool { added == 0 && removed == 0 && refreshed == 0 }
+    var isEmpty: Bool { added == 0 && removed == 0 && refreshed == 0 && reordered == 0 }
 }
 
 extension AssetStore {
@@ -42,18 +46,27 @@ extension AssetStore {
     /// `createAsset`, `Asset.baseProperties`, and `removeTemplateProperty` document that a
     /// template edit does not reach existing assets on its own — this is the explicit,
     /// user-triggered action that does.
+    ///
+    /// Also flattens the category's own templates onto a clean `0, 10, 20, …` ladder in their
+    /// current display order before stamping that order onto the assets — see
+    /// `normalizedTemplateSortOrders`. That normalization runs even when no asset needs any
+    /// other change, so the ladder is a property of having run this action at all.
     @discardableResult
     func propagateTemplates(forCategoryID categoryID: UUID) throws -> TemplatePropagationSummary {
         let plan = try templatePropagationPlan(forCategoryID: categoryID)
-        guard !plan.work.isEmpty else { return plan.summary }
-
         let now = Date()
+        let normalizedAnyTemplate = applyNormalizedTemplateSortOrders(
+            plan.normalizedSortOrders, forCategoryID: categoryID, at: now
+        )
+        guard !plan.work.isEmpty else {
+            if normalizedAnyTemplate { markDirty() }
+            return plan.summary
+        }
+
         for (asset, changes) in plan.work {
-            var nextSortOrder = (asset.baseProperties.map(\.sortOrder).max() ?? -AssetProperty.sortOrderIncrement)
-                + AssetProperty.sortOrderIncrement
             for change in changes {
                 switch change {
-                case .add(let template):
+                case .add(let template, let sortOrder):
                     // id: mirrors the template's definition id rather than a fresh UUID — see
                     // `seedBuiltInCategories`'s identical trick (BuiltInTypes.swift) for why:
                     // two devices independently propagating the same new field must mint the
@@ -63,16 +76,16 @@ extension AssetStore {
                         id: template.definition.id,
                         definition: template.definition,
                         value: template.value,
-                        sortOrder: nextSortOrder,
+                        sortOrder: sortOrder,
                         modifyDate: now
                     )
                     asset.baseProperties.append(prop)
-                    nextSortOrder += AssetProperty.sortOrderIncrement
 
-                case .revive(let property, let definition, let clearsValue):
+                case .revive(let property, let definition, let sortOrder, let clearsValue):
                     property.isDeleted = false
                     property.deletedAt = nil
                     property.definition = definition
+                    property.sortOrder = sortOrder
                     if clearsValue {
                         property.value = nil
                     } else if let value = property.value {
@@ -93,6 +106,10 @@ extension AssetStore {
                         handleComboListAutoAdd(stored: value, type: definition.type)
                     }
                     property.touch(now)
+
+                case .reorder(let property, let sortOrder):
+                    property.sortOrder = sortOrder
+                    property.touch(now)
                 }
             }
             asset.modifiedDate = now
@@ -104,30 +121,70 @@ extension AssetStore {
     // MARK: - Plan
 
     private enum BasePropertyChange {
-        /// A template with no matching base property at all — append a fresh one.
-        case add(template: AssetProperty)
+        /// A template with no matching base property at all — append a fresh one, at the
+        /// template's normalized `sortOrder`.
+        case add(template: AssetProperty, sortOrder: Double)
         /// A template whose base property exists but is tombstoned — bring it back to life
-        /// rather than appending a duplicate `definition.id`.
-        case revive(property: AssetProperty, definition: PropertyDefinition, clearsValue: Bool)
+        /// rather than appending a duplicate `definition.id`, at the template's current
+        /// `sortOrder` (its position may have moved since the property was removed).
+        case revive(property: AssetProperty, definition: PropertyDefinition, sortOrder: Double, clearsValue: Bool)
         /// A live base property whose template is gone — tombstone it.
         case remove(property: AssetProperty)
         /// A live base property whose definition drifted from its template — refresh it.
         case refresh(property: AssetProperty, definition: PropertyDefinition, clearsValue: Bool)
+        /// A live base property whose `sortOrder` drifted from its template's — e.g. the
+        /// category's fields were reordered since the asset was created or last propagated.
+        case reorder(property: AssetProperty, sortOrder: Double)
+    }
+
+    /// The clean `0, 10, 20, …` ladder a category's templates should carry, keyed by template
+    /// id, following their current *display* order (`SortOrdering.precedes`).
+    ///
+    /// Reordering deliberately leaves fractional midpoint values behind (see `SortOrdering`),
+    /// which is right for an interactive drag but makes a poor thing to stamp onto every asset
+    /// of the category. A propagation run is the natural place to flatten them: it's explicit,
+    /// user-initiated, already rewrites every affected asset, and — unlike a drag — isn't
+    /// trying to keep its write footprint small.
+    private static func normalizedTemplateSortOrders(_ liveTemplates: [AssetProperty]) -> [UUID: Double] {
+        let ordered = liveTemplates.sorted(by: SortOrdering.precedes)
+        let values = SortOrdering.normalized(count: ordered.count)
+        return Dictionary(uniqueKeysWithValues: zip(ordered.map(\.id), values))
+    }
+
+    /// Writes the ladder from `normalizedTemplateSortOrders` onto the category's templates,
+    /// touching only the ones whose value actually moves. Returns whether anything changed.
+    @discardableResult
+    private func applyNormalizedTemplateSortOrders(
+        _ normalized: [UUID: Double], forCategoryID categoryID: UUID, at now: Date
+    ) -> Bool {
+        guard let category = categories[categoryID] else { return false }
+        var changed = false
+        for template in category.propertyTemplates {
+            guard let target = normalized[template.id], template.sortOrder != target else { continue }
+            template.sortOrder = target
+            template.touch(now)
+            changed = true
+        }
+        return changed
     }
 
     /// One pass that both `previewTemplatePropagation` and `propagateTemplates` consume, so the
-    /// dialog the user confirms can never disagree with what actually gets written.
+    /// dialog the user confirms can never disagree with what actually gets written. That's also
+    /// why the normalized ladder is computed *here* rather than applied to the templates first
+    /// and re-planned against: the preview must not mutate, so both sides plan against the same
+    /// target values and only the apply writes them.
     private func templatePropagationPlan(forCategoryID categoryID: UUID)
-        throws -> (summary: TemplatePropagationSummary, work: [(asset: Asset, changes: [BasePropertyChange])])
+        throws -> (summary: TemplatePropagationSummary,
+                   work: [(asset: Asset, changes: [BasePropertyChange])],
+                   normalizedSortOrders: [UUID: Double])
     {
         guard let category = categories[categoryID] else { throw AssetStoreError.categoryNotFound(categoryID) }
 
         let liveTemplates = category.liveTemplates
+        let normalizedSortOrders = Self.normalizedTemplateSortOrders(liveTemplates)
         var liveByDefID: [UUID: AssetProperty] = [:]
-        var templateOrder: [UUID: Int] = [:]
-        for (index, template) in liveTemplates.enumerated() {
+        for template in liveTemplates {
             liveByDefID[template.definition.id] = template
-            templateOrder[template.definition.id] = index
         }
 
         var summary = TemplatePropagationSummary()
@@ -157,11 +214,15 @@ extension AssetStore {
 
             var changes: [BasePropertyChange] = []
 
+            // Sorted by the templates' own display order (`SortOrdering.precedes`), not raw
+            // array position: a reorder changes a template's `sortOrder` in place rather than
+            // moving it within `propertyTemplates`, so array order no longer tracks display
+            // order once a category has been reordered at least once.
             let missingTemplates = liveTemplates
                 .filter { byDefID[$0.definition.id] == nil && !customDefIDs.contains($0.definition.id) }
-                .sorted { (templateOrder[$0.definition.id] ?? 0) < (templateOrder[$1.definition.id] ?? 0) }
+                .sorted(by: SortOrdering.precedes)
             for template in missingTemplates {
-                changes.append(.add(template: template))
+                changes.append(.add(template: template, sortOrder: normalizedSortOrders[template.id] ?? template.sortOrder))
                 summary.added += 1
             }
 
@@ -176,13 +237,22 @@ extension AssetStore {
                 let clearsValue = prop.value != nil && (try? validate(
                     stored: prop.value!, against: template.definition.type, definitionName: template.definition.name
                 )) == nil
+                let targetSortOrder = normalizedSortOrders[template.id] ?? template.sortOrder
                 if prop.isDeleted {
-                    changes.append(.revive(property: prop, definition: template.definition, clearsValue: clearsValue))
+                    changes.append(.revive(
+                        property: prop, definition: template.definition, sortOrder: targetSortOrder, clearsValue: clearsValue
+                    ))
                     summary.added += 1
-                } else if prop.definition != template.definition {
+                    continue
+                }
+                if prop.definition != template.definition {
                     changes.append(.refresh(property: prop, definition: template.definition, clearsValue: clearsValue))
                     summary.refreshed += 1
                     if clearsValue { summary.valuesCleared += 1 }
+                }
+                if prop.sortOrder != targetSortOrder {
+                    changes.append(.reorder(property: prop, sortOrder: targetSortOrder))
+                    summary.reordered += 1
                 }
             }
 
@@ -192,6 +262,6 @@ extension AssetStore {
             }
         }
 
-        return (summary, work)
+        return (summary, work, normalizedSortOrders)
     }
 }

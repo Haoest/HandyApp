@@ -20,9 +20,7 @@ final class TemplatePropagationTests: XCTestCase {
         XCTAssertEqual(asset.baseProperties.count, 1)
 
         let retailerDef = PropertyDefinition(name: "Retailer", type: .basic(.text), isRequired: false)
-        try store.addTemplateProperty(
-            AssetProperty(definition: retailerDef, value: .text("Home Depot")), toCategoryID: cat.id
-        )
+        try store.appendTemplateProperty(definition: retailerDef, value: .text("Home Depot"), toCategoryID: cat.id)
 
         let summary = try store.propagateTemplates(forCategoryID: cat.id)
         XCTAssertEqual(summary.added, 1)
@@ -281,5 +279,88 @@ final class TemplatePropagationTests: XCTestCase {
 
         store.purgeHardDeleted(olderThan: 90 * 86_400)
         XCTAssertEqual(asset.baseProperties.count, 1)
+    }
+
+    // MARK: - Reorder propagation
+
+    // when a category's fields are reordered, "Update Existing Assets" must carry the new
+    // order onto assets created before the reorder — the base-field order is otherwise frozen
+    // at asset-creation time
+    func testReorderedTemplateCarriesNewSortOrderToExistingAsset() throws {
+        let cat = try store.createCategory(name: "Appliance", propertyTemplates: [
+            AssetProperty(definition: PropertyDefinition(name: "Make", type: .basic(.text)), sortOrder: 0),
+            AssetProperty(definition: PropertyDefinition(name: "Model", type: .basic(.text)), sortOrder: 10),
+        ])
+        let asset = try store.createAsset(name: "Fridge", categoryID: cat.id)
+        XCTAssertEqual(asset.baseProperties.sorted(by: SortOrdering.precedes).map(\.definition.name), ["Make", "Model"])
+
+        // The drag leaves Model at -10 (a midpoint/edge value, not a ladder rung).
+        try store.moveTemplateProperties(fromOffsets: [1], toOffset: 0, inCategoryID: cat.id)
+
+        let summary = try store.propagateTemplates(forCategoryID: cat.id)
+        // Both properties move: the run normalizes to the 0/10 ladder first, so Model goes
+        // -10 → 0 and Make 0 → 10.
+        XCTAssertEqual(summary.reordered, 2)
+        XCTAssertEqual(summary.affectedAssetCount, 1)
+        XCTAssertFalse(summary.isEmpty, "an order-only difference must still be actionable")
+
+        XCTAssertEqual(asset.baseProperties.sorted(by: SortOrdering.precedes).map(\.definition.name), ["Model", "Make"])
+    }
+
+    // the run flattens the category's own templates onto a clean ladder in display order,
+    // rather than propagating whatever fractional values a drag happened to leave behind
+    func testPropagationNormalizesTemplateSortOrders() throws {
+        let cat = try store.createCategory(name: "Appliance", propertyTemplates: [
+            AssetProperty(definition: PropertyDefinition(name: "Make", type: .basic(.text)), sortOrder: 0),
+            AssetProperty(definition: PropertyDefinition(name: "Model", type: .basic(.text)), sortOrder: 10),
+            AssetProperty(definition: PropertyDefinition(name: "Year", type: .basic(.text)), sortOrder: 20),
+        ])
+        let asset = try store.createAsset(name: "Fridge", categoryID: cat.id)
+        // Drop "Year" between Make and Model — a midpoint write, leaving sortOrder 5.
+        try store.moveTemplateProperties(fromOffsets: [2], toOffset: 1, inCategoryID: cat.id)
+        XCTAssertEqual(cat.liveTemplates.first { $0.definition.name == "Year" }?.sortOrder, 5)
+
+        try store.propagateTemplates(forCategoryID: cat.id)
+
+        let templates = cat.liveTemplates.sorted(by: SortOrdering.precedes)
+        XCTAssertEqual(templates.map(\.definition.name), ["Make", "Year", "Model"])
+        XCTAssertEqual(templates.map(\.sortOrder), [0, 10, 20], "templates must be flattened onto the ladder")
+
+        let props = asset.baseProperties.sorted(by: SortOrdering.precedes)
+        XCTAssertEqual(props.map(\.definition.name), ["Make", "Year", "Model"])
+        XCTAssertEqual(props.map(\.sortOrder), [0, 10, 20], "assets receive the normalized ladder, not the 5")
+    }
+
+    // normalization is the point of the action, so it runs even for a category whose assets
+    // need no other change — and stays idempotent afterwards
+    func testPropagationNormalizesTemplatesEvenWithNoAssets() throws {
+        let cat = try store.createCategory(name: "Appliance", propertyTemplates: [
+            AssetProperty(definition: PropertyDefinition(name: "Make", type: .basic(.text)), sortOrder: 0),
+            AssetProperty(definition: PropertyDefinition(name: "Model", type: .basic(.text)), sortOrder: 10),
+        ])
+        try store.moveTemplateProperties(fromOffsets: [1], toOffset: 0, inCategoryID: cat.id)
+        XCTAssertEqual(cat.liveTemplates.first { $0.definition.name == "Model" }?.sortOrder, -10)
+
+        try store.propagateTemplates(forCategoryID: cat.id)
+
+        let templates = cat.liveTemplates.sorted(by: SortOrdering.precedes)
+        XCTAssertEqual(templates.map(\.definition.name), ["Model", "Make"])
+        XCTAssertEqual(templates.map(\.sortOrder), [0, 10])
+
+        let second = try store.propagateTemplates(forCategoryID: cat.id)
+        XCTAssertTrue(second.isEmpty)
+        XCTAssertEqual(cat.liveTemplates.sorted(by: SortOrdering.precedes).map(\.sortOrder), [0, 10])
+    }
+
+    func testPropagationIsANoOpWhenOrderAlreadyMatches() throws {
+        let cat = try store.createCategory(name: "Appliance", propertyTemplates: [
+            AssetProperty(definition: PropertyDefinition(name: "Make", type: .basic(.text)), sortOrder: 0),
+            AssetProperty(definition: PropertyDefinition(name: "Model", type: .basic(.text)), sortOrder: 10),
+        ])
+        _ = try store.createAsset(name: "Fridge", categoryID: cat.id)
+
+        let summary = try store.propagateTemplates(forCategoryID: cat.id)
+        XCTAssertTrue(summary.isEmpty)
+        XCTAssertEqual(summary.reordered, 0)
     }
 }
