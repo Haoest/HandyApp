@@ -146,8 +146,11 @@ extension AssetStore {
             // AssetProperty.id mirrors its definition's id — the two are 1:1 for a
             // freshly-seeded template, and the reconciler's template merge keys on
             // AssetProperty.id, so this keeps a rename or field edit converging as
-            // one record instead of duplicating it across devices.
-            let templates = defs.map { AssetProperty(id: $0.id, definition: $0) }
+            // one record instead of duplicating it across devices. sortOrder comes
+            // straight from the explicit value each `BuiltInField` declares, not the
+            // `AssetProperty` default of 0 for every entry, which is otherwise an
+            // unbroken tie.
+            let templates = defs.map { AssetProperty(id: $0.definition.id, definition: $0.definition, sortOrder: $0.sortOrder) }
             if let cat = try? createCategory(id: categoryID, name: key.rawValue, iconName: icon, propertyTemplates: templates) {
                 seeded.append(cat)
             }
@@ -186,7 +189,8 @@ extension AssetStore {
         for (key, defs) in BuiltInTypes.categoryTemplates {
             let categoryID = BuiltInTypes.deterministicID("category.\(key.rawValue)")
             guard let cat = categories[categoryID], !cat.isDeleted, !cat.isPurged else { continue }
-            for def in defs {
+            for entry in defs {
+                let def = entry.definition
                 if let existing = cat.propertyTemplates.first(where: { $0.id == def.id }) {
                     guard !existing.isDeleted, existing.definition != def else { continue }
                     try? updateTemplateProperty(
@@ -195,7 +199,12 @@ extension AssetStore {
                     )
                     changed += 1
                 } else {
-                    try? addTemplateProperty(AssetProperty(id: def.id, definition: def), toCategoryID: cat.id)
+                    // A field newly added to `categoryTemplates` after this install first
+                    // seeded — its declared `sortOrder` is where it belongs among the
+                    // category's other canonical fields.
+                    try? addTemplateProperty(
+                        AssetProperty(id: def.id, definition: def, sortOrder: entry.sortOrder), toCategoryID: cat.id
+                    )
                     changed += 1
                 }
             }

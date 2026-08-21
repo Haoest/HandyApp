@@ -5,7 +5,7 @@
 revisit paywall ensure transaction and event has a limited free count
 
 -improve asset navigation, especially in tree mode, when going into details view. 
-- asset detail form sluggish
+
 - set a hard length on each form field
 
 - revisit siri command
@@ -43,3 +43,5 @@ tombstone in Trash, restorable, instead of a prompt~
 -swiping to delete transaction/event carries the asset sheet under
 - reorganize categories, remove specific appliances
 -provide option to propagate category properties to assets retroactively
+- asset detail form sluggish
+

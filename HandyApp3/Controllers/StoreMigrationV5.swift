@@ -178,7 +178,7 @@ extension StoreMigrator {
             // Proceed to field re-keying whether the canonical id pre-existed or was just
             // claimed above — this self-heals a mixed state (canonical category id, legacy
             // field ids) the same way as a fully-legacy one.
-            rekeyCategoryFields(defs, canonicalCatID: canonicalCatID, in: &s)
+            rekeyCategoryFields(defs.map(\.definition), canonicalCatID: canonicalCatID, in: &s)
         }
     }
 
