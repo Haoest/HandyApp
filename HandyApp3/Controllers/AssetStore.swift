@@ -371,6 +371,7 @@ final class AssetStore {
         asset.name = name
         asset.modifiedDate = now
         asset.headModifyDate = now
+        notificationScheduler?.requestResync(assets: allAssets)
         markDirty()
     }
 
@@ -1046,7 +1047,16 @@ final class AssetStore {
         let now = Date()
         let title = suggestedDuplicateTitle(forEventID: sourceID, onAssetID: assetID, at: now)
         let due = DueSettings(dueDate: SeriesLogic.advancedDueDate(for: source), messageDaysBefore: source.messageDaysBefore,
-                              messageDaysAfter: source.messageDaysAfter, deviceNotificationOn: source.deviceNotificationOn,
+                              messageDaysAfter: source.messageDaysAfter,
+                              // advancedDueDate only advances a *recurring* source, so a
+                              // non-recurring duplicate carries the source's due date verbatim.
+                              // Inheriting the toggle here would schedule a second identical
+                              // reminder for the same moment — and since no seriesID is
+                              // assigned for a non-recurring source (below), isSuppressed can
+                              // silence neither copy. The duplicate-and-edit sheet is
+                              // deliberately unaffected: it shows both fields before the user
+                              // commits, so the normal formula runs on whatever they save.
+                              deviceNotificationOn: source.recurrence != nil && source.deviceNotificationOn,
                               deviceNotificationDaysBefore: source.deviceNotificationDaysBefore)
         return try duplicateEventCore(source: source, asset: asset, title: title, date: now, notes: source.notes, recurrence: source.recurrence, due: due)
     }
@@ -1163,7 +1173,10 @@ final class AssetStore {
         let now = Date()
         let details = suggestedDuplicateTitle(forTransactionID: sourceID, onAssetID: assetID, at: now)
         let due = DueSettings(dueDate: SeriesLogic.advancedDueDate(for: source), messageDaysBefore: source.messageDaysBefore,
-                              messageDaysAfter: source.messageDaysAfter, deviceNotificationOn: source.deviceNotificationOn,
+                              messageDaysAfter: source.messageDaysAfter,
+                              // See duplicateEvent(id:onAssetID:) — same non-recurring
+                              // double-notification guard, mirrored for Transaction.
+                              deviceNotificationOn: source.recurrence != nil && source.deviceNotificationOn,
                               deviceNotificationDaysBefore: source.deviceNotificationDaysBefore)
         return try duplicateTransactionCore(source: source, asset: asset, details: details, amount: source.amount, date: now, kind: source.kind, payeeContactID: source.payeeContactID, notes: source.notes, recurrence: source.recurrence, due: due)
     }

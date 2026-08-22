@@ -28,6 +28,7 @@ struct HandyApp3App: App {
                     }
                     try? await ContactResolver.shared.requestAccess()
                     store.startCloudMonitor()
+                    store.notificationScheduler?.requestResync(assets: store.allAssets)
                     purchases.start()
                     store.assetCreationLimit = purchases.isFullVersion ? nil : PurchaseManager.freeAssetLimit
                     store.eventCreationLimit = purchases.isFullVersion ? nil : PurchaseManager.freeEventLimit

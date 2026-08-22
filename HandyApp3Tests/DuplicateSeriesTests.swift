@@ -63,6 +63,24 @@ final class DuplicateSeriesTests: XCTestCase {
         XCTAssertEqual(copy.dueDate, expected)
     }
 
+    func testLogNowDuplicateOfNonRecurringSourceTurnsDeviceNotificationOff() throws {
+        // advancedDueDate copies a non-recurring source's due date verbatim, so inheriting the
+        // toggle would schedule two identical reminders for the same moment (no seriesID is
+        // assigned to silence either via isSuppressed).
+        let source = try store.addEvent(title: "Warranty check", date: Date(),
+                                        due: DueSettings(dueDate: Date(), deviceNotificationOn: true), toAssetID: asset.id)
+        let copy = try store.duplicateEvent(id: source.id, onAssetID: asset.id)
+        XCTAssertFalse(copy.deviceNotificationOn)
+        XCTAssertTrue(source.deviceNotificationOn, "source's own notification is untouched")
+    }
+
+    func testLogNowDuplicateOfRecurringSourceKeepsDeviceNotificationOn() throws {
+        let source = try store.addEvent(title: "Rent", date: Date(), recurrence: .monthly,
+                                        due: DueSettings(dueDate: Date(), deviceNotificationOn: true), toAssetID: asset.id)
+        let copy = try store.duplicateEvent(id: source.id, onAssetID: asset.id)
+        XCTAssertTrue(copy.deviceNotificationOn)
+    }
+
     func testDuplicateEventThrowsAtCapacityLimit() throws {
         store.eventCreationLimit = 1
         let source = try store.addEvent(title: "Rent", date: Date(), recurrence: .monthly, toAssetID: asset.id)
@@ -98,6 +116,13 @@ final class DuplicateSeriesTests: XCTestCase {
         XCTAssertEqual(copy.seriesID, source.seriesID)
         XCTAssertEqual(copy.recurrence, .quarterly)
         XCTAssertNotEqual(copy.details, source.details)
+    }
+
+    func testLogNowDuplicateOfNonRecurringTransactionTurnsDeviceNotificationOff() throws {
+        let source = try store.addTransaction(details: "Warranty", amount: 50, date: Date(), kind: .expense,
+                                              due: DueSettings(dueDate: Date(), deviceNotificationOn: true), toAssetID: asset.id)
+        let copy = try store.duplicateTransaction(id: source.id, onAssetID: asset.id)
+        XCTAssertFalse(copy.deviceNotificationOn)
     }
 
     func testDuplicateTransactionThrowsAtCapacityLimit() throws {

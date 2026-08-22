@@ -26,6 +26,11 @@ struct PlannedNotification: Equatable {
 }
 
 enum NotificationPlanner {
+    /// No longer produced by `plan` — recurring-occurrence reminders were replaced by due-date
+    /// notifications (see `dueCandidate`). Kept only so `apply`'s stale-request sweep still
+    /// matches and clears any `recurring-*` requests a pre-existing install scheduled before
+    /// this change; some run out as far as two years for `.biAnnually`. Do not remove until
+    /// confident no install still has one pending.
     static let identifierPrefix = "recurring-"
     static let duePrefix = "due-"
 
@@ -36,31 +41,11 @@ enum NotificationPlanner {
         for assets: [Asset],
         now: Date = Date(),
         calendar: Calendar = .current,
-        perItemLimit: Int = 12,
         globalLimit: Int = 60
     ) -> [PlannedNotification] {
-        // Record dates carry an arbitrary time-of-day, so filter occurrences at day
-        // granularity (anything from today onward); makePlanned then drops the ones
-        // whose 9 AM has already passed.
-        let cutoff = calendar.startOfDay(for: now).addingTimeInterval(-1)
         var candidates: [PlannedNotification] = []
         for asset in assets {
             for event in asset.liveEvents {
-                // A series duplicate inherits recurrence from its source, so without this
-                // guard every occurrence in the series would independently plan its own
-                // recurring reminders. Only the newest occurrence carries them forward.
-                if let recurrence = event.recurrence,
-                   event.seriesID == nil || SeriesLogic.newest(of: event, in: asset.liveEvents).id == event.id {
-                    for (index, date) in recurrence.occurrences(from: event.date, after: cutoff, count: perItemLimit, calendar: calendar) {
-                        if let planned = makePlanned(
-                            identifier: "\(identifierPrefix)event-\(event.id.uuidString)-\(index)",
-                            occurrence: date, now: now, calendar: calendar,
-                            title: asset.name, body: event.title, assetID: asset.id, kind: .event
-                        ) {
-                            candidates.append(planned)
-                        }
-                    }
-                }
                 if let planned = dueCandidate(for: event, kindPrefix: "event", kind: .event, body: event.title, asset: asset, in: asset.liveEvents, now: now, calendar: calendar) {
                     candidates.append(planned)
                 }
@@ -68,18 +53,6 @@ enum NotificationPlanner {
             for txn in asset.liveTransactions {
                 let amount = txn.amount.formatted(.currency(code: Locale.current.currency?.identifier ?? "USD"))
                 let body = "\(txn.details) — \(amount) (\(txn.kind.rawValue))"
-                if let recurrence = txn.recurrence,
-                   txn.seriesID == nil || SeriesLogic.newest(of: txn, in: asset.liveTransactions).id == txn.id {
-                    for (index, date) in recurrence.occurrences(from: txn.date, after: cutoff, count: perItemLimit, calendar: calendar) {
-                        if let planned = makePlanned(
-                            identifier: "\(identifierPrefix)txn-\(txn.id.uuidString)-\(index)",
-                            occurrence: date, now: now, calendar: calendar,
-                            title: asset.name, body: body, assetID: asset.id, kind: .transaction
-                        ) {
-                            candidates.append(planned)
-                        }
-                    }
-                }
                 if let planned = dueCandidate(for: txn, kindPrefix: "txn", kind: .transaction, body: body, asset: asset, in: asset.liveTransactions, now: now, calendar: calendar) {
                     candidates.append(planned)
                 }
@@ -107,13 +80,20 @@ enum NotificationPlanner {
     }
 
     private static func makePlanned(identifier: String, occurrence: Date, now: Date, calendar: Calendar, title: String, body: String, assetID: UUID, kind: NotificationRecordKind) -> PlannedNotification? {
-        var components = calendar.dateComponents([.year, .month, .day], from: occurrence)
-        components.hour = 9
-        components.minute = 0
-        // An occurrence whose 9 AM has already passed (today, later in the day) is
-        // unannounceable; the next cycle covers it.
-        guard let fireDate = calendar.date(from: components), fireDate > now else { return nil }
-        return PlannedNotification(identifier: identifier, fireDate: fireDate, fireDateComponents: components, title: title, body: body, assetID: assetID, kind: kind)
+        var dayComponents = calendar.dateComponents([.year, .month, .day], from: occurrence)
+        dayComponents.hour = 9
+        dayComponents.minute = 0
+        if let nineAM = calendar.date(from: dayComponents), nineAM > now {
+            return PlannedNotification(identifier: identifier, fireDate: nineAM, fireDateComponents: dayComponents, title: title, body: body, assetID: assetID, kind: kind)
+        }
+        // 9 AM on the trigger day has already passed, but the trigger moment itself — the
+        // occurrence's own time of day — may still be ahead of now (it was computed as
+        // dueDate - daysBefore, and dueDate carries an arbitrary wall-clock time). Deliver
+        // then rather than dropping the reminder for the day entirely. Only ever engages on
+        // the current day: for any future day, 9 AM is still in the future.
+        let exact = calendar.dateComponents([.year, .month, .day, .hour, .minute], from: occurrence)
+        guard let exactDate = calendar.date(from: exact), exactDate > now else { return nil }
+        return PlannedNotification(identifier: identifier, fireDate: exactDate, fireDateComponents: exact, title: title, body: body, assetID: assetID, kind: kind)
     }
 }
 

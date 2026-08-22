@@ -1,68 +1,6 @@
 import XCTest
 @testable import HandyApp3
 
-final class RecurrenceIntervalTests: XCTestCase {
-
-    private let calendar = Calendar(identifier: .gregorian)
-
-    private func date(_ year: Int, _ month: Int, _ day: Int, hour: Int = 0) -> Date {
-        calendar.date(from: DateComponents(year: year, month: month, day: day, hour: hour))!
-    }
-
-    func testWeeklyAddsSevenDays() {
-        let base = date(2026, 1, 1)
-        let occ = RecurrenceInterval.weekly.occurrences(from: base, after: base, count: 2, calendar: calendar)
-        XCTAssertEqual(occ.map(\.date), [date(2026, 1, 8), date(2026, 1, 15)])
-        XCTAssertEqual(occ.map(\.index), [1, 2])
-    }
-
-    func testMonthlyFromJan31DoesNotDriftAfterClamp() {
-        let base = date(2026, 1, 31)
-        let occ = RecurrenceInterval.monthly.occurrences(from: base, after: base, count: 3, calendar: calendar)
-        XCTAssertEqual(occ.map(\.date), [date(2026, 2, 28), date(2026, 3, 31), date(2026, 4, 30)])
-    }
-
-    func testQuarterlyAndSemiAnnually() {
-        let base = date(2026, 1, 15)
-        XCTAssertEqual(RecurrenceInterval.quarterly.occurrences(from: base, after: base, count: 1, calendar: calendar).map(\.date), [date(2026, 4, 15)])
-        XCTAssertEqual(RecurrenceInterval.semiAnnually.occurrences(from: base, after: base, count: 1, calendar: calendar).map(\.date), [date(2026, 7, 15)])
-    }
-
-    func testAnnuallyFromLeapDayClampsToFeb28() {
-        let base = date(2024, 2, 29)
-        let occ = RecurrenceInterval.annually.occurrences(from: base, after: base, count: 1, calendar: calendar)
-        XCTAssertEqual(occ.map(\.date), [date(2025, 2, 28)])
-    }
-
-    func testBiAnnuallyAddsTwoYears() {
-        let base = date(2026, 3, 15)
-        let occ = RecurrenceInterval.biAnnually.occurrences(from: base, after: base, count: 2, calendar: calendar)
-        XCTAssertEqual(occ.map(\.date), [date(2028, 3, 15), date(2030, 3, 15)])
-    }
-
-    func testFutureBaseIncludesIndexZero() {
-        let now = date(2026, 1, 1)
-        let base = date(2026, 6, 1)
-        let occ = RecurrenceInterval.monthly.occurrences(from: base, after: now, count: 2, calendar: calendar)
-        XCTAssertEqual(occ.first?.index, 0)
-        XCTAssertEqual(occ.first?.date, base)
-    }
-
-    func testOccurrencesAreStrictlyAfterReference() {
-        let base = date(2026, 1, 1)
-        let reference = date(2026, 3, 1)
-        let occ = RecurrenceInterval.monthly.occurrences(from: base, after: reference, count: 1, calendar: calendar)
-        XCTAssertEqual(occ.map(\.date), [date(2026, 4, 1)])
-        XCTAssertEqual(occ.map(\.index), [3])
-    }
-
-    func testCountHonored() {
-        let base = date(2026, 1, 1)
-        let occ = RecurrenceInterval.weekly.occurrences(from: base, after: base, count: 12, calendar: calendar)
-        XCTAssertEqual(occ.count, 12)
-    }
-}
-
 final class NotificationPlannerTests: XCTestCase {
 
     private let calendar = Calendar(identifier: .gregorian)
@@ -88,104 +26,44 @@ final class NotificationPlannerTests: XCTestCase {
         XCTAssertTrue(plan.isEmpty)
     }
 
-    func testEventPlanIdentifierContentAndFireTime() throws {
-        let event = try store.addEvent(title: "Furnace service", date: date(2026, 1, 10), notes: "", recurrence: .monthly, toAssetID: assetID)
+    func testRecurringRecordWithToggleOffAndNoDueDateProducesNoPlan() throws {
+        // Recurrence alone no longer drives scheduling — only the due-date/toggle formula does.
+        _ = try store.addEvent(title: "Furnace service", date: date(2026, 1, 10), recurrence: .monthly, toAssetID: assetID)
         let plan = NotificationPlanner.plan(for: store.allAssets, now: date(2026, 1, 15), calendar: calendar)
-        XCTAssertEqual(plan.count, 12)
-        let first = plan[0]
-        XCTAssertEqual(first.identifier, "recurring-event-\(event.id.uuidString)-1")
-        XCTAssertEqual(first.fireDateComponents.hour, 9)
-        XCTAssertEqual(first.fireDateComponents.minute, 0)
-        XCTAssertEqual(first.fireDate, date(2026, 2, 10, hour: 9))
-        XCTAssertEqual(first.title, "My House")
-        XCTAssertEqual(first.body, "Furnace service")
-        XCTAssertEqual(first.assetID, assetID)
-    }
-
-    func testTransactionBodyContainsDetailsAmountAndKind() throws {
-        let txn = try store.addTransaction(details: "Pool service", amount: 100, date: date(2026, 1, 10), kind: .expense, recurrence: .quarterly, toAssetID: assetID)
-        let plan = NotificationPlanner.plan(for: store.allAssets, now: date(2026, 1, 15), calendar: calendar)
-        XCTAssertEqual(plan.first?.identifier, "recurring-txn-\(txn.id.uuidString)-1")
-        let body = plan.first?.body ?? ""
-        XCTAssertTrue(body.contains("Pool service"))
-        XCTAssertTrue(body.contains("100"))
-        XCTAssertTrue(body.contains("(Expense)"))
-    }
-
-    func testSameDayOccurrenceBeforeNineAMIsScheduled() throws {
-        _ = try store.addEvent(title: "X", date: date(2026, 1, 1), recurrence: .weekly, toAssetID: assetID)
-        let plan = NotificationPlanner.plan(for: store.allAssets, now: date(2026, 1, 8, hour: 7), calendar: calendar, perItemLimit: 1)
-        XCTAssertEqual(plan.first?.fireDate, date(2026, 1, 8, hour: 9))
-    }
-
-    func testSameDayOccurrenceAfterNineAMIsDropped() throws {
-        _ = try store.addEvent(title: "X", date: date(2026, 1, 1), recurrence: .weekly, toAssetID: assetID)
-        let plan = NotificationPlanner.plan(for: store.allAssets, now: date(2026, 1, 8, hour: 10), calendar: calendar, perItemLimit: 2)
-        XCTAssertEqual(plan.map(\.fireDate), [date(2026, 1, 15, hour: 9)])
-    }
-
-    func testGlobalCapKeepsSoonest() throws {
-        _ = try store.addEvent(title: "A", date: date(2026, 1, 1), recurrence: .weekly, toAssetID: assetID)
-        _ = try store.addEvent(title: "B", date: date(2026, 1, 2), recurrence: .weekly, toAssetID: assetID)
-        let plan = NotificationPlanner.plan(for: store.allAssets, now: date(2026, 1, 2), calendar: calendar, perItemLimit: 12, globalLimit: 5)
-        // B's base date (Jan 2) is "today" at plan time, so it fires today at 9.
-        // Soonest five: Jan 2 (B), 8 (A), 9 (B), 15 (A), 16 (B).
-        XCTAssertEqual(plan.count, 5)
-        XCTAssertEqual(plan.map(\.fireDate), plan.map(\.fireDate).sorted())
-        XCTAssertEqual(plan.last?.fireDate, date(2026, 1, 16, hour: 9))
-    }
-
-    func testSoftDeletedAssetExcludedViaAllAssets() throws {
-        _ = try store.addEvent(title: "X", date: date(2026, 1, 1), recurrence: .monthly, toAssetID: assetID)
-        try store.softDeleteAsset(id: assetID)
-        let plan = NotificationPlanner.plan(for: store.allAssets, now: date(2026, 1, 2), calendar: calendar)
         XCTAssertTrue(plan.isEmpty)
-    }
-
-    func testSoftDeletedEventExcludedFromPlan() throws {
-        let event = try store.addEvent(title: "X", date: date(2026, 1, 1), recurrence: .monthly, toAssetID: assetID)
-        try store.removeEvent(id: event.id, fromAssetID: assetID)
-        let plan = NotificationPlanner.plan(for: store.allAssets, now: date(2026, 1, 2), calendar: calendar)
-        XCTAssertTrue(plan.isEmpty)
-    }
-
-    func testSoftDeletedRecurringTransactionExcludedFromPlan() throws {
-        let txn = try store.addTransaction(details: "X", amount: 5, date: date(2026, 1, 1), kind: .expense, recurrence: .monthly, toAssetID: assetID)
-        try store.removeTransaction(id: txn.id, fromAssetID: assetID)
-        let plan = NotificationPlanner.plan(for: store.allAssets, now: date(2026, 1, 2), calendar: calendar)
-        XCTAssertTrue(plan.isEmpty)
-    }
-
-    // MARK: - Series: newest-occurrence-only recurring planning
-
-    func testOnlyNewestSeriesOccurrencePlansRecurringReminders() throws {
-        let source = try store.addEvent(title: "Rent", date: date(2026, 1, 1), recurrence: .monthly, toAssetID: assetID)
-        let copy = try store.duplicateEvent(id: source.id, onAssetID: assetID)
-        XCTAssertNotNil(source.seriesID)
-
-        let plan = NotificationPlanner.plan(for: store.allAssets, now: date(2026, 1, 2), calendar: calendar)
-
-        XCTAssertFalse(plan.contains { $0.identifier.contains(source.id.uuidString) })
-        XCTAssertTrue(plan.contains { $0.identifier.contains(copy.id.uuidString) })
-    }
-
-    func testNonSeriesRecurringRecordPlannedNormally() throws {
-        let event = try store.addEvent(title: "X", date: date(2026, 1, 1), recurrence: .monthly, toAssetID: assetID)
-        let plan = NotificationPlanner.plan(for: store.allAssets, now: date(2026, 1, 2), calendar: calendar)
-        XCTAssertTrue(plan.contains { $0.identifier.contains(event.id.uuidString) })
     }
 
     // MARK: - Due-date device notifications
 
-    func testDueNotificationIdentifierAndFireDate() throws {
+    func testEventDueNotificationIdentifierFireTimeAndKind() throws {
         let due = date(2026, 2, 1)
         let event = try store.addEvent(title: "Inspection", date: date(2026, 1, 1),
                                        due: DueSettings(dueDate: due, deviceNotificationOn: true, deviceNotificationDaysBefore: 7),
                                        toAssetID: assetID)
         let plan = NotificationPlanner.plan(for: store.allAssets, now: date(2026, 1, 2), calendar: calendar)
-        let due_ = plan.first { $0.identifier == "due-event-\(event.id.uuidString)" }
-        XCTAssertNotNil(due_)
-        XCTAssertEqual(due_?.fireDate, date(2026, 1, 25, hour: 9))
+        let planned = plan.first { $0.identifier == "due-event-\(event.id.uuidString)" }
+        XCTAssertNotNil(planned)
+        XCTAssertEqual(planned?.fireDate, date(2026, 1, 25, hour: 9))
+        XCTAssertEqual(planned?.title, "My House")
+        XCTAssertEqual(planned?.body, "Inspection")
+        XCTAssertEqual(planned?.assetID, assetID)
+        XCTAssertEqual(planned?.kind, .event)
+    }
+
+    func testTransactionDueNotificationIdentifierBodyAndKind() throws {
+        let due = date(2026, 2, 1)
+        let txn = try store.addTransaction(details: "Pool service", amount: 100, date: date(2026, 1, 1), kind: .expense,
+                                           due: DueSettings(dueDate: due, deviceNotificationOn: true, deviceNotificationDaysBefore: 7),
+                                           toAssetID: assetID)
+        let plan = NotificationPlanner.plan(for: store.allAssets, now: date(2026, 1, 2), calendar: calendar)
+        let planned = plan.first { $0.identifier == "due-txn-\(txn.id.uuidString)" }
+        XCTAssertNotNil(planned)
+        XCTAssertEqual(planned?.fireDate, date(2026, 1, 25, hour: 9))
+        let body = planned?.body ?? ""
+        XCTAssertTrue(body.contains("Pool service"))
+        XCTAssertTrue(body.contains("100"))
+        XCTAssertTrue(body.contains("(Expense)"))
+        XCTAssertEqual(planned?.kind, .transaction)
     }
 
     func testNoDueNotificationWhenDeviceNotificationOff() throws {
@@ -200,6 +78,16 @@ final class NotificationPlannerTests: XCTestCase {
         XCTAssertTrue(plan.allSatisfy { !$0.identifier.hasPrefix("due-") })
     }
 
+    func testElapsedTriggerProducesNoNotification() throws {
+        // Trigger moment (due - daysBefore) is entirely in the past — not just its 9 AM.
+        let due = date(2026, 1, 10, hour: 8)
+        _ = try store.addEvent(title: "X", date: date(2026, 1, 1),
+                               due: DueSettings(dueDate: due, deviceNotificationOn: true, deviceNotificationDaysBefore: 0),
+                               toAssetID: assetID)
+        let plan = NotificationPlanner.plan(for: store.allAssets, now: date(2026, 1, 10, hour: 9), calendar: calendar)
+        XCTAssertTrue(plan.isEmpty)
+    }
+
     func testSuppressedRecordProducesNoDueNotification() throws {
         let source = try store.addEvent(title: "Rent", date: date(2026, 1, 1), recurrence: .monthly,
                                         due: DueSettings(dueDate: date(2026, 2, 1), deviceNotificationOn: true),
@@ -208,5 +96,110 @@ final class NotificationPlannerTests: XCTestCase {
         _ = try store.duplicateEvent(id: source.id, onAssetID: assetID)
         let plan = NotificationPlanner.plan(for: store.allAssets, now: date(2026, 1, 2), calendar: calendar)
         XCTAssertFalse(plan.contains { $0.identifier == "due-event-\(source.id.uuidString)" })
+    }
+
+    func testRecurringDuplicateStillSchedulesDueNotificationForNewestMember() throws {
+        let source = try store.addEvent(title: "Rent", date: date(2026, 1, 1), recurrence: .monthly,
+                                        due: DueSettings(dueDate: date(2026, 2, 1), deviceNotificationOn: true),
+                                        toAssetID: assetID)
+        let copy = try store.duplicateEvent(id: source.id, onAssetID: assetID)
+        let plan = NotificationPlanner.plan(for: store.allAssets, now: date(2026, 1, 2), calendar: calendar)
+        XCTAssertTrue(plan.contains { $0.identifier == "due-event-\(copy.id.uuidString)" })
+    }
+
+    func testDuplicateOfNonRecurringSourceDoesNotDoubleScheduleDueNotification() throws {
+        // Source's due date is copied verbatim (advancedDueDate only advances a recurring
+        // source), and no seriesID is assigned, so without the guard in
+        // duplicateEvent(id:onAssetID:) both records would schedule identical reminders.
+        let source = try store.addEvent(title: "Warranty check", date: date(2026, 1, 1),
+                                        due: DueSettings(dueDate: date(2026, 2, 1), deviceNotificationOn: true, deviceNotificationDaysBefore: 7),
+                                        toAssetID: assetID)
+        let copy = try store.duplicateEvent(id: source.id, onAssetID: assetID)
+        let plan = NotificationPlanner.plan(for: store.allAssets, now: date(2026, 1, 2), calendar: calendar)
+        XCTAssertTrue(plan.contains { $0.identifier == "due-event-\(source.id.uuidString)" })
+        XCTAssertFalse(plan.contains { $0.identifier == "due-event-\(copy.id.uuidString)" })
+    }
+
+    // MARK: - Soft delete
+
+    func testSoftDeletedAssetExcludedViaAllAssets() throws {
+        _ = try store.addEvent(title: "X", date: date(2026, 1, 1), due: DueSettings(dueDate: date(2026, 2, 1), deviceNotificationOn: true), toAssetID: assetID)
+        try store.softDeleteAsset(id: assetID)
+        let plan = NotificationPlanner.plan(for: store.allAssets, now: date(2026, 1, 2), calendar: calendar)
+        XCTAssertTrue(plan.isEmpty)
+    }
+
+    func testSoftDeletedEventExcludedFromPlan() throws {
+        let event = try store.addEvent(title: "X", date: date(2026, 1, 1), due: DueSettings(dueDate: date(2026, 2, 1), deviceNotificationOn: true), toAssetID: assetID)
+        try store.removeEvent(id: event.id, fromAssetID: assetID)
+        let plan = NotificationPlanner.plan(for: store.allAssets, now: date(2026, 1, 2), calendar: calendar)
+        XCTAssertTrue(plan.isEmpty)
+    }
+
+    func testSoftDeletedTransactionExcludedFromPlan() throws {
+        let txn = try store.addTransaction(details: "X", amount: 5, date: date(2026, 1, 1), kind: .expense,
+                                           due: DueSettings(dueDate: date(2026, 2, 1), deviceNotificationOn: true), toAssetID: assetID)
+        try store.removeTransaction(id: txn.id, fromAssetID: assetID)
+        let plan = NotificationPlanner.plan(for: store.allAssets, now: date(2026, 1, 2), calendar: calendar)
+        XCTAssertTrue(plan.isEmpty)
+    }
+
+    // MARK: - Same-day fallback (fires at the exact trigger moment, not just 9 AM)
+
+    func testSameDayFallbackSchedulesAtExactTriggerWhenNineAMHasPassed() throws {
+        // Trigger moment is today at 15:00 (due date's own time of day, 0 days lead).
+        let due = date(2026, 1, 10, hour: 15)
+        let event = try store.addEvent(title: "X", date: date(2026, 1, 1),
+                                       due: DueSettings(dueDate: due, deviceNotificationOn: true, deviceNotificationDaysBefore: 0),
+                                       toAssetID: assetID)
+        // 9 AM has passed, but the exact trigger moment (15:00) has not.
+        let plan = NotificationPlanner.plan(for: store.allAssets, now: date(2026, 1, 10, hour: 12), calendar: calendar)
+        let planned = plan.first { $0.identifier == "due-event-\(event.id.uuidString)" }
+        XCTAssertEqual(planned?.fireDate, due)
+        XCTAssertEqual(planned?.fireDateComponents.hour, 15)
+        XCTAssertEqual(planned?.fireDateComponents.minute, 0)
+    }
+
+    func testSameDayFallbackDropsWhenTriggerMomentHasAlsoPassed() throws {
+        let due = date(2026, 1, 10, hour: 15)
+        _ = try store.addEvent(title: "X", date: date(2026, 1, 1),
+                               due: DueSettings(dueDate: due, deviceNotificationOn: true, deviceNotificationDaysBefore: 0),
+                               toAssetID: assetID)
+        // Both 9 AM and the exact trigger moment (15:00) have passed.
+        let plan = NotificationPlanner.plan(for: store.allAssets, now: date(2026, 1, 10, hour: 16), calendar: calendar)
+        XCTAssertTrue(plan.isEmpty)
+    }
+
+    func testFutureDayStillFiresAtNineAM() throws {
+        // Confirms the fallback only ever engages on the trigger's own day — a future day
+        // schedules at 9 AM regardless of the due date's time-of-day.
+        let due = date(2026, 1, 12, hour: 15)
+        let event = try store.addEvent(title: "X", date: date(2026, 1, 1),
+                                       due: DueSettings(dueDate: due, deviceNotificationOn: true, deviceNotificationDaysBefore: 0),
+                                       toAssetID: assetID)
+        let plan = NotificationPlanner.plan(for: store.allAssets, now: date(2026, 1, 10, hour: 16), calendar: calendar)
+        let planned = plan.first { $0.identifier == "due-event-\(event.id.uuidString)" }
+        XCTAssertEqual(planned?.fireDate, date(2026, 1, 12, hour: 9))
+    }
+
+    // MARK: - Global cap
+
+    func testGlobalCapKeepsSoonestDueNotifications() throws {
+        let catB = try store.createCategory(name: "Other")
+        let assetB = try store.createAsset(name: "My Car", categoryID: catB.id)
+        for (i, day) in [1, 2, 3, 4].enumerated() {
+            _ = try store.addEvent(title: "A\(i)", date: date(2026, 1, 1),
+                                   due: DueSettings(dueDate: date(2026, 1, day + 10), deviceNotificationOn: true, deviceNotificationDaysBefore: 0),
+                                   toAssetID: assetID)
+        }
+        for (i, day) in [5, 6, 7, 8].enumerated() {
+            _ = try store.addTransaction(details: "B\(i)", amount: 1, date: date(2026, 1, 1), kind: .expense,
+                                         due: DueSettings(dueDate: date(2026, 1, day + 10), deviceNotificationOn: true, deviceNotificationDaysBefore: 0),
+                                         toAssetID: assetB.id)
+        }
+        let plan = NotificationPlanner.plan(for: store.allAssets, now: date(2026, 1, 2), calendar: calendar, globalLimit: 3)
+        XCTAssertEqual(plan.count, 3)
+        XCTAssertEqual(plan.map(\.fireDate), plan.map(\.fireDate).sorted())
+        XCTAssertEqual(plan.map(\.fireDate), [date(2026, 1, 11, hour: 9), date(2026, 1, 12, hour: 9), date(2026, 1, 13, hour: 9)])
     }
 }
