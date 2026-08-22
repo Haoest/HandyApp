@@ -15,8 +15,11 @@ struct AssetTab: View {
     @State private var viewMode: AssetListMode = .all
     @State private var expanded: Set<UUID> = []
 
-    private var groupedAssets: [(category: AssetCategory, assets: [Asset])] {
-        let grouped = Dictionary(grouping: store.allAssets) { $0.category.id }
+    /// Assets bucketed into name-sorted category sections. Categories resolve from the raw
+    /// `store.categories` dict, not `allCategories`, so an asset under a soft-deleted category
+    /// still gets a section instead of vanishing from the list.
+    private func grouped(_ assets: [Asset]) -> [(category: AssetCategory, assets: [Asset])] {
+        let grouped = Dictionary(grouping: assets) { $0.category.id }
         return grouped
             .compactMap { catID, assets -> (AssetCategory, [Asset])? in
                 guard let cat = store.categories[catID] else { return nil }
@@ -25,36 +28,37 @@ struct AssetTab: View {
             .sorted { $0.0.name.localizedCompare($1.0.name) == .orderedAscending }
     }
 
+    private var groupedAssets: [(category: AssetCategory, assets: [Asset])] { grouped(store.allAssets) }
+
     private var rootAssets: [Asset] {
         store.rootAssets
-            .filter { !$0.isDeleted }
             .sorted { $0.name.localizedCompare($1.name) == .orderedAscending }
     }
 
+    private var groupedRootAssets: [(category: AssetCategory, assets: [Asset])] { grouped(rootAssets) }
+
     /// Flat asset order matching what the current view mode renders, used to page
     /// between assets via swipe on the detail screen. "All" mirrors the grouped,
-    /// name-sorted sections; "Tree" pages only through top-level (parentless) assets,
-    /// so drilling into a child leaves the detail screen unpageable.
+    /// name-sorted sections; "Tree" pages only through top-level (parentless) assets, in the
+    /// same category-section order shown on screen, so drilling into a child leaves the
+    /// detail screen unpageable.
     private var orderedAssetIDs: [UUID] {
         switch viewMode {
         case .all:
             return groupedAssets.flatMap { $0.assets.map(\.id) }
         case .tree:
-            return rootAssets.map(\.id)
+            return groupedRootAssets.flatMap { $0.assets.map(\.id) }
         }
     }
 
-    /// Distinct categories offered as jump anchors, name-sorted: every category
-    /// holding an asset in "All" view, only top-level assets' categories in "Tree".
+    /// Distinct categories offered as jump anchors, name-sorted: every category holding an
+    /// asset in "All" view, every category holding a top-level asset in "Tree".
     private var anchorCategories: [AssetCategory] {
         switch viewMode {
         case .all:
             return groupedAssets.map(\.category)
         case .tree:
-            var seen = Set<UUID>()
-            return rootAssets.map(\.category)
-                .filter { seen.insert($0.id).inserted }
-                .sorted { $0.name.localizedCompare($1.name) == .orderedAscending }
+            return groupedRootAssets.map(\.category)
         }
     }
 
@@ -84,10 +88,18 @@ struct AssetTab: View {
                                 )
                             } else {
                                 switch viewMode {
-                                case .all: allList(proxy)
+                                case .all: allList
                                 case .tree: treeList
                                 }
                             }
+                        }
+                        .onAppear {
+                            guard let id = router.focusedCategoryID else { return }
+                            DispatchQueue.main.async { flashFocus(id, proxy: proxy) }
+                        }
+                        .onChange(of: router.focusedCategoryID) { _, id in
+                            guard let id else { return }
+                            flashFocus(id, proxy: proxy)
                         }
                     }
                     .environment(\.colorScheme, .light)
@@ -129,16 +141,12 @@ struct AssetTab: View {
                 PaywallView()
             }
             .onAppear {
-                if router.focusedCategoryID != nil { viewMode = .all }
                 if router.pendingNewAsset {
                     router.pendingNewAsset = false
                     pendingAssetName = router.pendingNewAssetName
                     router.pendingNewAssetName = nil
                     if store.hasAssetCapacity { newAssetPresented = true } else { paywallPresented = true }
                 }
-            }
-            .onChange(of: router.focusedCategoryID) { _, id in
-                if id != nil { viewMode = .all }
             }
             .onChange(of: router.pendingNewAsset) { _, pending in
                 guard pending else { return }
@@ -165,16 +173,7 @@ struct AssetTab: View {
         Menu {
             ForEach(anchorCategories, id: \.id) { category in
                 Button(category.name) {
-                    withAnimation {
-                        switch viewMode {
-                        case .all:
-                            proxy.scrollTo(category.id, anchor: .top)
-                        case .tree:
-                            if let target = rootAssets.first(where: { $0.category.id == category.id }) {
-                                proxy.scrollTo(target.id, anchor: .top)
-                            }
-                        }
-                    }
+                    withAnimation { proxy.scrollTo(category.id, anchor: .top) }
                 }
             }
         } label: {
@@ -182,7 +181,7 @@ struct AssetTab: View {
         }
     }
 
-    private func allList(_ proxy: ScrollViewProxy) -> some View {
+    private var allList: some View {
         List {
             ForEach(groupedAssets, id: \.category.id) { group in
                 Section(header: categoryHeader(group.category)) {
@@ -197,14 +196,6 @@ struct AssetTab: View {
             }
         }
         .scrollContentBackground(.hidden)
-        .onAppear {
-            guard let id = router.focusedCategoryID else { return }
-            DispatchQueue.main.async { flashFocus(id, proxy: proxy) }
-        }
-        .onChange(of: router.focusedCategoryID) { _, id in
-            guard let id else { return }
-            flashFocus(id, proxy: proxy)
-        }
     }
 
     /// Scrolls the focused category into view, then clears the highlight after a
@@ -221,7 +212,12 @@ struct AssetTab: View {
     @ViewBuilder
     private func categoryHeader(_ category: AssetCategory) -> some View {
         let focused = router.focusedCategoryID == category.id
-        Label(category.name, systemImage: category.iconName)
+        Label {
+            Text(category.name)
+        } icon: {
+            Image(systemName: category.iconName)
+                .foregroundStyle(.tint)
+        }
             .padding(.horizontal, 8)
             .padding(.vertical, 5)
             .background(
@@ -237,10 +233,14 @@ struct AssetTab: View {
 
     private var treeList: some View {
         List {
-            ForEach(rootAssets) { asset in
-                AssetTreeRow(asset: asset, depth: 0, expanded: $expanded, orderedIDs: orderedAssetIDs)
-                    .id(asset.id)
-                    .listRowBackground(Color.white.opacity(0.5))
+            ForEach(groupedRootAssets, id: \.category.id) { group in
+                Section(header: categoryHeader(group.category)) {
+                    ForEach(group.assets) { asset in
+                        AssetTreeRow(asset: asset, depth: 0, expanded: $expanded, orderedIDs: orderedAssetIDs)
+                    }
+                }
+                .listRowBackground(Color.white.opacity(0.5))
+                .id(group.category.id)
             }
         }
         .scrollContentBackground(.hidden)
@@ -285,12 +285,11 @@ private struct AssetTreeRow: View {
                     if isExpanded { expanded.remove(asset.id) } else { expanded.insert(asset.id) }
                 } label: {
                     HStack(spacing: 8) {
-                        Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                            .opacity(hasChildren ? 1 : 0)
-                        Image(systemName: asset.category.iconName)
-                            .foregroundStyle(.tint)
+                        if hasChildren {
+                            Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
                         Text(asset.name)
                         Spacer(minLength: 0)
                     }
@@ -307,7 +306,8 @@ private struct AssetTreeRow: View {
                 }
                 .buttonStyle(.plain)
             }
-            .listRowInsets(EdgeInsets(top: 6, leading: 16 + CGFloat(depth) * 20, bottom: 6, trailing: 16))
+            .padding(.leading, CGFloat(depth) * 30)
+            .padding(.vertical, 2)
             .navigationDestination(isPresented: $showDetail) {
                 AssetDetailView(asset: asset, orderedIDs: orderedIDs)
             }

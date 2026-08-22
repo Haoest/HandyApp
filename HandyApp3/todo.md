@@ -10,7 +10,10 @@ revisit paywall ensure transaction and event has a limited free count
 
 - revisit siri command
 
--property sort order
+- create transaction / event tab
+- revisit factory reset
+- enhance device notification, create notification to create new event/transaction entry, and maybe set up another notification by due date, to keep the loop alive
+- consider file store epoch to enable factory reset
 
 == completed ==
 
@@ -45,3 +48,4 @@ tombstone in Trash, restorable, instead of a prompt~
 -provide option to propagate category properties to assets retroactively
 - asset detail form sluggish
 
+- property sort order
