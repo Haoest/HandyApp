@@ -17,9 +17,14 @@ struct HandyApp3App: App {
                 .environment(purchases)
                 .environment(\.locale, languageCode.isEmpty ? .autoupdatingCurrent : Locale(identifier: languageCode))
                 .task {
-                    store.notificationScheduler?.onOpenAsset = { assetID in
+                    store.notificationScheduler?.onOpenAsset = { assetID, kind in
                         router.selectedTab = .assets
                         router.pendingAssetID = assetID
+                        switch kind {
+                        case .event: router.pendingAssetAnchor = .events
+                        case .transaction: router.pendingAssetAnchor = .transactions
+                        case nil: router.pendingAssetAnchor = nil
+                        }
                     }
                     try? await ContactResolver.shared.requestAccess()
                     store.startCloudMonitor()

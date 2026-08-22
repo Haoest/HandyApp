@@ -57,13 +57,13 @@ struct HomeTab: View {
             }
             .sheet(item: $eventToEdit) { resolved in
                 let seriesCount = liveAsset(resolved.assetID).map { SeriesLogic.members(of: resolved.event, in: $0.liveEvents).count } ?? 1
-                EventEditView(existing: resolved.event, seriesCount: seriesCount) { title, date, notes, recurrence, due in
+                EventEditView(existing: resolved.event, seriesCount: seriesCount, assetName: liveAsset(resolved.assetID)?.name ?? "", assetID: resolved.assetID) { title, date, notes, recurrence, due in
                     try? store.updateEvent(id: resolved.event.id, onAssetID: resolved.assetID, title: title, date: date, notes: notes, recurrence: recurrence, due: due)
                 }
             }
             .sheet(item: $transactionToEdit) { resolved in
                 let seriesCount = liveAsset(resolved.assetID).map { SeriesLogic.members(of: resolved.transaction, in: $0.liveTransactions).count } ?? 1
-                TransactionEditView(existing: resolved.transaction, seriesCount: seriesCount) { details, amount, date, kind, payeeID, notes, recurrence, due in
+                TransactionEditView(existing: resolved.transaction, seriesCount: seriesCount, assetName: liveAsset(resolved.assetID)?.name ?? "", assetID: resolved.assetID) { details, amount, date, kind, payeeID, notes, recurrence, due in
                     try? store.updateTransaction(id: resolved.transaction.id, onAssetID: resolved.assetID, details: details, amount: amount, date: date, kind: kind, payeeContactID: payeeID, notes: notes, recurrence: recurrence, due: due)
                 }
             }
@@ -72,7 +72,9 @@ struct HomeTab: View {
                 EventEditView(
                     prefill: source,
                     prefillTitle: store.suggestedDuplicateTitle(forEventID: source.id, onAssetID: resolved.assetID),
-                    prefillDue: DueSettings(dueDate: SeriesLogic.advancedDueDate(for: source), messageDaysBefore: source.messageDaysBefore, messageDaysAfter: source.messageDaysAfter, deviceNotificationOn: source.deviceNotificationOn, deviceNotificationDaysBefore: source.deviceNotificationDaysBefore)
+                    prefillDue: DueSettings(dueDate: SeriesLogic.advancedDueDate(for: source), messageDaysBefore: source.messageDaysBefore, messageDaysAfter: source.messageDaysAfter, deviceNotificationOn: source.deviceNotificationOn, deviceNotificationDaysBefore: source.deviceNotificationDaysBefore),
+                    assetName: liveAsset(resolved.assetID)?.name ?? "",
+                    assetID: resolved.assetID
                 ) { title, date, notes, recurrence, due in
                     try? store.duplicateEvent(id: source.id, onAssetID: resolved.assetID, title: title, date: date, notes: notes, recurrence: recurrence, due: due)
                 }
@@ -82,7 +84,9 @@ struct HomeTab: View {
                 TransactionEditView(
                     prefill: source,
                     prefillDetails: store.suggestedDuplicateTitle(forTransactionID: source.id, onAssetID: resolved.assetID),
-                    prefillDue: DueSettings(dueDate: SeriesLogic.advancedDueDate(for: source), messageDaysBefore: source.messageDaysBefore, messageDaysAfter: source.messageDaysAfter, deviceNotificationOn: source.deviceNotificationOn, deviceNotificationDaysBefore: source.deviceNotificationDaysBefore)
+                    prefillDue: DueSettings(dueDate: SeriesLogic.advancedDueDate(for: source), messageDaysBefore: source.messageDaysBefore, messageDaysAfter: source.messageDaysAfter, deviceNotificationOn: source.deviceNotificationOn, deviceNotificationDaysBefore: source.deviceNotificationDaysBefore),
+                    assetName: liveAsset(resolved.assetID)?.name ?? "",
+                    assetID: resolved.assetID
                 ) { details, amount, date, kind, payeeID, notes, recurrence, due in
                     try? store.duplicateTransaction(id: source.id, onAssetID: resolved.assetID, details: details, amount: amount, date: date, kind: kind, payeeContactID: payeeID, notes: notes, recurrence: recurrence, due: due)
                 }

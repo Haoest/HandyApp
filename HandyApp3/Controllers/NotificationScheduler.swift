@@ -3,6 +3,12 @@ import UserNotifications
 
 // MARK: - Pure planning layer
 
+/// Which section of the asset detail screen a tapped notification should jump to.
+enum NotificationRecordKind: String {
+    case event
+    case transaction
+}
+
 struct PlannedNotification: Equatable {
     let identifier: String
     /// Concrete occurrence moment (9:00 AM local), used for sorting and the global cap.
@@ -14,6 +20,9 @@ struct PlannedNotification: Equatable {
     /// The asset the record is attached to; carried in the notification's userInfo
     /// so a tap can route to the asset's detail screen.
     let assetID: UUID
+    /// Carried in the notification's userInfo so a tap can jump straight to the
+    /// event/transaction section instead of just the asset's top.
+    let kind: NotificationRecordKind
 }
 
 enum NotificationPlanner {
@@ -46,13 +55,13 @@ enum NotificationPlanner {
                         if let planned = makePlanned(
                             identifier: "\(identifierPrefix)event-\(event.id.uuidString)-\(index)",
                             occurrence: date, now: now, calendar: calendar,
-                            title: asset.name, body: event.title, assetID: asset.id
+                            title: asset.name, body: event.title, assetID: asset.id, kind: .event
                         ) {
                             candidates.append(planned)
                         }
                     }
                 }
-                if let planned = dueCandidate(for: event, kindPrefix: "event", body: event.title, asset: asset, in: asset.liveEvents, now: now, calendar: calendar) {
+                if let planned = dueCandidate(for: event, kindPrefix: "event", kind: .event, body: event.title, asset: asset, in: asset.liveEvents, now: now, calendar: calendar) {
                     candidates.append(planned)
                 }
             }
@@ -65,13 +74,13 @@ enum NotificationPlanner {
                         if let planned = makePlanned(
                             identifier: "\(identifierPrefix)txn-\(txn.id.uuidString)-\(index)",
                             occurrence: date, now: now, calendar: calendar,
-                            title: asset.name, body: body, assetID: asset.id
+                            title: asset.name, body: body, assetID: asset.id, kind: .transaction
                         ) {
                             candidates.append(planned)
                         }
                     }
                 }
-                if let planned = dueCandidate(for: txn, kindPrefix: "txn", body: body, asset: asset, in: asset.liveTransactions, now: now, calendar: calendar) {
+                if let planned = dueCandidate(for: txn, kindPrefix: "txn", kind: .transaction, body: body, asset: asset, in: asset.liveTransactions, now: now, calendar: calendar) {
                     candidates.append(planned)
                 }
             }
@@ -86,25 +95,25 @@ enum NotificationPlanner {
     /// date. Independent of recurrence — a non-recurring record can still carry one. Mirrors
     /// the home-tab due-message suppression rule so a logged newer occurrence also silences
     /// the pending device notification, not just the on-screen banner.
-    private static func dueCandidate<R: SeriesRecord>(for record: R, kindPrefix: String, body: String, asset: Asset, in siblings: [R], now: Date, calendar: Calendar) -> PlannedNotification? {
+    private static func dueCandidate<R: SeriesRecord>(for record: R, kindPrefix: String, kind: NotificationRecordKind, body: String, asset: Asset, in siblings: [R], now: Date, calendar: Calendar) -> PlannedNotification? {
         guard record.deviceNotificationOn, let dueDate = record.dueDate,
               !SeriesLogic.isSuppressed(record, in: siblings, calendar: calendar, now: now) else { return nil }
         guard let occurrence = calendar.date(byAdding: .day, value: -record.deviceNotificationDaysBefore, to: dueDate) else { return nil }
         return makePlanned(
             identifier: "\(duePrefix)\(kindPrefix)-\(record.id.uuidString)",
             occurrence: occurrence, now: now, calendar: calendar,
-            title: asset.name, body: body, assetID: asset.id
+            title: asset.name, body: body, assetID: asset.id, kind: kind
         )
     }
 
-    private static func makePlanned(identifier: String, occurrence: Date, now: Date, calendar: Calendar, title: String, body: String, assetID: UUID) -> PlannedNotification? {
+    private static func makePlanned(identifier: String, occurrence: Date, now: Date, calendar: Calendar, title: String, body: String, assetID: UUID, kind: NotificationRecordKind) -> PlannedNotification? {
         var components = calendar.dateComponents([.year, .month, .day], from: occurrence)
         components.hour = 9
         components.minute = 0
         // An occurrence whose 9 AM has already passed (today, later in the day) is
         // unannounceable; the next cycle covers it.
         guard let fireDate = calendar.date(from: components), fireDate > now else { return nil }
-        return PlannedNotification(identifier: identifier, fireDate: fireDate, fireDateComponents: components, title: title, body: body, assetID: assetID)
+        return PlannedNotification(identifier: identifier, fireDate: fireDate, fireDateComponents: components, title: title, body: body, assetID: assetID, kind: kind)
     }
 }
 
@@ -114,13 +123,34 @@ final class NotificationScheduler: NSObject, UNUserNotificationCenterDelegate {
     private let center = UNUserNotificationCenter.current()
     private var resyncTask: Task<Void, Never>?
 
-    /// Called on the main actor with the asset ID when the user taps a recurrence
-    /// notification. Wired up at app startup to route to the asset's detail screen.
-    var onOpenAsset: ((UUID) -> Void)?
+    /// Called on the main actor with the asset ID and record kind when the user taps
+    /// a notification. Wired up at app startup to route to the asset's detail screen,
+    /// jumping to its Events/Transactions section. `kind` is nil for a notification
+    /// scheduled before this field existed.
+    var onOpenAsset: ((UUID, NotificationRecordKind?) -> Void)?
 
     override init() {
         super.init()
         center.delegate = self
+    }
+
+    /// Fires a local notification a few seconds from now, bypassing all planning/dedup
+    /// logic. Debug-build-only escape hatch so a developer can confirm notification delivery
+    /// (banner, sound, permissions, tap routing) without waiting on a real due date to arrive.
+    func fireDebugNotification(title: String, body: String, assetID: UUID, kind: NotificationRecordKind) {
+        Task {
+            let settings = await center.notificationSettings()
+            if settings.authorizationStatus == .notDetermined {
+                _ = try? await center.requestAuthorization(options: [.alert, .sound, .badge])
+            }
+            let content = UNMutableNotificationContent()
+            content.title = title
+            content.body = body
+            content.sound = .default
+            content.userInfo = ["assetID": assetID.uuidString, "kind": kind.rawValue]
+            let trigger = UNTimeIntervalNotificationTrigger(timeInterval: 5, repeats: false)
+            try? await center.add(UNNotificationRequest(identifier: "debug-test-\(UUID().uuidString)", content: content, trigger: trigger))
+        }
     }
 
     /// Recomputes and replaces all recurrence notifications from the given snapshot.
@@ -157,7 +187,7 @@ final class NotificationScheduler: NSObject, UNUserNotificationCenterDelegate {
             content.title = planned.title
             content.body = planned.body
             content.sound = .default
-            content.userInfo = ["assetID": planned.assetID.uuidString]
+            content.userInfo = ["assetID": planned.assetID.uuidString, "kind": planned.kind.rawValue]
             let trigger = UNCalendarNotificationTrigger(dateMatching: planned.fireDateComponents, repeats: false)
             try? await center.add(UNNotificationRequest(identifier: planned.identifier, content: content, trigger: trigger))
         }
@@ -177,10 +207,11 @@ final class NotificationScheduler: NSObject, UNUserNotificationCenterDelegate {
     }
 
     func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse, withCompletionHandler completionHandler: @escaping () -> Void) {
-        let assetID = (response.notification.request.content.userInfo["assetID"] as? String)
-            .flatMap(UUID.init(uuidString:))
+        let userInfo = response.notification.request.content.userInfo
+        let assetID = (userInfo["assetID"] as? String).flatMap(UUID.init(uuidString:))
+        let kind = (userInfo["kind"] as? String).flatMap(NotificationRecordKind.init(rawValue:))
         DispatchQueue.main.async {
-            if let assetID { self.onOpenAsset?(assetID) }
+            if let assetID { self.onOpenAsset?(assetID, kind) }
             completionHandler()
         }
     }

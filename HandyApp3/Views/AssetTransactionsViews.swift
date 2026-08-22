@@ -199,8 +199,13 @@ private struct TransactionRow: View {
 
 struct TransactionEditView: View {
     @Environment(\.dismiss) private var dismiss
+    @Environment(AssetStore.self) private var store
     let existing: Transaction?
     let seriesCount: Int
+    /// Asset name and ID, used only by the debug "send test notification" button to
+    /// mirror the real notification's title and tap-routing target.
+    let assetName: String
+    let assetID: UUID
     let onSave: (String, Decimal, Date, TransactionKind, String?, String, RecurrenceInterval?, DueSettings) -> Void
 
     @State private var details: String
@@ -221,10 +226,12 @@ struct TransactionEditView: View {
     @State private var deviceNotificationDaysBefore: Int
 
     init(existing: Transaction? = nil, prefill: Transaction? = nil, prefillDetails: String? = nil, prefillDue: DueSettings? = nil,
-         initialKind: TransactionKind? = nil, seriesCount: Int = 1,
+         initialKind: TransactionKind? = nil, seriesCount: Int = 1, assetName: String, assetID: UUID,
          onSave: @escaping (String, Decimal, Date, TransactionKind, String?, String, RecurrenceInterval?, DueSettings) -> Void) {
         self.existing = existing
         self.seriesCount = seriesCount
+        self.assetName = assetName
+        self.assetID = assetID
         self.onSave = onSave
         let source = existing ?? prefill
         _details = State(initialValue: prefillDetails ?? source?.details ?? "")
@@ -304,6 +311,15 @@ struct TransactionEditView: View {
                         Toggle("Device Notification", isOn: $deviceNotificationOn)
                         if deviceNotificationOn {
                             StepSlider(title: "Notify before due date", value: $deviceNotificationDaysBefore)
+                            #if DEBUG
+                            Button("Send Test Notification Now") {
+                                let amount = (parsedAmount ?? 0).formatted(.currency(code: Locale.current.currency?.identifier ?? "USD"))
+                                store.notificationScheduler?.fireDebugNotification(
+                                    title: assetName, body: "\(details) — \(amount) (\(kind.rawValue))",
+                                    assetID: assetID, kind: .transaction
+                                )
+                            }
+                            #endif
                         }
                     }
                 }

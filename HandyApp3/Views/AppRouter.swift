@@ -26,6 +26,11 @@ final class AppRouter {
     /// navigation binding.
     var pendingAssetID: UUID?
 
+    /// Section to scroll the pushed asset detail screen to, alongside `pendingAssetID`
+    /// (set when the user taps an event/transaction notification). Consumed and reset
+    /// to nil once the destination view appears.
+    var pendingAssetAnchor: DetailAnchor?
+
     /// When non-nil, ToolsTab consumes this action (e.g. trigger export), then resets to nil.
     var pendingToolsAction: ToolsAction?
 

@@ -157,7 +157,8 @@ struct AssetTab: View {
             }
             .navigationDestination(item: $router.pendingAssetID) { id in
                 if let asset = store.assets[id], !asset.isDeleted, !asset.isPurged {
-                    AssetDetailView(asset: asset, orderedIDs: orderedAssetIDs)
+                    AssetDetailView(asset: asset, orderedIDs: orderedAssetIDs, initialAnchor: router.pendingAssetAnchor)
+                        .onAppear { router.pendingAssetAnchor = nil }
                 } else {
                     ContentUnavailableView(
                         "Asset Not Found",

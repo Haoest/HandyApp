@@ -171,8 +171,13 @@ private struct EventRow: View {
 
 struct EventEditView: View {
     @Environment(\.dismiss) private var dismiss
+    @Environment(AssetStore.self) private var store
     let existing: Event?
     let seriesCount: Int
+    /// Asset name and ID, used only by the debug "send test notification" button to
+    /// mirror the real notification's title and tap-routing target.
+    let assetName: String
+    let assetID: UUID
     let onSave: (String, Date, String, RecurrenceInterval?, DueSettings) -> Void
 
     @State private var title: String
@@ -188,9 +193,11 @@ struct EventEditView: View {
     @State private var deviceNotificationDaysBefore: Int
 
     init(existing: Event? = nil, prefill: Event? = nil, prefillTitle: String? = nil, prefillDue: DueSettings? = nil,
-         seriesCount: Int = 1, onSave: @escaping (String, Date, String, RecurrenceInterval?, DueSettings) -> Void) {
+         seriesCount: Int = 1, assetName: String, assetID: UUID, onSave: @escaping (String, Date, String, RecurrenceInterval?, DueSettings) -> Void) {
         self.existing = existing
         self.seriesCount = seriesCount
+        self.assetName = assetName
+        self.assetID = assetID
         self.onSave = onSave
         let source = existing ?? prefill
         _title = State(initialValue: prefillTitle ?? source?.title ?? "")
@@ -248,6 +255,11 @@ struct EventEditView: View {
                         Toggle("Device Notification", isOn: $deviceNotificationOn)
                         if deviceNotificationOn {
                             StepSlider(title: "Notify before due date", value: $deviceNotificationDaysBefore)
+                            #if DEBUG
+                            Button("Send Test Notification Now") {
+                                store.notificationScheduler?.fireDebugNotification(title: assetName, body: title, assetID: assetID, kind: .event)
+                            }
+                            #endif
                         }
                     }
                 }
