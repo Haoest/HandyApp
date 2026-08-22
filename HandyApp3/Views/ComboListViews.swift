@@ -51,6 +51,7 @@ struct ComboListDetailView: View {
                 HStack {
                     TextField(editingOption == nil ? "Add option" : "Edit option", text: $newOption)
                         .onSubmit { addOption() }
+                        .limitLength(TextLimits.comboListOption, text: $newOption)
                     Button {
                         addOption()
                     } label: {
@@ -137,6 +138,7 @@ private struct ComboListNameField: View {
                 .focused($isFocused)
                 .onSubmit { commit() }
                 .commitsPendingEdit(focused: isFocused) { commit() }
+                .limitLength(TextLimits.comboListName, text: $text)
         }
         .alert("Duplicate Name", isPresented: $showDuplicateNameAlert) {
             Button("OK", role: .cancel) { text = list.name }
@@ -176,6 +178,7 @@ struct ComboListNewView: View {
             Form {
                 Section("Name") {
                     TextField("Combo list name", text: $name)
+                        .limitLength(TextLimits.comboListName, text: $name)
                 }
                 Section("Options") {
                     ForEach(options.indices, id: \.self) { index in
@@ -198,6 +201,7 @@ struct ComboListNewView: View {
                     HStack {
                         TextField(editingIndex == nil ? "Add option" : "Edit option", text: $newOption)
                             .onSubmit { commitOption() }
+                            .limitLength(TextLimits.comboListOption, text: $newOption)
                         Button {
                             commitOption()
                         } label: {

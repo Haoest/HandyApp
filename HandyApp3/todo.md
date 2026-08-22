@@ -11,16 +11,15 @@ revisit paywall ensure transaction and event has a limited free count
 - revisit siri command
 
 - create transaction / event tab
-- revisit factory reset
+
 - enhance device notification, create notification to create new event/transaction entry, and maybe set up another notification by due date, to keep the loop alive
 
 -facelift
 
-- consider file store epoch to enable factory reset
-- improve asset listing screen responisveness
 
 == completed ==
 
+- revisit factory reset, leave asset husk after reset
 improve localization to read more like asset management app
 improve combo list feature
 rework combo list: dedicated ComboListField (textbox + tap-to-fill suggestions, typed values

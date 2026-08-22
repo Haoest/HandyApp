@@ -9,7 +9,7 @@ struct PropertyEditRow: View {
     var body: some View {
         switch definition.type {
         case .basic(.text):
-            TextEditRow(label: definition.name, value: $value)
+            TextEditRow(label: definition.name, maxLength: definition.maxLength, value: $value)
         case .basic(.contact):
             ContactEditRow(label: definition.name, value: $value)
         case .basic(.number):
@@ -19,7 +19,7 @@ struct PropertyEditRow: View {
         case .basic(.date):
             DateEditRow(label: definition.name, value: $value)
         case .comboList(let list):
-            ComboListEditRow(label: definition.name, list: list, value: $value)
+            ComboListEditRow(label: definition.name, list: list, maxLength: definition.maxLength, value: $value)
         case .composite(let def):
             CompositeFieldLink(label: definition.name, definition: def, value: $value)
         default:
@@ -98,6 +98,7 @@ private struct ContactEditRow: View {
 
 private struct TextEditRow: View {
     let label: String
+    var maxLength: Int? = nil
     @Binding var value: StoredValue?
 
     private var text: Binding<String> {
@@ -111,6 +112,7 @@ private struct TextEditRow: View {
         LabeledContent(label) {
             TextField("", text: text, axis: .vertical)
                 .multilineTextAlignment(.trailing)
+                .limitLength(maxLength, text: text)
         }
     }
 }
@@ -190,6 +192,7 @@ private struct DateEditRow: View {
 private struct ComboListEditRow: View {
     let label: String
     let list: ComboListDefinition
+    var maxLength: Int? = nil
     @Binding var value: StoredValue?
 
     private var current: String {
@@ -198,7 +201,7 @@ private struct ComboListEditRow: View {
     }
 
     var body: some View {
-        ComboListField(label: label, list: list, current: current) { newValue in
+        ComboListField(label: label, list: list, current: current, maxLength: maxLength) { newValue in
             value = newValue.map { .text($0) }
         }
     }

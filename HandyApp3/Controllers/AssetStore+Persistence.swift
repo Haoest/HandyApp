@@ -1101,7 +1101,7 @@ extension AssetStore {
         clMap: [UUID: ComboListDefinition]
     ) -> PropertyDefinition? {
         guard let type = resolvePropertyType(dto.type, ctMap: ctMap, clMap: clMap) else { return nil }
-        return PropertyDefinition(id: dto.id, name: dto.name, type: type, isRequired: dto.isRequired)
+        return PropertyDefinition(id: dto.id, name: dto.name, type: type, isRequired: dto.isRequired, maxLength: dto.maxLength)
     }
 
     private func storedValue(from dto: StoredValueDTO) -> StoredValue {
@@ -1195,7 +1195,7 @@ extension AssetStore {
 
     private func propertyDefinitionDTO(_ def: PropertyDefinition) -> PropertyDefinitionDTO {
         PropertyDefinitionDTO(id: def.id, name: def.name,
-                              type: propertyTypeDTO(def.type), isRequired: def.isRequired)
+                              type: propertyTypeDTO(def.type), isRequired: def.isRequired, maxLength: def.maxLength)
     }
 
     private func storedValueDTO(_ value: StoredValue) -> StoredValueDTO {

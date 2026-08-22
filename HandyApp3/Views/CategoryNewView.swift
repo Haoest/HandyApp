@@ -32,6 +32,7 @@ struct CategoryNewView: View {
             Form {
                 Section("Name") {
                     TextField("Category name", text: $name)
+                        .limitLength(TextLimits.categoryName, text: $name)
                 }
 
                 Section("Icon") {

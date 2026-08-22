@@ -128,7 +128,7 @@ extension AssetStore {
         setBase("License Plate", .text("FASTEST"))
         setBase("Engine Oil", .text("10W-40"))
         try? addCustomProperty(
-            definition: PropertyDefinition(name: "Paint Color", type: .basic(.text), isRequired: false),
+            definition: PropertyDefinition(name: "Paint Color", type: .basic(.text), isRequired: false, maxLength: 40),
             value: .text("Rossi Corsa"),
             toAssetID: car.id
         )
@@ -195,7 +195,7 @@ extension AssetStore {
                     guard !existing.isDeleted, existing.definition != def else { continue }
                     try? updateTemplateProperty(
                         id: def.id, inCategoryID: cat.id,
-                        name: def.name, type: def.type, isRequired: def.isRequired
+                        name: def.name, type: def.type, isRequired: def.isRequired, maxLength: def.maxLength
                     )
                     changed += 1
                 } else {

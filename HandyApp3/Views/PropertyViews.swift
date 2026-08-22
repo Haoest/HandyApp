@@ -25,6 +25,8 @@ struct PropertyEditView: View {
         self.existing = existing
         self.onSave = onSave
         _name = State(initialValue: existing?.definition.name ?? "")
+        _maxLengthText = State(initialValue: existing?.definition.maxLength.map(String.init)
+                                ?? String(PropertyDefinition.defaultTextMaxLength))
         if case .comboList(let list) = existing?.definition.type {
             _typeChoice = State(initialValue: .comboList)
             _selectedComboListID = State(initialValue: list.id)
@@ -37,6 +39,7 @@ struct PropertyEditView: View {
     }
 
     @State private var name: String
+    @State private var maxLengthText: String
     @State private var typeChoice: TypeChoice = .basic(.text)
     @State private var selectedComboListID: UUID?
     /// Captured from `existing` at init so a property typed on a since-soft-deleted combo list
@@ -119,6 +122,20 @@ struct PropertyEditView: View {
         }
     }
 
+    /// Whether the currently-selected type takes a character bound — `.basic(.text)` or
+    /// `.comboList`, mirroring `PropertyDefinition.acceptsMaxLength`.
+    private var typeTakesMaxLength: Bool {
+        switch currentType {
+        case .basic(.text), .comboList: return true
+        default: return false
+        }
+    }
+
+    private var parsedMaxLength: Int? {
+        guard let n = Int(maxLengthText.trimmingCharacters(in: .whitespaces)) else { return nil }
+        return (1...PropertyDefinition.systemMaxLength).contains(n) ? n : nil
+    }
+
     var body: some View {
         NavigationStack {
             Form {
@@ -173,6 +190,21 @@ struct PropertyEditView: View {
                         }
                     }
                 }
+                if typeTakesMaxLength {
+                    Section {
+                        TextField("Max Length", text: $maxLengthText)
+                            .keyboardType(.numberPad)
+                            .onChange(of: maxLengthText) { _, newValue in
+                                let digitsOnly = newValue.filter(\.isNumber)
+                                if digitsOnly != newValue { maxLengthText = digitsOnly }
+                            }
+                    } header: {
+                        Text("Max Length")
+                    } footer: {
+                        Text("The most characters this field can hold, up to \(PropertyDefinition.systemMaxLength).")
+                            .font(.caption)
+                    }
+                }
                 if hasEditableValue {
                     Section("Value") {
                         valueField
@@ -197,12 +229,17 @@ struct PropertyEditView: View {
                         guard let type = currentType else { return }
                         let def = PropertyDefinition(
                             name: name.trimmingCharacters(in: .whitespaces),
-                            type: type
+                            type: type,
+                            maxLength: typeTakesMaxLength ? parsedMaxLength : nil
                         )
                         onSave(def, enteredValue)
                         dismiss()
                     }
-                    .disabled(name.trimmingCharacters(in: .whitespaces).isEmpty || currentType == nil)
+                    .disabled(
+                        name.trimmingCharacters(in: .whitespaces).isEmpty
+                        || currentType == nil
+                        || (typeTakesMaxLength && parsedMaxLength == nil)
+                    )
                 }
             }
         }
@@ -213,6 +250,7 @@ struct PropertyEditView: View {
         switch currentType {
         case .basic(.text):
             TextField("Optional", text: $valueText)
+                .limitLength(parsedMaxLength, text: $valueText)
         case .basic(.contact):
             Button {
                 contactPickerPresented = true
@@ -272,5 +310,6 @@ struct PropertyEditView: View {
         valueCombo = ""
         valueContactID = ""
         valueContactName = ""
+        maxLengthText = String(PropertyDefinition.defaultTextMaxLength)
     }
 }

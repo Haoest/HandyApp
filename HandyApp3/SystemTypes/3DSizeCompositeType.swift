@@ -21,7 +21,7 @@ extension BuiltInTypes {
                 PropertyDefinition(id: deterministicID("compositeType.3DSize.Width"),  name: "Width",  type: .basic(.number), isRequired: true),
                 PropertyDefinition(id: deterministicID("compositeType.3DSize.Length"), name: "Length", type: .basic(.number), isRequired: true),
                 PropertyDefinition(id: deterministicID("compositeType.3DSize.Height"), name: "Height", type: .basic(.number), isRequired: true),
-                PropertyDefinition(id: deterministicID("compositeType.3DSize.Unit"),   name: "Unit",   type: .basic(.text),   isRequired: false),
+                PropertyDefinition(id: deterministicID("compositeType.3DSize.Unit"),   name: "Unit",   type: .basic(.text),   isRequired: false, maxLength: 12),
             ],
             labelHint: "WxLxH"
         )

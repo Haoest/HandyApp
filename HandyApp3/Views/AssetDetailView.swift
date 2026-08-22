@@ -596,7 +596,7 @@ private struct AssetDetailContent: View {
         }
         .sheet(item: $customPropertyToEdit) { prop in
             PropertyEditView(existing: prop) { definition, value in
-                try? store.updateCustomProperty(id: prop.id, onAssetID: asset.id, name: definition.name, type: definition.type)
+                try? store.updateCustomProperty(id: prop.id, onAssetID: asset.id, name: definition.name, type: definition.type, maxLength: definition.maxLength)
                 if let value {
                     try? store.setPropertyValue(value, forDefinitionID: prop.definition.id, onAssetID: asset.id)
                 } else {
@@ -636,6 +636,7 @@ private struct NameDetailField: View {
             .focused($isFocused)
             .onSubmit { commit() }
             .commitsPendingEdit(focused: isFocused) { commit() }
+            .limitLength(TextLimits.assetName, text: $text)
     }
 
     private func commit() {

@@ -123,7 +123,7 @@ struct CategoryPropertyDefsView: View {
         }
         .sheet(item: $propertyToEdit) { prop in
             PropertyEditView(existing: prop) { definition, value in
-                try? store.updateTemplateProperty(id: prop.id, inCategoryID: category.id, name: definition.name, type: definition.type)
+                try? store.updateTemplateProperty(id: prop.id, inCategoryID: category.id, name: definition.name, type: definition.type, maxLength: definition.maxLength)
                 if let value {
                     try? store.setTemplatePropertyValue(value, forPropertyID: prop.id, inCategoryID: category.id)
                 } else {
@@ -201,6 +201,7 @@ private struct CategoryNameField: View {
                 .focused($isFocused)
                 .onSubmit { commit() }
                 .commitsPendingEdit(focused: isFocused) { commit() }
+                .limitLength(TextLimits.categoryName, text: $text)
         }
     }
 
@@ -259,11 +260,19 @@ private struct TemplateTextRow: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
-            PropertyLabel(name: property.definition.name, onEditLabel: onEditLabel)
+            HStack(spacing: 6) {
+                PropertyLabel(name: property.definition.name, onEditLabel: onEditLabel)
+                if let maxLength = property.definition.maxLength {
+                    Text("· max \(maxLength)")
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
+                }
+            }
             TextField("", text: $text, axis: .vertical)
                 .focused($isFocused)
                 .onSubmit { commit() }
                 .commitsPendingEdit(focused: isFocused) { commit() }
+                .limitLength(property.definition.maxLength, text: $text)
                 .onChange(of: property.value) { _, newValue in
                     guard !isFocused else { return }
                     switch newValue {
@@ -443,11 +452,17 @@ private struct TemplateComboRow: View {
         return ""
     }
 
+    private var label: String {
+        guard let maxLength = property.definition.maxLength else { return property.definition.name }
+        return "\(property.definition.name) · max \(maxLength)"
+    }
+
     var body: some View {
         ComboListField(
-            label: property.definition.name,
+            label: label,
             list: list,
             current: current,
+            maxLength: property.definition.maxLength,
             onEditLabel: onEditLabel
         ) { newValue in
             if let newValue {

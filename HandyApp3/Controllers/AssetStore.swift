@@ -188,13 +188,17 @@ final class AssetStore {
 
     @discardableResult
     func createCategory(id: UUID = UUID(), name: String, iconName: String = "square.grid.2x2", propertyTemplates: [AssetProperty] = []) throws -> AssetCategory {
-        let trimmed = name.trimmingCharacters(in: .whitespaces)
+        let trimmed = TextLimits.clamp(name.trimmingCharacters(in: .whitespaces), to: TextLimits.categoryName)
         if categories.values.contains(where: { !$0.isPurged && $0.name.caseInsensitiveCompare(trimmed) == .orderedSame }) {
             throw AssetStoreError.duplicateCategoryName(trimmed)
         }
         for template in propertyTemplates {
+            template.definition.name = TextLimits.clamp(template.definition.name, to: TextLimits.propertyName)
+            if let ml = template.definition.maxLength { template.definition.maxLength = Self.clampedMaxLength(ml) }
             if let value = template.value {
-                handleComboListAutoAdd(stored: value, type: template.definition.type)
+                let clamped = Self.clampedTextValue(value, for: template.definition)
+                template.value = clamped
+                handleComboListAutoAdd(stored: clamped, type: template.definition.type)
             }
         }
         let cat = AssetCategory(id: id, name: trimmed, iconName: iconName, propertyTemplates: propertyTemplates)
@@ -205,7 +209,7 @@ final class AssetStore {
 
     func updateCategory(id: UUID, name: String) throws {
         guard let cat = categories[id] else { throw AssetStoreError.categoryNotFound(id) }
-        cat.name = name
+        cat.name = TextLimits.clamp(name, to: TextLimits.categoryName)
         cat.modifyDate = Date()
         markDirty()
     }
@@ -256,6 +260,10 @@ final class AssetStore {
     @discardableResult
     func appendTemplateProperty(definition: PropertyDefinition, value: StoredValue? = nil, toCategoryID categoryID: UUID) throws -> AssetProperty {
         guard let cat = categories[categoryID] else { throw AssetStoreError.categoryNotFound(categoryID) }
+        var definition = definition
+        definition.name = TextLimits.clamp(definition.name, to: TextLimits.propertyName)
+        if let ml = definition.maxLength { definition.maxLength = Self.clampedMaxLength(ml) }
+        let value = value.map { Self.clampedTextValue($0, for: definition) }
         let sortOrder = SortOrdering.next(after: cat.propertyTemplates.map(\.sortOrder))
         let prop = AssetProperty(definition: definition, value: value, sortOrder: sortOrder)
         return try addTemplateProperty(prop, toCategoryID: categoryID)
@@ -283,9 +291,10 @@ final class AssetStore {
         guard let prop = cat.propertyTemplates.first(where: { $0.id == propID }) else {
             throw AssetStoreError.propertyNotFound(propID)
         }
-        try validate(stored: stored, against: prop.definition.type, definitionName: prop.definition.name)
-        handleComboListAutoAdd(stored: stored, type: prop.definition.type)
-        prop.value = stored
+        let clamped = Self.clampedTextValue(stored, for: prop.definition)
+        try validate(stored: clamped, against: prop.definition.type, definitionName: prop.definition.name)
+        handleComboListAutoAdd(stored: clamped, type: prop.definition.type)
+        prop.value = clamped
         prop.touch()
         markDirty()
     }
@@ -325,18 +334,25 @@ final class AssetStore {
         inCategoryID categoryID: UUID,
         name: String? = nil,
         type: PropertyType? = nil,
-        isRequired: Bool? = nil
+        isRequired: Bool? = nil,
+        maxLength: Int? = nil
     ) throws {
         guard let cat = categories[categoryID] else { throw AssetStoreError.categoryNotFound(categoryID) }
         guard let prop = cat.propertyTemplates.first(where: { $0.id == propID }) else {
             throw AssetStoreError.propertyNotFound(propID)
         }
-        if let name { prop.definition.name = name }
-        if let type {
+        if let name { prop.definition.name = TextLimits.clamp(name, to: TextLimits.propertyName) }
+        if let type, type != prop.definition.type {
             prop.definition.type = type
             prop.value = nil
         }
         if let isRequired { prop.definition.isRequired = isRequired }
+        if let maxLength {
+            prop.definition.maxLength = Self.clampedMaxLength(maxLength)
+            if let value = prop.value {
+                prop.value = Self.clampedTextValue(value, for: prop.definition)
+            }
+        }
         prop.touch()
         markDirty()
     }
@@ -358,7 +374,7 @@ final class AssetStore {
         let baseProperties = cat.liveTemplates.map { template in
             AssetProperty(definition: template.definition, value: template.value, sortOrder: template.sortOrder)
         }
-        let asset = Asset(name: name, category: cat, baseProperties: baseProperties)
+        let asset = Asset(name: TextLimits.clamp(name, to: TextLimits.assetName), category: cat, baseProperties: baseProperties)
         assets[asset.id] = asset
         logCreation(of: asset.id, kind: .asset)
         markDirty()
@@ -368,7 +384,7 @@ final class AssetStore {
     func updateAsset(id: UUID, name: String) throws {
         guard let asset = assets[id] else { throw AssetStoreError.assetNotFound(id) }
         let now = Date()
-        asset.name = name
+        asset.name = TextLimits.clamp(name, to: TextLimits.assetName)
         asset.modifiedDate = now
         asset.headModifyDate = now
         notificationScheduler?.requestResync(assets: allAssets)
@@ -493,20 +509,22 @@ final class AssetStore {
     ) throws -> AssetProperty {
         guard let asset = assets[assetID] else { throw AssetStoreError.assetNotFound(assetID) }
         if let prop = asset.liveBaseProperties.first(where: { $0.definition.id == definitionID }) {
-            try validate(stored: stored, against: prop.definition.type, definitionName: prop.definition.name)
-            handleComboListAutoAdd(stored: stored, type: prop.definition.type)
+            let clamped = Self.clampedTextValue(stored, for: prop.definition)
+            try validate(stored: clamped, against: prop.definition.type, definitionName: prop.definition.name)
+            handleComboListAutoAdd(stored: clamped, type: prop.definition.type)
             let now = Date()
-            prop.value = stored
+            prop.value = clamped
             prop.touch(now)
             asset.modifiedDate = now
             markDirty()
             return prop
         }
         if let prop = asset.liveCustomProperties.first(where: { $0.definition.id == definitionID }) {
-            try validate(stored: stored, against: prop.definition.type, definitionName: prop.definition.name)
-            handleComboListAutoAdd(stored: stored, type: prop.definition.type)
+            let clamped = Self.clampedTextValue(stored, for: prop.definition)
+            try validate(stored: clamped, against: prop.definition.type, definitionName: prop.definition.name)
+            handleComboListAutoAdd(stored: clamped, type: prop.definition.type)
             let now = Date()
-            prop.value = stored
+            prop.value = clamped
             prop.touch(now)
             asset.modifiedDate = now
             markDirty()
@@ -550,9 +568,15 @@ final class AssetStore {
         toAssetID assetID: UUID
     ) throws -> AssetProperty {
         guard let asset = assets[assetID] else { throw AssetStoreError.assetNotFound(assetID) }
+        var definition = definition
+        definition.name = TextLimits.clamp(definition.name, to: TextLimits.propertyName)
+        if let ml = definition.maxLength { definition.maxLength = Self.clampedMaxLength(ml) }
+        var value = value
         if let stored = value {
-            try validate(stored: stored, against: definition.type, definitionName: definition.name)
-            handleComboListAutoAdd(stored: stored, type: definition.type)
+            let clamped = Self.clampedTextValue(stored, for: definition)
+            try validate(stored: clamped, against: definition.type, definitionName: definition.name)
+            handleComboListAutoAdd(stored: clamped, type: definition.type)
+            value = clamped
         }
         let sortOrder = SortOrdering.next(after: asset.customProperties.map(\.sortOrder))
         let prop = AssetProperty(definition: definition, value: value, sortOrder: sortOrder)
@@ -609,10 +633,11 @@ final class AssetStore {
         guard let prop = asset.liveCustomProperties.first(where: { $0.id == propID }) else {
             throw AssetStoreError.propertyNotFound(propID)
         }
-        try validate(stored: stored, against: prop.definition.type, definitionName: prop.definition.name)
-        handleComboListAutoAdd(stored: stored, type: prop.definition.type)
+        let clamped = Self.clampedTextValue(stored, for: prop.definition)
+        try validate(stored: clamped, against: prop.definition.type, definitionName: prop.definition.name)
+        handleComboListAutoAdd(stored: clamped, type: prop.definition.type)
         let now = Date()
-        prop.value = stored
+        prop.value = clamped
         prop.touch(now)
         asset.modifiedDate = now
         markDirty()
@@ -626,17 +651,24 @@ final class AssetStore {
         onAssetID assetID: UUID,
         name: String? = nil,
         type: PropertyType? = nil,
-        isRequired: Bool? = nil
+        isRequired: Bool? = nil,
+        maxLength: Int? = nil
     ) throws {
         guard let asset = assets[assetID] else { throw AssetStoreError.assetNotFound(assetID) }
         guard let prop = asset.liveCustomProperties.first(where: { $0.id == propID }) else {
             throw AssetStoreError.propertyNotFound(propID)
         }
-        if let name { prop.definition.name = name }
+        if let name { prop.definition.name = TextLimits.clamp(name, to: TextLimits.propertyName) }
         if let isRequired { prop.definition.isRequired = isRequired }
-        if let type {
+        if let type, type != prop.definition.type {
             prop.definition.type = type
             prop.value = nil
+        }
+        if let maxLength {
+            prop.definition.maxLength = Self.clampedMaxLength(maxLength)
+            if let value = prop.value {
+                prop.value = Self.clampedTextValue(value, for: prop.definition)
+            }
         }
         let now = Date()
         prop.touch(now)
@@ -667,7 +699,7 @@ final class AssetStore {
     /// otherwise have to defend against a stray blank pill.
     private static func sanitizedOptions(_ options: [String]) -> [String] {
         options
-            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .map { TextLimits.clamp($0.trimmingCharacters(in: .whitespaces), to: TextLimits.comboListOption) }
             .filter { !$0.isEmpty }
     }
 
@@ -680,7 +712,7 @@ final class AssetStore {
         isUserExtensible: Bool = true
     ) -> ComboListDefinition {
         let cl = ComboListDefinition(
-            id: id, name: name,
+            id: id, name: TextLimits.clamp(name, to: TextLimits.comboListName),
             systemOptions: Self.sanitizedOptions(systemOptions),
             userOptions: Self.sanitizedOptions(userOptions),
             isUserExtensible: isUserExtensible
@@ -692,7 +724,7 @@ final class AssetStore {
 
     func updateComboList(id: UUID, name: String) throws {
         guard let cl = comboListDefinitions[id] else { throw AssetStoreError.comboListNotFound(id) }
-        cl.name = name
+        cl.name = TextLimits.clamp(name, to: TextLimits.comboListName)
         cl.modifyDate = Date()
         markDirty()
     }
@@ -741,7 +773,7 @@ final class AssetStore {
     /// UI, which must be able to curate options on any list regardless of that flag.
     func addUserOption(_ option: String, toComboListID id: UUID) throws {
         guard let cl = comboListDefinitions[id] else { throw AssetStoreError.comboListNotFound(id) }
-        let trimmed = option.trimmingCharacters(in: .whitespaces)
+        let trimmed = TextLimits.clamp(option.trimmingCharacters(in: .whitespaces), to: TextLimits.comboListOption)
         guard !trimmed.isEmpty, !cl.allOptions.contains(trimmed) else { return }
         cl.userOptions.append(trimmed)
         cl.modifyDate = Date()
@@ -769,7 +801,7 @@ final class AssetStore {
             throw AssetStoreError.cannotModifySystemOption(listID: id, option: oldOption)
         }
         guard let idx = cl.userOptions.firstIndex(of: oldOption) else { return }
-        let trimmed = newOption.trimmingCharacters(in: .whitespaces)
+        let trimmed = TextLimits.clamp(newOption.trimmingCharacters(in: .whitespaces), to: TextLimits.comboListOption)
         guard !trimmed.isEmpty, trimmed != oldOption else { return }
         if cl.allOptions.contains(trimmed) {
             cl.userOptions.remove(at: idx)
@@ -797,7 +829,7 @@ final class AssetStore {
 
     func updateCompositeType(id: UUID, name: String) throws {
         guard let ct = compositeTypes[id] else { throw AssetStoreError.compositeTypeNotFound(id) }
-        ct.name = name
+        ct.name = TextLimits.clamp(name, to: TextLimits.compositeTypeName)
         ct.modifyDate = Date()
         markDirty()
     }
@@ -832,20 +864,53 @@ final class AssetStore {
         inCompositeTypeID typeID: UUID,
         name: String? = nil,
         type: PropertyType? = nil,
-        isRequired: Bool? = nil
+        isRequired: Bool? = nil,
+        maxLength: Int? = nil
     ) throws {
         guard let ct = compositeTypes[typeID] else { throw AssetStoreError.compositeTypeNotFound(typeID) }
         guard let idx = ct.fields.firstIndex(where: { $0.id == fieldID }) else {
             throw AssetStoreError.definitionNotFound(fieldID)
         }
-        if let name       { ct.fields[idx].name       = name       }
-        if let type       { ct.fields[idx].type       = type       }
+        if let name       { ct.fields[idx].name       = TextLimits.clamp(name, to: TextLimits.propertyName) }
+        if let type, type != ct.fields[idx].type { ct.fields[idx].type = type }
         if let isRequired { ct.fields[idx].isRequired = isRequired }
+        if let maxLength  { ct.fields[idx].maxLength  = Self.clampedMaxLength(maxLength) }
         ct.modifyDate = Date()
         markDirty()
     }
 
     // MARK: - Validation helpers
+
+    /// Caps a caller-supplied `maxLength` to `PropertyDefinition.systemMaxLength` (and floors it
+    /// at 1) — defense in depth behind `PropertyEditView`'s own `1...systemMaxLength` validation,
+    /// so a category property or asset custom property's bound can never exceed the system max
+    /// regardless of how it was set.
+    private static func clampedMaxLength(_ n: Int) -> Int {
+        min(max(n, 1), PropertyDefinition.systemMaxLength)
+    }
+
+    /// Clamps any `.text` payload reachable from `stored` to its definition's `maxLength` —
+    /// recursing into composite sub-fields, each clamped against its own field definition.
+    /// Applied *before* `validate`, not after: a value that exactly matches a non-extensible
+    /// combo-list option must still match once clamped, so clamping has to happen first, not
+    /// silently invalidate an otherwise-legal value.
+    static func clampedTextValue(_ stored: StoredValue, for definition: PropertyDefinition) -> StoredValue {
+        switch stored {
+        case .text(let s) where definition.acceptsMaxLength:
+            return .text(definition.clamped(s))
+        case .composite(let payload):
+            guard case .composite(let compositeDef) = definition.type else { return stored }
+            let fieldsByName = Dictionary(uniqueKeysWithValues: compositeDef.fields.map { ($0.name, $0) })
+            var clampedPayload = payload
+            for (key, subValue) in payload {
+                guard let fieldDef = fieldsByName[key] else { continue }
+                clampedPayload[key] = clampedTextValue(subValue, for: fieldDef)
+            }
+            return .composite(clampedPayload)
+        default:
+            return stored
+        }
+    }
 
     func validate(stored: StoredValue, against type: PropertyType, definitionName: String) throws {
         switch type {
@@ -940,7 +1005,7 @@ final class AssetStore {
     @discardableResult
     func addPhoto(imageData: Data, thumbnailData: Data, caption: String = "", toAssetID assetID: UUID) throws -> Photo {
         guard let asset = assets[assetID] else { throw AssetStoreError.assetNotFound(assetID) }
-        let photo = Photo(imageData: imageData, thumbnailData: thumbnailData, caption: caption)
+        let photo = Photo(imageData: imageData, thumbnailData: thumbnailData, caption: TextLimits.clamp(caption, to: TextLimits.photoCaption))
         PhotoStorage.save(id: photo.id, imageData: imageData, thumbnailData: thumbnailData)
         asset.photos.append(photo)
         asset.modifiedDate = Date()
@@ -953,7 +1018,7 @@ final class AssetStore {
         guard let asset = assets[assetID] else { throw AssetStoreError.assetNotFound(assetID) }
         guard let photo = asset.livePhotos.first(where: { $0.id == photoID }) else { throw AssetStoreError.photoNotFound(photoID) }
         let now = Date()
-        photo.caption = caption
+        photo.caption = TextLimits.clamp(caption, to: TextLimits.photoCaption)
         photo.touch(now)
         asset.modifiedDate = now
         markDirty()
@@ -979,7 +1044,8 @@ final class AssetStore {
         if let limit = eventCreationLimit, asset.liveEvents.count >= limit {
             throw AssetStoreError.freeEventLimitReached(limit: limit)
         }
-        let event = Event(title: title, date: date, notes: notes, recurrence: recurrence,
+        let event = Event(title: TextLimits.clamp(title, to: TextLimits.eventTitle), date: date,
+                          notes: TextLimits.clamp(notes, to: TextLimits.eventNotes), recurrence: recurrence,
                           dueDate: due.dueDate, messageDaysBefore: due.messageDaysBefore,
                           messageDaysAfter: due.messageDaysAfter,
                           deviceNotificationOn: due.deviceNotificationOn,
@@ -996,9 +1062,9 @@ final class AssetStore {
         guard let asset = assets[assetID] else { throw AssetStoreError.assetNotFound(assetID) }
         guard let event = asset.liveEvents.first(where: { $0.id == eventID }) else { throw AssetStoreError.eventNotFound(eventID) }
         let now = Date()
-        event.title = title
+        event.title = TextLimits.clamp(title, to: TextLimits.eventTitle)
         event.date = date
-        event.notes = notes
+        event.notes = TextLimits.clamp(notes, to: TextLimits.eventNotes)
         event.recurrence = recurrence
         event.dueDate = due.dueDate
         event.messageDaysBefore = due.messageDaysBefore
@@ -1076,6 +1142,8 @@ final class AssetStore {
         if let limit = eventCreationLimit, asset.liveEvents.count >= limit {
             throw AssetStoreError.freeEventLimitReached(limit: limit)
         }
+        let title = TextLimits.clamp(title, to: TextLimits.eventTitle)
+        let notes = TextLimits.clamp(notes, to: TextLimits.eventNotes)
         let now = Date()
         var seriesID: UUID? = nil
         if source.recurrence != nil {
@@ -1108,7 +1176,7 @@ final class AssetStore {
         if let limit = transactionCreationLimit, asset.liveTransactions.count >= limit {
             throw AssetStoreError.freeTransactionLimitReached(limit: limit)
         }
-        let txn = Transaction(details: details, amount: amount, date: date, kind: kind, payeeContactID: payeeContactID, notes: notes, recurrence: recurrence,
+        let txn = Transaction(details: TextLimits.clamp(details, to: TextLimits.transactionDetails), amount: amount, date: date, kind: kind, payeeContactID: payeeContactID, notes: TextLimits.clamp(notes, to: TextLimits.transactionNotes), recurrence: recurrence,
                               dueDate: due.dueDate, messageDaysBefore: due.messageDaysBefore,
                               messageDaysAfter: due.messageDaysAfter,
                               deviceNotificationOn: due.deviceNotificationOn,
@@ -1125,12 +1193,12 @@ final class AssetStore {
         guard let asset = assets[assetID] else { throw AssetStoreError.assetNotFound(assetID) }
         guard let txn = asset.liveTransactions.first(where: { $0.id == txnID }) else { throw AssetStoreError.transactionNotFound(txnID) }
         let now = Date()
-        txn.details = details
+        txn.details = TextLimits.clamp(details, to: TextLimits.transactionDetails)
         txn.amount = abs(amount)
         txn.date = date
         txn.kind = kind
         txn.payeeContactID = payeeContactID
-        txn.notes = notes
+        txn.notes = TextLimits.clamp(notes, to: TextLimits.transactionNotes)
         txn.recurrence = recurrence
         txn.dueDate = due.dueDate
         txn.messageDaysBefore = due.messageDaysBefore
@@ -1193,6 +1261,8 @@ final class AssetStore {
         if let limit = transactionCreationLimit, asset.liveTransactions.count >= limit {
             throw AssetStoreError.freeTransactionLimitReached(limit: limit)
         }
+        let details = TextLimits.clamp(details, to: TextLimits.transactionDetails)
+        let notes = TextLimits.clamp(notes, to: TextLimits.transactionNotes)
         let now = Date()
         var seriesID: UUID? = nil
         if source.recurrence != nil {
@@ -1261,7 +1331,7 @@ final class AssetStore {
         guard case .comboList(let list) = type,
               case .text(let value) = stored,
               list.isUserExtensible else { return }
-        let trimmed = value.trimmingCharacters(in: .whitespaces)
+        let trimmed = TextLimits.clamp(value.trimmingCharacters(in: .whitespaces), to: TextLimits.comboListOption)
         guard !trimmed.isEmpty, !list.allOptions.contains(trimmed) else { return }
         list.userOptions.append(trimmed)
         list.modifyDate = Date()

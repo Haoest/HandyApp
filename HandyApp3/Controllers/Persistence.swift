@@ -78,6 +78,10 @@ struct PropertyDefinitionDTO: Codable {
     var name: String
     var type: PropertyTypeDTO
     var isRequired: Bool
+    /// Optional: absent in files written before per-property character bounds existed.
+    /// Decoders leave `nil` as-is — see `PropertyDefinition.maxLength`'s doc comment and
+    /// `AssetStore.backfillMissingMaxLengths()`.
+    var maxLength: Int? = nil
 }
 
 // MARK: - AssetPropertyDTO

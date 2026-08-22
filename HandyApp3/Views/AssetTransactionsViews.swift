@@ -271,6 +271,7 @@ struct TransactionEditView: View {
             Form {
                 Section("Description") {
                     TextField("Description", text: $details)
+                        .limitLength(TextLimits.transactionDetails, text: $details)
                     if seriesCount > 1 {
                         Text("This series has ^[\(seriesCount) transaction](inflect: true)")
                             .font(.footnote)
@@ -326,6 +327,7 @@ struct TransactionEditView: View {
                 Section("Notes") {
                     TextField("Optional notes", text: $notes, axis: .vertical)
                         .lineLimit(3...)
+                        .limitLength(TextLimits.transactionNotes, text: $notes)
                 }
                 Section("Contact") {
                     if payeeContactID != nil {

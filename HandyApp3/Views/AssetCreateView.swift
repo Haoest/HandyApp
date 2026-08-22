@@ -71,6 +71,7 @@ struct AssetCreateView: View {
                     PropertyLabel(name: "Name", onEditLabel: nil)
                     HStack {
                         TextField("Asset name", text: $name)
+                            .limitLength(TextLimits.assetName, text: $name)
                         if !name.isEmpty {
                             Button {
                                 name = ""

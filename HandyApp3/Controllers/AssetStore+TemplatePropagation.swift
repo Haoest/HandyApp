@@ -264,4 +264,79 @@ extension AssetStore {
 
         return (summary, work, normalizedSortOrders)
     }
+
+    // MARK: - maxLength backfill
+
+    /// One-time, idempotent backfill of `PropertyDefinition.maxLength` for any live text or
+    /// combo-list definition that predates the field — category templates, their assets' base
+    /// and custom properties, and composite-type fields (2D/3D Size's `Unit`, and any composite
+    /// value reachable through a property, wherever its `CompositeTypeDefinition` instance
+    /// lives). Only ever fills a `nil` and never touches an already-stored value — a text field
+    /// that predates its bound keeps whatever length it already has; it's clamped the next time
+    /// it's written, not retroactively — so a second run always finds nothing left to do and
+    /// this can never fight a user's own edit or a peer's change arriving via sync.
+    ///
+    /// Run once at startup, right after `upgradeBuiltInCategories()` — that call already stamps
+    /// the canonical bound onto every built-in field; this covers what upgrade doesn't reach:
+    /// user-created category templates, and every asset's own deep copy of a template (a
+    /// template edit never reaches an asset on its own — see `createAsset`'s doc comment).
+    @discardableResult
+    func backfillMissingMaxLengths() -> Int {
+        var changed = 0
+        let now = Date()
+
+        // Seeds the lookup from anything that already carries a bound — built-ins after
+        // `upgradeBuiltInCategories`, and the shipped composite value types — so an asset's own
+        // deep-copied definition converges on the same bound as its category template rather
+        // than falling all the way back to the generic default.
+        var knownMaxLength: [UUID: Int] = [:]
+        for cat in categories.values {
+            for prop in cat.propertyTemplates {
+                if let maxLength = prop.definition.maxLength { knownMaxLength[prop.definition.id] = maxLength }
+            }
+        }
+        for def in BuiltInTypes.size2D().fields + BuiltInTypes.size3D().fields {
+            if let maxLength = def.maxLength { knownMaxLength[def.id] = maxLength }
+        }
+
+        // `CompositeTypeDefinition` is a class — its fields are filled in place, and the same
+        // instance may be reached from several properties (a category template and every
+        // asset's deep copy of it), so a second visit here is a cheap no-op, not a duplicate
+        // change. Recurses one level for a composite field that is itself a composite type,
+        // though nothing built-in currently nests.
+        func fillComposite(_ ct: CompositeTypeDefinition) {
+            for idx in ct.fields.indices {
+                if case .composite(let nested) = ct.fields[idx].type {
+                    fillComposite(nested)
+                    continue
+                }
+                guard ct.fields[idx].acceptsMaxLength, ct.fields[idx].maxLength == nil else { continue }
+                ct.fields[idx].maxLength = knownMaxLength[ct.fields[idx].id] ?? PropertyDefinition.defaultTextMaxLength
+                ct.modifyDate = now
+                changed += 1
+            }
+        }
+        func fillProperty(_ prop: AssetProperty) {
+            if case .composite(let ct) = prop.definition.type {
+                fillComposite(ct)
+                return
+            }
+            guard prop.definition.acceptsMaxLength, prop.definition.maxLength == nil else { return }
+            prop.definition.maxLength = knownMaxLength[prop.definition.id] ?? PropertyDefinition.defaultTextMaxLength
+            prop.touch(now)
+            changed += 1
+        }
+
+        for cat in categories.values {
+            for prop in cat.propertyTemplates { fillProperty(prop) }
+        }
+        for asset in assets.values {
+            for prop in asset.baseProperties { fillProperty(prop) }
+            for prop in asset.customProperties { fillProperty(prop) }
+        }
+        for ct in compositeTypes.values { fillComposite(ct) }
+
+        if changed > 0 { markDirty() }
+        return changed
+    }
 }

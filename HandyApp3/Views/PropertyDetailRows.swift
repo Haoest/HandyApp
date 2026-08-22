@@ -42,7 +42,7 @@ struct PropertyDetailRow: View {
         case .basic(.date):
             DateDetailRow(assetID: assetID, property: property, onEditLabel: onEditLabel)
         case .comboList(let list):
-            ComboListDetailRow(assetID: assetID, property: property, list: list, onEditLabel: onEditLabel)
+            ComboListDetailRow(assetID: assetID, property: property, list: list, maxLength: property.definition.maxLength, onEditLabel: onEditLabel)
         case .composite(let def):
             CompositeDetailLink(assetID: assetID, property: property, definition: def, onEditLabel: onEditLabel)
         default:
@@ -199,6 +199,7 @@ private struct TextDetailField: View {
                 .focused($isFocused)
                 .onSubmit { commit() }
                 .commitsPendingEdit(focused: isFocused) { commit() }
+                .limitLength(property.definition.maxLength, text: $text)
                 .onChange(of: property.value) { _, newValue in
                     guard !isFocused else { return }
                     if case .text(let s) = newValue { text = s } else { text = "" }
@@ -367,6 +368,7 @@ private struct ComboListDetailRow: View {
     let assetID: UUID
     let property: AssetProperty
     let list: ComboListDefinition
+    var maxLength: Int? = nil
     let onEditLabel: (() -> Void)?
 
     private var current: String {
@@ -379,6 +381,7 @@ private struct ComboListDetailRow: View {
             label: property.definition.name,
             list: list,
             current: current,
+            maxLength: maxLength,
             onEditLabel: onEditLabel
         ) { newValue in
             if let newValue {

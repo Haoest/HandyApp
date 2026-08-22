@@ -65,7 +65,10 @@ final class AssetTests: XCTestCase {
             default: continue
             }
             try store.setPropertyValue(value, forDefinitionID: prop.definition.id, onAssetID: asset.id)
-            expectedValues[prop.definition.name] = value
+            // Automobile fields like License Plate/VIN carry a built-in character bound
+            // shorter than a full UUID string, so the store clamps on write — the expectation
+            // has to match what actually gets stored, not the raw random value.
+            expectedValues[prop.definition.name] = AssetStore.clampedTextValue(value, for: prop.definition)
         }
 
         // Add custom "Purchase Price" property

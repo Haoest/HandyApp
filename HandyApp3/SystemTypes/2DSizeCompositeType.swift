@@ -19,7 +19,7 @@ extension BuiltInTypes {
             fields: [
                 PropertyDefinition(id: deterministicID("compositeType.2DSize.Width"),  name: "Width",  type: .basic(.number), isRequired: true),
                 PropertyDefinition(id: deterministicID("compositeType.2DSize.Length"), name: "Length", type: .basic(.number), isRequired: true),
-                PropertyDefinition(id: deterministicID("compositeType.2DSize.Unit"),   name: "Unit",   type: .basic(.text),   isRequired: false),
+                PropertyDefinition(id: deterministicID("compositeType.2DSize.Unit"),   name: "Unit",   type: .basic(.text),   isRequired: false, maxLength: 12),
             ],
             labelHint: "WxL"
         )

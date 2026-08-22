@@ -167,6 +167,7 @@ struct PhotoViewerSheet: View {
                         .focused($captionFocused)
                         .onSubmit { saveCaption() }
                         .commitsPendingEdit(focused: captionFocused) { saveCaption() }
+                        .limitLength(TextLimits.photoCaption, text: $caption)
                 }
                 .padding(.vertical)
             }

@@ -17,6 +17,10 @@ struct ComboListField: View {
     let list: ComboListDefinition
     /// Authoritative value from the owner (`nil`-backed `StoredValue?` reduced to `""`).
     let current: String
+    /// The owning property's character bound, if any. Suggestion pills longer than this are
+    /// dropped rather than offered — tapping one would commit a value the field can't actually
+    /// hold once clamped, silently storing something that matches no option on the list.
+    var maxLength: Int? = nil
     var onEditLabel: (() -> Void)? = nil
     /// Called once per completed edit. `nil` means the value was cleared.
     let onCommit: (String?) -> Void
@@ -28,12 +32,14 @@ struct ComboListField: View {
         label: String?,
         list: ComboListDefinition,
         current: String,
+        maxLength: Int? = nil,
         onEditLabel: (() -> Void)? = nil,
         onCommit: @escaping (String?) -> Void
     ) {
         self.label = label
         self.list = list
         self.current = current
+        self.maxLength = maxLength
         self.onEditLabel = onEditLabel
         self.onCommit = onCommit
         _draft = State(initialValue: current)
@@ -47,6 +53,12 @@ struct ComboListField: View {
         list.matchingOptions(for: draft)
     }
 
+    private var suggestions: [String] {
+        let matches = Self.matches(for: draft, in: list)
+        guard let maxLength else { return matches }
+        return matches.filter { $0.count <= maxLength }
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
             if let label {
@@ -57,13 +69,14 @@ struct ComboListField: View {
                 .autocorrectionDisabled()
                 .onSubmit { commit() }
                 .commitsPendingEdit(focused: isFocused) { commit() }
+                .limitLength(maxLength, text: $draft)
                 .onChange(of: current) { _, new in
                     guard !isFocused else { return }
                     draft = new
                 }
             if isFocused {
                 FlowLayout(spacing: 8) {
-                    ForEach(Self.matches(for: draft, in: list), id: \.self) { option in
+                    ForEach(suggestions, id: \.self) { option in
                         Text(option)
                             .font(.subheadline)
                             .padding(.horizontal, 12)

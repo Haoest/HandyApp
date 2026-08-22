@@ -225,6 +225,7 @@ struct EventEditView: View {
             Form {
                 Section("Title") {
                     TextField("Event title", text: $title)
+                        .limitLength(TextLimits.eventTitle, text: $title)
                     if seriesCount > 1 {
                         Text("This series has ^[\(seriesCount) event](inflect: true)")
                             .font(.footnote)
@@ -267,6 +268,7 @@ struct EventEditView: View {
                 Section("Notes") {
                     TextField("Optional notes", text: $notes, axis: .vertical)
                         .lineLimit(3...)
+                        .limitLength(TextLimits.eventNotes, text: $notes)
                 }
             }
             .navigationTitle(existing == nil ? "New Event" : "Edit Event")

@@ -22,6 +22,7 @@ final class AppDependencies {
         s.seedBuiltInCategories()
         s.upgradeBuiltInCategories()
         s.seedBuiltInTypes()
+        s.backfillMissingMaxLengths()
         switch AssetStore.coldStartAction(
             loaded: wasLoaded,
             iCloudActive: AssetStore.iCloudSyncEnabled
