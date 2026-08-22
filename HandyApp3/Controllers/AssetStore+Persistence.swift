@@ -141,10 +141,9 @@ extension AssetStore {
         guard hasLocalContent, !hasCloudContent else { return }
 
         try? fm.createDirectory(at: cloudDocs, withIntermediateDirectories: true)
-        for entry in ["store.json", StoreFileLayout.legacyBackupFilename] {
-            let src = localDocs.appendingPathComponent(entry)
-            guard fm.fileExists(atPath: src.path) else { continue }
-            try? fm.copyItem(at: src, to: cloudDocs.appendingPathComponent(entry))
+        let manifestSrc = localDocs.appendingPathComponent("store.json")
+        if fm.fileExists(atPath: manifestSrc.path) {
+            try? fm.copyItem(at: manifestSrc, to: cloudDocs.appendingPathComponent("store.json"))
         }
         for sub in ["Photos", "Definitions", "Assets", "Activity"] {
             let localSub = localDocs.appendingPathComponent(sub, isDirectory: true)
@@ -285,13 +284,23 @@ extension AssetStore {
         if let files = try? FileManager.default.contentsOfDirectory(at: photosDir, includingPropertiesForKeys: nil) {
             for file in files { try? FileManager.default.removeItem(at: file) }
         }
+        // Stale-file cleanup for builds that used to write a legacy-migration backup here;
+        // current builds never create this file (see StoreFileLayout.legacyBackupFilename).
         try? FileManager.default.removeItem(
             at: Self.baseDir.appendingPathComponent(StoreFileLayout.legacyBackupFilename))
         // Do NOT removeItem on storeURL — overwriting via save() propagates as content
         // (a "tombstone by overwrite") so other devices apply it, rather than ignoring a deletion.
-        // Stale Assets/*.json files from before the reset are cleared by the orphan sweep inside
-        // the save() below — the same mechanism that makes an ordinary hard delete stick.
-        _applyLoaded(compositeTypes: [:], comboLists: [:], categories: [:], assets: [:], activityLog: [])
+        //
+        // Assets are purged to husks rather than removed from the map: `applyInPlace`/
+        // `_upsertLoaded` can only insert, never delete, so an empty local map would just have
+        // a peer's still-live copies unioned straight back on the next sync. `hardDeleteAsset`
+        // stamps each subtree with an explicit "now" purge decision and strips it to a tombstone
+        // — the record survives (and its file gets overwritten, not swept), so the wipe
+        // propagates to peers the same way an ordinary hard delete does. Every other kind of
+        // record (categories, composite types, combo lists, activity log) keeps the old
+        // behavior: emptied here and reseeded below.
+        for id in Array(assets.keys) { try? hardDeleteAsset(id: id) }
+        _applyLoaded(compositeTypes: [:], comboLists: [:], categories: [:], assets: assets, activityLog: [])
         backgroundTheme = .mist
         seedBuiltInComboLists()
         seedBuiltInCategories()
@@ -299,6 +308,10 @@ extension AssetStore {
         seedBuiltInTypes()
         seedBuiltInAssets()
         seedSampleAutomobile()
+        // Purged/reseeded assets carry no events or transactions, so this resync clears every
+        // pending (not-yet-fired) notification this app scheduled and schedules nothing new.
+        // Delivered notifications already in Notification Center are left untouched.
+        notificationScheduler?.requestResync(assets: allAssets)
         DispatchQueue.global(qos: .userInitiated).sync { self.save() }
     }
 

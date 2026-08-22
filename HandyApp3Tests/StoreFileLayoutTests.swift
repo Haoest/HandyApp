@@ -120,7 +120,7 @@ final class StoreFileLayoutTests: XCTestCase {
 
     // MARK: - 3. Legacy migration
 
-    func testLegacyMigrationProducesNewLayoutAndBackup() throws {
+    func testLegacyMigrationProducesNewLayoutWithoutBackup() throws {
         let catID = UUID()
         let assetID = UUID()
         let legacy = makeSnapshot(categories: [makeCategoryDTO(id: catID)],
@@ -135,8 +135,8 @@ final class StoreFileLayoutTests: XCTestCase {
         XCTAssertTrue(result.snapshot.assets.contains { $0.id == assetID })
 
         let backupURL = AssetStore.baseDir.appendingPathComponent(StoreFileLayout.legacyBackupFilename)
-        XCTAssertTrue(FileManager.default.fileExists(atPath: backupURL.path),
-                     "a backup of the legacy file must be taken before migration")
+        XCTAssertFalse(FileManager.default.fileExists(atPath: backupURL.path),
+                     "legacy migration no longer takes a backup of the old file")
 
         // The read alone doesn't overwrite store.json — that's the caller's (load()'s)
         // subsequent write, matching AssetStore+Persistence.swift's actual sequencing.

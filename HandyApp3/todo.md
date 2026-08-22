@@ -13,7 +13,11 @@ revisit paywall ensure transaction and event has a limited free count
 - create transaction / event tab
 - revisit factory reset
 - enhance device notification, create notification to create new event/transaction entry, and maybe set up another notification by due date, to keep the loop alive
+
+-facelift
+
 - consider file store epoch to enable factory reset
+- improve asset listing screen responisveness
 
 == completed ==
 

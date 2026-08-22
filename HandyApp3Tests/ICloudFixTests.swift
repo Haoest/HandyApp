@@ -209,21 +209,58 @@ final class DeletionHygieneTests: XCTestCase {
     func testFactoryResetDoesNotDeleteStoreFile() throws {
         // Perform an initial save so the file exists before reset.
         let cat = try store.createCategory(name: "Pre-reset")
-        let asset = try store.createAsset(name: "Should be swept", categoryID: cat.id)
+        let asset = try store.createAsset(name: "Should be purged", categoryID: cat.id)
+        let assetID = asset.id
         store.save()
         XCTAssertTrue(FileManager.default.fileExists(atPath: AssetStore.storeURL.path))
         let preResetAssetFile = AssetStore.baseDir
-            .appendingPathComponent("Assets/\(asset.id.uuidString).json")
+            .appendingPathComponent("Assets/\(assetID.uuidString).json")
         XCTAssertTrue(FileManager.default.fileExists(atPath: preResetAssetFile.path))
 
         store.factoryReset()
 
         XCTAssertTrue(FileManager.default.fileExists(atPath: AssetStore.storeURL.path),
                       "factoryReset must overwrite store.json, not delete it — deletions are ignored by other devices")
-        XCTAssertFalse(
+        // The asset's file must still exist — it's now the multi-file equivalent of an ordinary
+        // hard delete (overwritten with a purged husk, not swept away), so an empty local map
+        // can't have a peer's still-live copy union straight back on the next sync.
+        XCTAssertTrue(
             FileManager.default.fileExists(atPath: preResetAssetFile.path),
-            "factoryReset's orphan sweep must clear asset files from before the reset, the multi-file equivalent of the old single-file overwrite"
+            "factoryReset must purge the pre-reset asset's file in place, not remove it — an absent file doesn't propagate to peers"
         )
+        let purged = try XCTUnwrap(store.assets[assetID], "the purged husk must remain in the store's asset map")
+        XCTAssertTrue(purged.isPurged)
+        XCTAssertNotNil(purged.purgedAt)
+        XCTAssertTrue(purged.baseProperties.isEmpty)
+        XCTAssertTrue(purged.customProperties.isEmpty)
+        XCTAssertTrue(purged.events.isEmpty)
+        XCTAssertTrue(purged.transactions.isEmpty)
+        XCTAssertTrue(purged.photos.isEmpty)
+        XCTAssertFalse(store.allAssets.contains { $0.id == assetID },
+                       "a purged asset must not show up as live")
+        XCTAssertFalse(store.deletedAssets.contains { $0.id == assetID },
+                       "a purged asset must not show up in Trash either")
+    }
+
+    func testFactoryResetLeavesNoNotificationsToSchedule() throws {
+        // NotificationScheduler.apply talks to the live UNUserNotificationCenter and needs
+        // real authorization, so — as with the rest of this suite's notification coverage
+        // (see RecurrenceTests) — this checks the pure planning boundary: what factoryReset's
+        // final requestResync(assets:) call would actually hand the scheduler, not the
+        // live system side effect.
+        let cat = try store.createCategory(name: "Pre-reset")
+        let asset = try store.createAsset(name: "Has an event", categoryID: cat.id)
+        _ = try store.addEvent(
+            title: "Due soon", date: Date(),
+            due: DueSettings(dueDate: Date().addingTimeInterval(86_400 * 30), deviceNotificationOn: true),
+            toAssetID: asset.id)
+        XCTAssertFalse(NotificationPlanner.plan(for: store.allAssets).isEmpty,
+                       "sanity check: the pre-reset event must actually plan a notification")
+
+        store.factoryReset()
+
+        XCTAssertTrue(NotificationPlanner.plan(for: store.allAssets).isEmpty,
+                      "factoryReset's seeded assets carry no events/transactions, so nothing should remain to notify about")
     }
 
     func testDeleteAssetRemovesPhotoFilesFromDisk() throws {

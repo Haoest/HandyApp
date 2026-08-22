@@ -35,10 +35,10 @@ import os
 ///    erase every real asset file.
 final class StoreFileLayout {
 
-    /// Name of the one-time backup taken of a legacy single-file store before it's migrated to
-    /// the multi-file layout — insurance against a crashed/partial migration losing the only
-    /// copy. Versioned by `storeSchemaVersion` (the DTO shape being backed up), not
-    /// `storeLayoutVersion` (which describes what it's being migrated *to*).
+    /// Name older builds wrote a legacy-migration backup under before migrating to the
+    /// multi-file layout. No longer created — `factoryReset` still deletes any stale copy
+    /// left behind by an older build. Versioned by `storeSchemaVersion` (the DTO shape that
+    /// was backed up), not `storeLayoutVersion` (which describes what it was migrated *to*).
     static var legacyBackupFilename: String { "store.legacy-v\(storeSchemaVersion).json" }
 
     struct ReadResult {
@@ -181,13 +181,6 @@ final class StoreFileLayout {
         if manifest == nil, let bytes = manifestBytes,
            let legacy = try? Self.makeDecoder().decode(StoreSnapshotDTO.self, from: bytes) {
             lastReadWasComplete = true
-            // Insurance against a crashed/partial migration: back up the legacy file before the
-            // caller's next write overwrites store.json with the manifest. Idempotent — never
-            // clobbers a backup already taken by an earlier, interrupted migration attempt.
-            let backupURL = baseDir.appendingPathComponent(Self.legacyBackupFilename)
-            if !fm.fileExists(atPath: backupURL.path) {
-                try? bytes.write(to: backupURL, options: .atomic)
-            }
             seedDigest(path: manifestPath, bytes: bytes)
             recomputeStoreDigest()
             return ReadResult(snapshot: legacy, wasMigratedFromLegacy: true, isComplete: true)
