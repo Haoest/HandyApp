@@ -46,13 +46,13 @@ enum NotificationPlanner {
         var candidates: [PlannedNotification] = []
         for asset in assets {
             for event in asset.liveEvents {
-                if let planned = dueCandidate(for: event, kindPrefix: "event", kind: .event, body: event.title, asset: asset, in: asset.liveEvents, now: now, calendar: calendar) {
+                let body = eventDueBody(title: event.title, notes: event.notes, daysBefore: event.deviceNotificationDaysBefore)
+                if let planned = dueCandidate(for: event, kindPrefix: "event", kind: .event, body: body, asset: asset, in: asset.liveEvents, now: now, calendar: calendar) {
                     candidates.append(planned)
                 }
             }
             for txn in asset.liveTransactions {
-                let amount = txn.amount.formatted(.currency(code: Locale.current.currency?.identifier ?? "USD"))
-                let body = "\(txn.details) — \(amount) (\(txn.kind.rawValue))"
+                let body = transactionDueBody(kind: txn.kind, amount: txn.amount, notes: txn.notes, daysBefore: txn.deviceNotificationDaysBefore)
                 if let planned = dueCandidate(for: txn, kindPrefix: "txn", kind: .transaction, body: body, asset: asset, in: asset.liveTransactions, now: now, calendar: calendar) {
                     candidates.append(planned)
                 }
@@ -62,6 +62,26 @@ enum NotificationPlanner {
             ($0.fireDate, $0.identifier) < ($1.fireDate, $1.identifier)
         }
         return Array(sorted.prefix(globalLimit))
+    }
+
+    /// Body for an event's due-date reminder. Also called directly by the edit screen's
+    /// DEBUG "send test notification" button, so a test notification reads exactly like a
+    /// real one.
+    static func eventDueBody(title: String, notes: String, daysBefore: Int) -> String {
+        appendingNotes("Due in \(daysBefore) days: \(title).", notes: notes)
+    }
+
+    /// Body for a transaction's due-date reminder. Also called directly by the edit screen's
+    /// DEBUG "send test notification" button, so a test notification reads exactly like a
+    /// real one.
+    static func transactionDueBody(kind: TransactionKind, amount: Decimal, notes: String, daysBefore: Int) -> String {
+        let amountText = amount.formatted(.currency(code: Locale.current.currency?.identifier ?? "USD"))
+        return appendingNotes("\(kind.rawValue) transaction due in \(daysBefore) days in amount of \(amountText).", notes: notes)
+    }
+
+    private static func appendingNotes(_ prefix: String, notes: String) -> String {
+        let trimmed = notes.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? prefix : "\(prefix) \(trimmed)"
     }
 
     /// One-shot due-date reminder, `deviceNotificationDaysBefore` days ahead of `record`'s due

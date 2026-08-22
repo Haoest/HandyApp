@@ -313,9 +313,9 @@ struct TransactionEditView: View {
                             StepSlider(title: "Notify before due date", value: $deviceNotificationDaysBefore)
                             #if DEBUG
                             Button("Send Test Notification Now") {
-                                let amount = (parsedAmount ?? 0).formatted(.currency(code: Locale.current.currency?.identifier ?? "USD"))
+                                let body = NotificationPlanner.transactionDueBody(kind: kind, amount: parsedAmount ?? 0, notes: notes, daysBefore: deviceNotificationDaysBefore)
                                 store.notificationScheduler?.fireDebugNotification(
-                                    title: assetName, body: "\(details) — \(amount) (\(kind.rawValue))",
+                                    title: assetName, body: body,
                                     assetID: assetID, kind: .transaction
                                 )
                             }

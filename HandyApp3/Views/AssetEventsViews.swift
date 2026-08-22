@@ -257,7 +257,8 @@ struct EventEditView: View {
                             StepSlider(title: "Notify before due date", value: $deviceNotificationDaysBefore)
                             #if DEBUG
                             Button("Send Test Notification Now") {
-                                store.notificationScheduler?.fireDebugNotification(title: assetName, body: title, assetID: assetID, kind: .event)
+                                let body = NotificationPlanner.eventDueBody(title: title, notes: notes, daysBefore: deviceNotificationDaysBefore)
+                                store.notificationScheduler?.fireDebugNotification(title: assetName, body: body, assetID: assetID, kind: .event)
                             }
                             #endif
                         }

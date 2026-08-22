@@ -45,9 +45,18 @@ final class NotificationPlannerTests: XCTestCase {
         XCTAssertNotNil(planned)
         XCTAssertEqual(planned?.fireDate, date(2026, 1, 25, hour: 9))
         XCTAssertEqual(planned?.title, "My House")
-        XCTAssertEqual(planned?.body, "Inspection")
+        XCTAssertEqual(planned?.body, "Due in 7 days: Inspection.")
         XCTAssertEqual(planned?.assetID, assetID)
         XCTAssertEqual(planned?.kind, .event)
+    }
+
+    func testEventDueNotificationBodyAppendsNotesWhenPresent() throws {
+        let event = try store.addEvent(title: "Inspection", date: date(2026, 1, 1), notes: "Bring the ladder",
+                                       due: DueSettings(dueDate: date(2026, 2, 1), deviceNotificationOn: true, deviceNotificationDaysBefore: 7),
+                                       toAssetID: assetID)
+        let plan = NotificationPlanner.plan(for: store.allAssets, now: date(2026, 1, 2), calendar: calendar)
+        let planned = plan.first { $0.identifier == "due-event-\(event.id.uuidString)" }
+        XCTAssertEqual(planned?.body, "Due in 7 days: Inspection. Bring the ladder")
     }
 
     func testTransactionDueNotificationIdentifierBodyAndKind() throws {
@@ -60,9 +69,8 @@ final class NotificationPlannerTests: XCTestCase {
         XCTAssertNotNil(planned)
         XCTAssertEqual(planned?.fireDate, date(2026, 1, 25, hour: 9))
         let body = planned?.body ?? ""
-        XCTAssertTrue(body.contains("Pool service"))
+        XCTAssertTrue(body.contains("Expense transaction due in 7 days in amount of"))
         XCTAssertTrue(body.contains("100"))
-        XCTAssertTrue(body.contains("(Expense)"))
         XCTAssertEqual(planned?.kind, .transaction)
     }
 
