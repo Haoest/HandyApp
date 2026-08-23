@@ -13,10 +13,10 @@ revisit paywall ensure transaction and event has a limited free count
 
 -facelift
 
--importing data inserts duplicate assets
 
 == completed ==
 - set a hard length on each text form field
+-importing data inserts duplicate assets
 
 - enhance device notification, create notification to create new event/transaction entry, and maybe set up another notification by due date, to keep the loop alive
 - revisit factory reset, leave asset husk after reset

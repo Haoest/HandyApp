@@ -114,6 +114,7 @@ struct AssetTab: View {
                         } label: {
                             Image(systemName: "plus")
                         }
+                        .accessibilityIdentifier("newAssetButton")
                     }
                     if !anchorCategories.isEmpty {
                         ToolbarItem(placement: .topBarTrailing) {

@@ -484,6 +484,7 @@ private struct AssetDetailContent: View {
                 } label: {
                     Image(systemName: "plus")
                 }
+                .accessibilityIdentifier("addMenuButton")
             }
         }
         .confirmationDialog("Add Photo", isPresented: $photoSourceDialogPresented) {
