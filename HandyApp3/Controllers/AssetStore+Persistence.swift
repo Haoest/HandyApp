@@ -299,6 +299,13 @@ extension AssetStore {
         // propagates to peers the same way an ordinary hard delete does. Every other kind of
         // record (categories, composite types, combo lists, activity log) keeps the old
         // behavior: emptied here and reseeded below.
+        //
+        // One consequence: the two sample assets' husks (`seedBuiltInAssets` — "My Home",
+        // "Testarossa 85") now occupy their deterministic ids, and `seedBuiltInAssets` is
+        // presence-keyed (see its doc comment), so this reset does NOT recreate them. Reviving
+        // the husk instead would leave a live record a peer's still-live copy could union
+        // content back onto, silently undoing the wipe — see that doc comment for the full
+        // argument. A user who wants the samples back after a reset can re-add them by hand.
         for id in Array(assets.keys) { try? hardDeleteAsset(id: id) }
         _applyLoaded(compositeTypes: [:], comboLists: [:], categories: [:], assets: assets, activityLog: [])
         backgroundTheme = .mist
@@ -484,9 +491,11 @@ extension AssetStore {
 
                 guard self.hasAuthoritativeLocalState else {
                     // We've only ever seeded, never persisted or confirmed the cloud was
-                    // empty. Merging here would union our randomly-id'd seed data (categories,
-                    // sample assets — see BuiltInTypes) into the peer's real store instead of
-                    // being cleanly replaced by it, permanently duplicating it on every device.
+                    // empty. Merging here would union our seed data (categories, sample assets
+                    // — see BuiltInTypes) into the peer's real store instead of being cleanly
+                    // replaced by it. Built-in seeds are at deterministic ids so this would
+                    // usually just converge harmlessly, but a peer still on a build that seeded
+                    // before those ids were deterministic would duplicate on every device.
                     self.applySnapshot(disk)
                     self.savesSuspended = false
                     self.lastSyncDate = Date()

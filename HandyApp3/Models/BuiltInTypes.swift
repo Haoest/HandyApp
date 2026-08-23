@@ -18,6 +18,25 @@ enum BuiltInTypes {
         return UUID(uuid: (bytes[0], bytes[1], bytes[2], bytes[3], bytes[4], bytes[5], bytes[6], bytes[7],
                             bytes[8], bytes[9], bytes[10], bytes[11], bytes[12], bytes[13], bytes[14], bytes[15]))
     }
+
+    /// One starter asset `seedBuiltInAssets` creates on a fresh install. `key` is a stable
+    /// identifier for `deterministicID`, deliberately distinct from `assetName` — the display
+    /// name can be renamed by a future edit without reassigning the id.
+    struct AssetSeed {
+        let key: String
+        let category: SystemCategory
+        let assetName: String
+        var id: UUID { BuiltInTypes.deterministicID("asset.\(key)") }
+    }
+
+    static let assetSeeds: [AssetSeed] = [
+        AssetSeed(key: "residentialHousing.sample", category: .residentialHousing, assetName: "My Home"),
+        AssetSeed(key: "automobile.sample",         category: .automobile,         assetName: "Testarossa 85"),
+    ]
+
+    /// Canonical id of the "Testarossa 85" sample car — looked up directly by
+    /// `seedSampleAutomobile` rather than searching `assetSeeds` by name.
+    static let sampleAutomobileID: UUID = deterministicID("asset.automobile.sample")
 }
 
 // MARK: - AssetStore seeding
@@ -92,30 +111,51 @@ extension AssetStore {
         )
     }
 
-    /// Seeds a small set of starter assets. Idempotent (skips if name already exists in category).
+    /// Seeds a small set of starter assets, at deterministic ids (`BuiltInTypes.assetSeeds`).
+    ///
+    /// Presence-keyed, not liveness-keyed — same rule `resolveBuiltInComboList` documents for
+    /// combo lists: a record already representing this seed, in *any* state, means "already
+    /// seeded here", and nothing new is minted alongside it. That includes a purged husk, which
+    /// is what distinguishes this from an ordinary idempotency guard: after `factoryReset`
+    /// purges every asset to a tombstone (see its doc comment in `AssetStore+Persistence.swift`),
+    /// the husk still occupies the canonical id, so this deliberately does **not** re-create the
+    /// sample. Reviving the husk or minting a second live copy would leave a live record at that
+    /// id, and `SnapshotReconciler.joinAsset` only strips content when a side reads as purged —
+    /// so a peer that hasn't yet synced the reset would union its still-live "My Home" content
+    /// straight back, silently undoing the wipe for exactly this asset. The accepted cost: a
+    /// factory reset on an install that already had the samples does not re-create them.
     @discardableResult
     func seedBuiltInAssets() -> [Asset] {
-        let seeds: [(categoryName: String, assetName: String)] = [
-            (SystemCategory.residentialHousing.rawValue, "My Home"),
-            (SystemCategory.automobile.rawValue,         "Testarossa 85"),
-        ]
-        var seeded: [Asset] = []
-        for seed in seeds {
-            guard let cat = categories.values.first(where: { $0.name == seed.categoryName }) else { continue }
-            let existing = (try? assets(ofCategoryID: cat.id)) ?? []
-            guard !existing.contains(where: { $0.name == seed.assetName }) else { continue }
-            if let asset = try? createAsset(name: seed.assetName, categoryID: cat.id) {
-                seeded.append(asset)
-            }
+        BuiltInTypes.assetSeeds.compactMap(resolveBuiltInAsset)
+    }
+
+    /// Creates `seed`'s asset at its deterministic id, unless a record already represents it —
+    /// by id (any state, including a purged husk) or, for an install seeded before this
+    /// deterministic-id change, by name within the target category (any state). The name/
+    /// category fallback deliberately skips rather than folds: unlike a combo list's options,
+    /// `Asset.id` is `let` so a stray can't be relabeled onto the canonical id, there is nothing
+    /// meaningful to merge between two asset records, and soft-deleting the stray would trash
+    /// the user's real house. The category match also accepts a name match (not just id) because
+    /// a husk's `category` reference goes stale when `factoryReset` replaces the whole categories
+    /// map out from under it.
+    private func resolveBuiltInAsset(_ seed: BuiltInTypes.AssetSeed) -> Asset? {
+        guard assets[seed.id] == nil else { return nil }
+        guard let cat = categories.values.first(where: { $0.name == seed.category.rawValue }) else { return nil }
+        let categoryName = seed.category.rawValue
+        let stray = assets.values.contains {
+            $0.name == seed.assetName && ($0.category.id == cat.id || $0.category.name == categoryName)
         }
-        return seeded
+        guard !stray else { return nil }
+        return try? createAsset(id: seed.id, name: seed.assetName, categoryID: cat.id)
     }
 
     /// Fills in the "Testarossa 85" automobile's field values and a "Paint Color"
-    /// custom property. Idempotent (skips if Make is already set).
+    /// custom property. Idempotent (skips if Make is already set, or if the sample was never
+    /// seeded on this install — e.g. a purged husk currently blocks re-seeding, see
+    /// `seedBuiltInAssets`).
     @discardableResult
     func seedSampleAutomobile() -> Asset? {
-        guard let car = allAssets.first(where: { $0.name == "Testarossa 85" }),
+        guard let car = assets[BuiltInTypes.sampleAutomobileID], !car.isDeleted, !car.isPurged,
               car.baseProperties.first(where: { $0.definition.name == "Make" })?.value == nil else { return nil }
         func setBase(_ name: String, _ value: StoredValue) {
             if let def = car.baseProperties.first(where: { $0.definition.name == name })?.definition {

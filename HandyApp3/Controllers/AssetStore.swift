@@ -26,6 +26,9 @@ enum AssetStoreError: Error, Equatable {
     case assetAlreadyHasParent(UUID)
     /// A category with the given name already exists.
     case duplicateCategoryName(String)
+    /// Attempted to create an asset at an id already present in the store — belt-and-braces
+    /// against silently replacing a live or purged record. See `createAsset`'s doc comment.
+    case duplicateAssetID(UUID)
     case photoNotFound(UUID)
     case eventNotFound(UUID)
     case transactionNotFound(UUID)
@@ -362,8 +365,18 @@ final class AssetStore {
     /// Creates an Asset, deep-copying the category's property templates into baseProperties.
     /// A later template edit does not retroactively reach this asset — see
     /// `propagateTemplates(forCategoryID:)` for the explicit, user-triggered reconciliation.
+    ///
+    /// `id` defaults to a fresh random `UUID`, matching `createCategory`/`createComboList`/
+    /// `createCompositeType`. Pass an explicit id only for a deterministically-seeded record
+    /// (see `BuiltInTypes.assetSeeds`) — the id must not already be present in `assets` in any
+    /// state, including a purged husk: silently replacing one destroys a tombstone that peers
+    /// depend on to receive a wipe (see `factoryReset`'s husk comment), which is a stronger
+    /// failure than an ordinary duplicate. The real guarantee against that lives in the caller
+    /// (`BuiltInTypes.resolveBuiltInAsset` never calls this with an occupied id); this guard is
+    /// belt-and-braces.
     @discardableResult
-    func createAsset(name: String, categoryID: UUID) throws -> Asset {
+    func createAsset(id: UUID = UUID(), name: String, categoryID: UUID) throws -> Asset {
+        guard assets[id] == nil else { throw AssetStoreError.duplicateAssetID(id) }
         if let limit = assetCreationLimit, allAssets.count >= limit {
             throw AssetStoreError.freeLimitReached(limit: limit)
         }
@@ -374,7 +387,7 @@ final class AssetStore {
         let baseProperties = cat.liveTemplates.map { template in
             AssetProperty(definition: template.definition, value: template.value, sortOrder: template.sortOrder)
         }
-        let asset = Asset(name: TextLimits.clamp(name, to: TextLimits.assetName), category: cat, baseProperties: baseProperties)
+        let asset = Asset(id: id, name: TextLimits.clamp(name, to: TextLimits.assetName), category: cat, baseProperties: baseProperties)
         assets[asset.id] = asset
         logCreation(of: asset.id, kind: .asset)
         markDirty()

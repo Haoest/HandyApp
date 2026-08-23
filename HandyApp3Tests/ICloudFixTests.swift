@@ -263,6 +263,31 @@ final class DeletionHygieneTests: XCTestCase {
                       "factoryReset's seeded assets carry no events/transactions, so nothing should remain to notify about")
     }
 
+    func testFactoryResetThenImportDoesNotDuplicateSeededAssets() throws {
+        // Seed the store the way a real launch would, then let the user add content to the
+        // sample assets before exporting a backup — export/import is the path that used to
+        // duplicate "My Home" after a reset (see SeedAssetIdentityTests for the seeder itself).
+        store.seedBuiltInComboLists()
+        store.seedBuiltInCategories()
+        store.seedBuiltInTypes()
+        store.seedBuiltInAssets()
+        store.seedSampleAutomobile()
+        let home = try XCTUnwrap(store.allAssets.first(where: { $0.name == "My Home" }))
+        _ = try store.addEvent(title: "Roof inspection", date: Date(), toAssetID: home.id)
+        let export = try XCTUnwrap(store.exportJSON())
+
+        store.factoryReset()
+        try store.importJSON(data: export)
+
+        XCTAssertEqual(store.allAssets.filter { $0.name == "My Home" }.count, 1,
+                       "factory reset followed by importing a backup must not leave two live \"My Home\" assets")
+        XCTAssertEqual(store.allAssets.filter { $0.name == "Testarossa 85" }.count, 1,
+                       "factory reset followed by importing a backup must not leave two live \"Testarossa 85\" assets")
+        let revivedHome = try XCTUnwrap(store.allAssets.first(where: { $0.name == "My Home" }))
+        XCTAssertTrue(revivedHome.events.contains { $0.title == "Roof inspection" },
+                     "the imported backup's content must be restored onto the revived asset")
+    }
+
     func testDeleteAssetRemovesPhotoFilesFromDisk() throws {
         let cat = try store.createCategory(name: "Vehicles")
         let asset = try store.createAsset(name: "Bike", categoryID: cat.id)

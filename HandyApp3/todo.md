@@ -6,19 +6,19 @@ revisit paywall ensure transaction and event has a limited free count
 
 -improve asset navigation, especially in tree mode, when going into details view. 
 
-- set a hard length on each form field
 
 - revisit siri command
 
 - create transaction / event tab
 
-- enhance device notification, create notification to create new event/transaction entry, and maybe set up another notification by due date, to keep the loop alive
-
 -facelift
 
+-importing data inserts duplicate assets
 
 == completed ==
+- set a hard length on each text form field
 
+- enhance device notification, create notification to create new event/transaction entry, and maybe set up another notification by due date, to keep the loop alive
 - revisit factory reset, leave asset husk after reset
 improve localization to read more like asset management app
 improve combo list feature
