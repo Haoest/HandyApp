@@ -233,6 +233,14 @@ struct TransactionEditView: View {
     /// cleared for good the first time the user edits the field. Deliberately per-sheet-instance
     /// state, not persisted: cancelling and reopening starts the projection fresh.
     @State private var dueDateAutoManaged: Bool
+    /// Same idea as `dueDateAutoManaged`, for the details field. Set only for "Log & Edit" on a
+    /// recurring source.
+    @State private var detailsAutoManaged: Bool
+    /// The last value this sheet itself wrote into `details` — lets `.onChange(of: details)`
+    /// tell "the projection just updated this" from "the user typed something" without a
+    /// custom `Binding` (which `.limitLength`'s truncation write-back would attribute to the
+    /// wrong side; see its doc comment).
+    @State private var lastAutoDetails: String
 
     init(existing: Transaction? = nil, prefill: Transaction? = nil, prefillDetails: String? = nil, prefillDue: DueSettings? = nil,
          initialKind: TransactionKind? = nil, seriesCount: Int = 1, assetName: String, assetID: UUID,
@@ -244,7 +252,10 @@ struct TransactionEditView: View {
         self.assetID = assetID
         self.onSave = onSave
         let source = existing ?? prefill
-        _details = State(initialValue: prefillDetails ?? source?.details ?? "")
+        let initialDetails = prefillDetails ?? source?.details ?? ""
+        _details = State(initialValue: initialDetails)
+        _lastAutoDetails = State(initialValue: initialDetails)
+        _detailsAutoManaged = State(initialValue: existing == nil && prefill?.recurrence != nil)
         _amountText = State(initialValue: source.map { "\($0.amount)" } ?? "")
         _date = State(initialValue: existing?.date ?? Date())
         _kind = State(initialValue: source?.kind ?? initialKind ?? .expense)
@@ -301,6 +312,19 @@ struct TransactionEditView: View {
         let siblings = store.assets[assetID]?.liveTransactions ?? []
         guard let projected = SeriesLogic.projectedDueDate(for: source, in: siblings, occurrenceDate: date, interval: interval) else { return }
         dueDate = projected
+    }
+
+    private var projectsDetails: Bool { detailsAutoManaged && isRecurring }
+
+    /// Re-derives the description from the series' `yyyy-MM` stamping rule
+    /// (`suggestedDuplicateTitle` → `SeriesLogic.duplicateTitle`) whenever the transaction date
+    /// changes, until the user takes the field over. Writes `lastAutoDetails` before `details`
+    /// so the resulting `.onChange(of: details)` sees its own write and leaves the flag alone.
+    private func projectDetails() {
+        guard projectsDetails, let source = prefill else { return }
+        let projected = TextLimits.clamp(store.suggestedDuplicateTitle(forTransactionID: source.id, onAssetID: assetID, at: date), to: TextLimits.transactionDetails)
+        lastAutoDetails = projected
+        details = projected
     }
 
     var body: some View {
@@ -401,8 +425,15 @@ struct TransactionEditView: View {
             }
             .navigationTitle(existing == nil ? "New Transaction" : "Edit Transaction")
             .navigationBarTitleDisplayMode(.inline)
-            .onChange(of: date) { _, _ in projectDueDate() }
+            .onChange(of: date) { _, _ in
+                projectDueDate()
+                projectDetails()
+            }
             .onChange(of: interval) { _, _ in projectDueDate() }
+            .onChange(of: details) { _, newValue in
+                guard detailsAutoManaged, newValue != lastAutoDetails else { return }
+                detailsAutoManaged = false
+            }
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") { dismiss() }

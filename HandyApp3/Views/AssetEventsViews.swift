@@ -200,6 +200,14 @@ struct EventEditView: View {
     /// cleared for good the first time the user edits the field. Deliberately per-sheet-instance
     /// state, not persisted: cancelling and reopening starts the projection fresh.
     @State private var dueDateAutoManaged: Bool
+    /// Same idea as `dueDateAutoManaged`, for the title. Set only for "Log & Edit" on a
+    /// recurring source.
+    @State private var titleAutoManaged: Bool
+    /// The last value this sheet itself wrote into `title` — lets `.onChange(of: title)` tell
+    /// "the projection just updated this" from "the user typed something" without a custom
+    /// `Binding` (which `.limitLength`'s truncation write-back would attribute to the wrong
+    /// side; see its doc comment).
+    @State private var lastAutoTitle: String
 
     init(existing: Event? = nil, prefill: Event? = nil, prefillTitle: String? = nil, prefillDue: DueSettings? = nil,
          seriesCount: Int = 1, assetName: String, assetID: UUID, onSave: @escaping (String, Date, String, RecurrenceInterval?, DueSettings) -> Void) {
@@ -210,7 +218,10 @@ struct EventEditView: View {
         self.assetID = assetID
         self.onSave = onSave
         let source = existing ?? prefill
-        _title = State(initialValue: prefillTitle ?? source?.title ?? "")
+        let initialTitle = prefillTitle ?? source?.title ?? ""
+        _title = State(initialValue: initialTitle)
+        _lastAutoTitle = State(initialValue: initialTitle)
+        _titleAutoManaged = State(initialValue: existing == nil && prefill?.recurrence != nil)
         _date = State(initialValue: existing?.date ?? Date())
         _notes = State(initialValue: source?.notes ?? "")
         // A series duplicate inherits recurrence from its source so the chain of occurrences
@@ -255,6 +266,19 @@ struct EventEditView: View {
         let siblings = store.assets[assetID]?.liveEvents ?? []
         guard let projected = SeriesLogic.projectedDueDate(for: source, in: siblings, occurrenceDate: date, interval: interval) else { return }
         dueDate = projected
+    }
+
+    private var projectsTitle: Bool { titleAutoManaged && isRecurring }
+
+    /// Re-derives the title from the series' `yyyy-MM` stamping rule (`suggestedDuplicateTitle`
+    /// → `SeriesLogic.duplicateTitle`) whenever the occurrence date changes, until the user
+    /// takes the field over. Writes `lastAutoTitle` before `title` so the resulting
+    /// `.onChange(of: title)` sees its own write and leaves the flag alone.
+    private func projectTitle() {
+        guard projectsTitle, let source = prefill else { return }
+        let projected = TextLimits.clamp(store.suggestedDuplicateTitle(forEventID: source.id, onAssetID: assetID, at: date), to: TextLimits.eventTitle)
+        lastAutoTitle = projected
+        title = projected
     }
 
     var body: some View {
@@ -317,8 +341,15 @@ struct EventEditView: View {
             }
             .navigationTitle(existing == nil ? "New Event" : "Edit Event")
             .navigationBarTitleDisplayMode(.inline)
-            .onChange(of: date) { _, _ in projectDueDate() }
+            .onChange(of: date) { _, _ in
+                projectDueDate()
+                projectTitle()
+            }
             .onChange(of: interval) { _, _ in projectDueDate() }
+            .onChange(of: title) { _, newValue in
+                guard titleAutoManaged, newValue != lastAutoTitle else { return }
+                titleAutoManaged = false
+            }
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") { dismiss() }

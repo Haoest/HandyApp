@@ -64,7 +64,7 @@ final class LedgerDigestTests: XCTestCase {
         XCTAssertEqual(result.recurring.map(\.record.id), [e.id])
     }
 
-    func testNewestPerSeriesPickedByCreatedAt() {
+    func testSeriesPickIsTheMemberWithTheNewestOccurrenceDate() {
         let series = UUID()
         let older = event(date: date(2026, 1, 1), recurrence: .monthly, dueDate: date(2026, 2, 1),
                           seriesID: series, createdAt: date(2026, 1, 1))
@@ -72,6 +72,55 @@ final class LedgerDigestTests: XCTestCase {
                           seriesID: series, createdAt: date(2026, 2, 1))
         let result = LedgerDigest.select([older, newer], windowMonths: 6, calendar: calendar, now: fixedNow)
         XCTAssertEqual(result.recurring.map(\.record.id), [newer.id])
+    }
+
+    // The regression this was fixed for: a back-dated correction entered *after* the real
+    // current occurrence must not outrank it just because it was typed in later. Occurrence
+    // date, not entry order, decides what the tab shows as "current."
+    func testSeriesPickPrefersOccurrenceDateOverCreationOrder() {
+        let series = UUID()
+        let currentOccurrence = event(date: date(2026, 6, 1), recurrence: .monthly, dueDate: date(2026, 7, 1),
+                                      seriesID: series, createdAt: date(2026, 6, 1))
+        let backDatedCorrection = event(date: date(2026, 3, 1), recurrence: .monthly, dueDate: date(2026, 4, 1),
+                                        seriesID: series, createdAt: date(2026, 8, 1))
+        let result = LedgerDigest.select([currentOccurrence, backDatedCorrection], windowMonths: 6, calendar: calendar, now: fixedNow)
+        XCTAssertEqual(result.recurring.map(\.record.id), [currentOccurrence.id])
+    }
+
+    func testSeriesPickTiesOnOccurrenceDateBreakByCreatedAtThenID() {
+        let series = UUID()
+        let sameDayOlderCreated = event(date: date(2026, 6, 1), recurrence: .monthly, dueDate: date(2026, 7, 1),
+                                        seriesID: series, createdAt: date(2026, 1, 1))
+        let sameDayNewerCreated = event(date: date(2026, 6, 1), recurrence: .monthly, dueDate: date(2026, 7, 1),
+                                        seriesID: series, createdAt: date(2026, 2, 1))
+        let result = LedgerDigest.select([sameDayOlderCreated, sameDayNewerCreated], windowMonths: 6, calendar: calendar, now: fixedNow)
+        XCTAssertEqual(result.recurring.map(\.record.id), [sameDayNewerCreated.id])
+    }
+
+    // MARK: - seriesByOccurrenceDate / seriesOccurrences
+
+    func testSeriesByOccurrenceDateOrdersNewestFirst() {
+        let series = UUID()
+        let a = event(date: date(2026, 1, 1), recurrence: .monthly, seriesID: series)
+        let b = event(date: date(2026, 3, 1), recurrence: .monthly, seriesID: series)
+        let c = event(date: date(2026, 2, 1), recurrence: .monthly, seriesID: series)
+        let ordered = LedgerDigest.seriesByOccurrenceDate(of: a, in: [a, b, c])
+        XCTAssertEqual(ordered.map(\.id), [b.id, c.id, a.id])
+    }
+
+    func testSeriesByOccurrenceDateOfASingletonIsJustItself() {
+        let a = event(date: date(2026, 1, 1), recurrence: .monthly)
+        XCTAssertEqual(LedgerDigest.seriesByOccurrenceDate(of: a, in: [a]).map(\.id), [a.id])
+    }
+
+    func testSeriesOccurrencesCapsAtTheLimit() {
+        let series = UUID()
+        let members = (0..<30).map { i in
+            event(date: date(2026, 1, 1 + i), recurrence: .weekly, seriesID: series)
+        }
+        let occurrences = LedgerDigest.seriesOccurrences(of: members[0], in: members)
+        XCTAssertEqual(occurrences.count, LedgerDigest.maxSeriesOccurrences)
+        XCTAssertEqual(occurrences.first?.id, members.last?.id, "the most recently dated member leads")
     }
 
     func testNilSeriesIDSingletonsAllIncluded() {

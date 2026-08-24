@@ -18,4 +18,17 @@ enum RecurrenceInterval: String, CaseIterable {
         case .biAnnually: (.year, 2)
         }
     }
+
+    /// Compact schedule-code form for tight display contexts (e.g. the Logs tab's series list).
+    /// Not localized — `rawValue` isn't either (see its doc), so this stays consistent with it.
+    var abbreviation: String {
+        switch self {
+        case .weekly: "W"
+        case .monthly: "M"
+        case .quarterly: "Q"
+        case .semiAnnually: "6M"
+        case .annually: "Y"
+        case .biAnnually: "2Y"
+        }
+    }
 }

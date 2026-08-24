@@ -20,6 +20,8 @@ struct EventsTransactionsTab: View {
     @State private var transactionToEdit: ResolvedTransaction?
     @State private var eventToLogEdit: ResolvedEvent?
     @State private var transactionToLogEdit: ResolvedTransaction?
+    @State private var seriesEventToView: ResolvedEvent?
+    @State private var seriesTransactionToView: ResolvedTransaction?
     @State private var paywallPresented = false
     @State private var paywallReason: PaywallReason = .events
 
@@ -100,6 +102,14 @@ struct EventsTransactionsTab: View {
                     try? store.duplicateTransaction(id: source.id, onAssetID: resolved.assetID, details: details, amount: amount, date: date, kind: kind, payeeContactID: payeeID, notes: notes, recurrence: recurrence, due: due)
                 }
             }
+            .sheet(item: $seriesEventToView) { resolved in
+                let siblings = liveAsset(resolved.assetID)?.liveEvents ?? []
+                SeriesOccurrencesSheet(occurrences: LedgerDigest.seriesOccurrences(of: resolved.event, in: siblings).map(SeriesOccurrenceDisplay.init(event:)))
+            }
+            .sheet(item: $seriesTransactionToView) { resolved in
+                let siblings = liveAsset(resolved.assetID)?.liveTransactions ?? []
+                SeriesOccurrencesSheet(occurrences: LedgerDigest.seriesOccurrences(of: resolved.transaction, in: siblings).map(SeriesOccurrenceDisplay.init(transaction:)))
+            }
             .sheet(isPresented: $paywallPresented) {
                 PaywallView(reason: paywallReason)
             }
@@ -124,6 +134,7 @@ struct EventsTransactionsTab: View {
                             LedgerEntryRow(
                                 entry: entry,
                                 onOpen: { openEntry(entry, assetID: group.assetID) },
+                                onViewSeries: { viewSeries(entry, assetID: group.assetID) },
                                 onLogNow: { logNow(entry, assetID: group.assetID) },
                                 onLogEdit: { logEdit(entry, assetID: group.assetID) }
                             )
@@ -200,6 +211,15 @@ struct EventsTransactionsTab: View {
         }
     }
 
+    private func viewSeries(_ entry: LedgerEntry, assetID: UUID) {
+        switch entry {
+        case .event(let event, _):
+            seriesEventToView = ResolvedEvent(event: event, assetID: assetID)
+        case .transaction(let transaction, _):
+            seriesTransactionToView = ResolvedTransaction(transaction: transaction, assetID: assetID)
+        }
+    }
+
     private func logNow(_ entry: LedgerEntry, assetID: UUID) {
         guard let asset = liveAsset(assetID) else { return }
         switch entry {
@@ -271,6 +291,7 @@ private struct GroupHeader: View {
 private struct LedgerEntryRow: View {
     let entry: LedgerEntry
     let onOpen: () -> Void
+    let onViewSeries: () -> Void
     let onLogNow: () -> Void
     let onLogEdit: () -> Void
 
@@ -294,6 +315,9 @@ private struct LedgerEntryRow: View {
             .onTapGesture(perform: onOpen)
             if isRecurring {
                 HStack(spacing: 20) {
+                    Button(action: onViewSeries) {
+                        Label("View Series", systemImage: "list.bullet.rectangle")
+                    }
                     Button(action: onLogNow) {
                         Label("Log Now", systemImage: "plus.square.on.square")
                     }
@@ -366,4 +390,91 @@ private struct ResolvedTransaction: Identifiable {
     let transaction: Transaction
     let assetID: UUID
     var id: UUID { transaction.id }
+}
+
+// MARK: - View Series
+
+/// One row of "View Series" — an Event or Transaction reduced to the fields common to both, so
+/// one row view renders either. `amountText`/`amountColor` are nil for an event.
+private struct SeriesOccurrenceDisplay: Identifiable {
+    let id: UUID
+    let description: String
+    let amountText: String?
+    let amountColor: Color?
+    let date: Date
+    let dueDate: Date?
+    let intervalAbbreviation: String
+
+    init(event: Event) {
+        id = event.id
+        description = event.title
+        amountText = nil
+        amountColor = nil
+        date = event.date
+        dueDate = event.dueDate
+        intervalAbbreviation = event.recurrence?.abbreviation ?? ""
+    }
+
+    init(transaction: Transaction) {
+        id = transaction.id
+        description = transaction.details
+        let sign = transaction.kind == .expense ? "-" : "+"
+        amountText = "\(sign)\(transaction.amount.formatted(.currency(code: Locale.current.currency?.identifier ?? "USD")))"
+        amountColor = transaction.kind == .expense ? .red : .green
+        date = transaction.date
+        dueDate = transaction.dueDate
+        intervalAbbreviation = transaction.recurrence?.abbreviation ?? ""
+    }
+}
+
+/// Read-only history of one recurring series, newest occurrence date first — see
+/// `LedgerDigest.seriesOccurrences`. Convention-A sheet chrome (plain `NavigationStack { List }`,
+/// no themed background) matching the app's other pickers/editors, not the tab-root treatment.
+private struct SeriesOccurrencesSheet: View {
+    @Environment(\.dismiss) private var dismiss
+    let occurrences: [SeriesOccurrenceDisplay]
+
+    var body: some View {
+        NavigationStack {
+            List(occurrences) { occurrence in
+                SeriesOccurrenceRow(occurrence: occurrence)
+            }
+            .navigationTitle("Series")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Done") { dismiss() }
+                }
+            }
+        }
+    }
+}
+
+private struct SeriesOccurrenceRow: View {
+    let occurrence: SeriesOccurrenceDisplay
+
+    var body: some View {
+        HStack(alignment: .top) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(occurrence.description)
+                    .fontWeight(.medium)
+                HStack(spacing: 6) {
+                    Text(occurrence.date.formatted(date: .abbreviated, time: .omitted))
+                    if let dueDate = occurrence.dueDate {
+                        Text("Due \(dueDate.formatted(date: .abbreviated, time: .omitted))")
+                    }
+                    Text(occurrence.intervalAbbreviation)
+                }
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            }
+            if let amountText = occurrence.amountText {
+                Spacer()
+                Text(amountText)
+                    .fontWeight(.semibold)
+                    .foregroundStyle(occurrence.amountColor ?? .primary)
+            }
+        }
+        .padding(.vertical, 2)
+    }
 }

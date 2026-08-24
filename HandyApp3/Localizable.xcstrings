@@ -1572,6 +1572,30 @@
         }
       }
     },
+    "Due %@" : {
+      "comment" : "One occurrence’s due date in the \"View Series\" sheet. Arg: the formatted due date.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Vence el %@"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Échéance le %@"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "到期日 %@"
+          }
+        }
+      }
+    },
     "Due Date" : {
       "comment" : "Toggle label and section header for an optional due date on an event or transaction.",
       "extractionState" : "manual",
@@ -3446,6 +3470,30 @@
         }
       }
     },
+    "Series" : {
+      "comment" : "Navigation title of the read-only \"View Series\" sheet listing a recurring event/transaction’s past occurrences.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Serie"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Série"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "系列"
+          }
+        }
+      }
+    },
     "Set value" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -4028,6 +4076,30 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "视图"
+          }
+        }
+      }
+    },
+    "View Series" : {
+      "comment" : "Action on a recurring Logs tab row that opens a read-only list of the series’ past occurrences.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ver serie"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Voir la série"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "查看系列"
           }
         }
       }

@@ -101,12 +101,12 @@ enum LedgerDigest {
         .sorted(by: groupPrecedes)
     }
 
-    /// Partitions `records` into the recurring series picks (newest live occurrence per
-    /// series, included regardless of age) and the non-recurring records inside the trailing
-    /// `windowMonths`. A series with mixed recurring/non-recurring members (a manually-edited
-    /// occurrence) is not treated as one unit here: only its recurring members compete for the
-    /// series pick, and any non-recurring member is windowed individually like any other
-    /// non-recurring record.
+    /// Partitions `records` into the recurring series picks (per series, the member with the
+    /// newest *occurrence date* — see `seriesByOccurrenceDate` — included regardless of age)
+    /// and the non-recurring records inside the trailing `windowMonths`. A series with mixed
+    /// recurring/non-recurring members (a manually-edited occurrence) is not treated as one
+    /// unit here: only its recurring members compete for the series pick, and any non-recurring
+    /// member is windowed individually like any other non-recurring record.
     static func select<R: LedgerRecord>(_ records: [R], windowMonths: Int, calendar: Calendar = .current, now: Date = Date()) -> (recurring: [(record: R, facts: LedgerRecurringFacts)], nonRecurring: [R]) {
         let recurringRecords = records.filter { $0.recurrence != nil }
         let nonRecurringRecords = records.filter { $0.recurrence == nil }
@@ -120,11 +120,40 @@ enum LedgerDigest {
             let key = record.seriesID?.uuidString ?? record.id.uuidString
             guard !seenKeys.contains(key) else { continue }
             seenKeys.insert(key)
-            let newest = SeriesLogic.newest(of: record, in: recurringRecords)
-            guard let facts = recurringFacts(for: newest, calendar: calendar, now: now) else { continue }
-            picked.append((newest, facts))
+            let latest = seriesByOccurrenceDate(of: record, in: recurringRecords).first ?? record
+            guard let facts = recurringFacts(for: latest, calendar: calendar, now: now) else { continue }
+            picked.append((latest, facts))
         }
         return (picked, includedNonRecurring)
+    }
+
+    /// Members of `record`'s series ordered by occurrence date, newest first. Deliberately NOT
+    /// `SeriesLogic.members`, which orders by `createdAt` — that answers "what was entered
+    /// last" (what `NotificationPlanner`/`isSuppressed` key off, so a freshly logged occurrence
+    /// owns the reminders); this answers "what happened last", which is what the Logs tab shows
+    /// and lists. A record with no series is a singleton series of itself, matching
+    /// `SeriesLogic.members`'s convention. Ties break on `createdAt` truncated to whole seconds
+    /// (matching persisted ISO-8601 precision) then `id`, so ordering survives a save/decode
+    /// round trip.
+    static func seriesByOccurrenceDate<R: LedgerRecord>(of record: R, in all: [R]) -> [R] {
+        guard let seriesID = record.seriesID else { return [record] }
+        return all
+            .filter { $0.seriesID == seriesID }
+            .sorted { lhs, rhs in
+                if lhs.date != rhs.date { return lhs.date > rhs.date }
+                let l = lhs.createdAt.timeIntervalSince1970.rounded(.down)
+                let r = rhs.createdAt.timeIntervalSince1970.rounded(.down)
+                if l != r { return l > r }
+                return lhs.id.uuidString > rhs.id.uuidString
+            }
+    }
+
+    static let maxSeriesOccurrences = 24
+
+    /// The `maxSeriesOccurrences` most recent occurrences of `record`'s series, newest
+    /// occurrence date first — backs the Logs tab's "View Series" list.
+    static func seriesOccurrences<R: LedgerRecord>(of record: R, in all: [R], limit: Int = maxSeriesOccurrences) -> [R] {
+        Array(seriesByOccurrenceDate(of: record, in: all).prefix(limit))
     }
 
     /// Next occurrence = `dueDate` rolled forward in whole intervals until it clears the
