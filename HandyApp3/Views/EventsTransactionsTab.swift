@@ -7,28 +7,34 @@ import SwiftUI
 struct EventsTransactionsTab: View {
     @Environment(AssetStore.self) private var store
 
-    @AppStorage(AppPreference.ledgerFilterModeKey)
-    private var filterModeRaw: String = LedgerFilterMode.all.rawValue
+    @AppStorage(AppPreference.ledgerTypeFilterKey)
+    private var typeFilterRaw: String = LedgerTypeFilter.all.rawValue
+    @AppStorage(AppPreference.ledgerLateOnlyKey)
+    private var lateOnly: Bool = false
     @AppStorage(AppPreference.ledgerWindowMonthsKey)
     private var windowMonths: Int = LedgerDigest.defaultWindowMonths
 
     @State private var addEventTarget: AddTarget?
     @State private var addTransactionTarget: AddTarget?
+    @State private var eventToEdit: ResolvedEvent?
+    @State private var transactionToEdit: ResolvedTransaction?
     @State private var eventToLogEdit: ResolvedEvent?
     @State private var transactionToLogEdit: ResolvedTransaction?
     @State private var paywallPresented = false
     @State private var paywallReason: PaywallReason = .events
 
-    private var filterMode: LedgerFilterMode { LedgerFilterMode(rawValue: filterModeRaw) ?? .all }
+    private var typeFilter: LedgerTypeFilter { LedgerTypeFilter(rawValue: typeFilterRaw) ?? .all }
 
     private var groups: [LedgerAssetGroup] {
         let sources = store.allAssets.map { asset in
             LedgerSource(assetID: asset.id, assetName: asset.name, events: asset.liveEvents, transactions: asset.liveTransactions)
         }
-        return LedgerDigest.build(sources: sources, mode: filterMode, windowMonths: windowMonths)
+        return LedgerDigest.build(sources: sources, typeFilter: typeFilter, lateOnly: lateOnly, windowMonths: windowMonths)
     }
 
-    private var isFilterActive: Bool { filterMode != .all || windowMonths != LedgerDigest.defaultWindowMonths }
+    private var isFilterActive: Bool {
+        typeFilter != .all || lateOnly || windowMonths != LedgerDigest.defaultWindowMonths
+    }
 
     var body: some View {
         NavigationStack {
@@ -56,6 +62,18 @@ struct EventsTransactionsTab: View {
             .sheet(item: $addTransactionTarget) { target in
                 TransactionEditView(assetName: target.assetName, assetID: target.assetID) { details, amount, date, kind, payeeID, notes, recurrence, due in
                     try? store.addTransaction(details: details, amount: amount, date: date, kind: kind, payeeContactID: payeeID, notes: notes, recurrence: recurrence, due: due, toAssetID: target.assetID)
+                }
+            }
+            .sheet(item: $eventToEdit) { resolved in
+                let seriesCount = liveAsset(resolved.assetID).map { SeriesLogic.members(of: resolved.event, in: $0.liveEvents).count } ?? 1
+                EventEditView(existing: resolved.event, seriesCount: seriesCount, assetName: liveAsset(resolved.assetID)?.name ?? "", assetID: resolved.assetID) { title, date, notes, recurrence, due in
+                    try? store.updateEvent(id: resolved.event.id, onAssetID: resolved.assetID, title: title, date: date, notes: notes, recurrence: recurrence, due: due)
+                }
+            }
+            .sheet(item: $transactionToEdit) { resolved in
+                let seriesCount = liveAsset(resolved.assetID).map { SeriesLogic.members(of: resolved.transaction, in: $0.liveTransactions).count } ?? 1
+                TransactionEditView(existing: resolved.transaction, seriesCount: seriesCount, assetName: liveAsset(resolved.assetID)?.name ?? "", assetID: resolved.assetID) { details, amount, date, kind, payeeID, notes, recurrence, due in
+                    try? store.updateTransaction(id: resolved.transaction.id, onAssetID: resolved.assetID, details: details, amount: amount, date: date, kind: kind, payeeContactID: payeeID, notes: notes, recurrence: recurrence, due: due)
                 }
             }
             .sheet(item: $eventToLogEdit) { resolved in
@@ -105,6 +123,7 @@ struct EventsTransactionsTab: View {
                         ForEach(group.entries) { entry in
                             LedgerEntryRow(
                                 entry: entry,
+                                onOpen: { openEntry(entry, assetID: group.assetID) },
                                 onLogNow: { logNow(entry, assetID: group.assetID) },
                                 onLogEdit: { logEdit(entry, assetID: group.assetID) }
                             )
@@ -124,16 +143,21 @@ struct EventsTransactionsTab: View {
 
     private var filterMenu: some View {
         Menu {
-            Picker("Filter", selection: $filterModeRaw) {
-                Text("All").tag(LedgerFilterMode.all.rawValue)
-                Text("Events Only").tag(LedgerFilterMode.eventsOnly.rawValue)
-                Text("Transactions Only").tag(LedgerFilterMode.transactionsOnly.rawValue)
-                Text("Late Only").tag(LedgerFilterMode.lateOnly.rawValue)
+            Picker("Filter", selection: $typeFilterRaw) {
+                Text("Events & Transactions").tag(LedgerTypeFilter.all.rawValue)
+                Text("Events Only").tag(LedgerTypeFilter.eventsOnly.rawValue)
+                Text("Transactions Only").tag(LedgerTypeFilter.transactionsOnly.rawValue)
             }
-            Picker("History", selection: $windowMonths) {
-                ForEach(AppPreference.ledgerWindowMonthsOptions, id: \.self) { months in
-                    Text("^[\(months) month](inflect: true)").tag(months)
-                }
+            Toggle("Late Only", isOn: $lateOnly)
+            Slider(
+                value: Binding(
+                    get: { Double(windowMonths) },
+                    set: { windowMonths = Int($0.rounded()) }
+                ),
+                in: Double(AppPreference.ledgerWindowMonthsRange.lowerBound)...Double(AppPreference.ledgerWindowMonthsRange.upperBound),
+                step: 1
+            ) {
+                Text("^[\(windowMonths) month](inflect: true)")
             }
         } label: {
             Image(systemName: isFilterActive ? "line.3.horizontal.decrease.circle.fill" : "line.3.horizontal.decrease.circle")
@@ -164,6 +188,15 @@ struct EventsTransactionsTab: View {
         } else {
             paywallReason = .transactions
             paywallPresented = true
+        }
+    }
+
+    private func openEntry(_ entry: LedgerEntry, assetID: UUID) {
+        switch entry {
+        case .event(let event, _):
+            eventToEdit = ResolvedEvent(event: event, assetID: assetID)
+        case .transaction(let transaction, _):
+            transactionToEdit = ResolvedTransaction(transaction: transaction, assetID: assetID)
         }
     }
 
@@ -237,6 +270,7 @@ private struct GroupHeader: View {
 
 private struct LedgerEntryRow: View {
     let entry: LedgerEntry
+    let onOpen: () -> Void
     let onLogNow: () -> Void
     let onLogEdit: () -> Void
 
@@ -253,6 +287,11 @@ private struct LedgerEntryRow: View {
                 sentenceText
                     .fixedSize(horizontal: false, vertical: true)
             }
+            // Tap target is just this sentence row, not the whole VStack — the Log Now/
+            // Log & Edit buttons below need their own taps, and a shared onTapGesture on
+            // their container would race a Button's own gesture recognizer.
+            .contentShape(Rectangle())
+            .onTapGesture(perform: onOpen)
             if isRecurring {
                 HStack(spacing: 20) {
                     Button(action: onLogNow) {
@@ -284,7 +323,7 @@ private struct LedgerEntryRow: View {
                 return Text("\(title): event happened on \(dateText)")
             }
             let nextText = facts.nextExpected.formatted(date: .abbreviated, time: .omitted)
-            let base = Text("\(title): event happened on \(dateText), next expected event on \(nextText).")
+            let base = Text("\(title): event happened on \(dateText). Next occurrence expected on \(nextText).")
             return facts.isLate ? base + lateSuffix : base
 
         case .transaction(let transaction, let facts):
@@ -299,8 +338,8 @@ private struct LedgerEntryRow: View {
             }
             let nextText = facts.nextExpected.formatted(date: .abbreviated, time: .omitted)
             let base = transaction.kind == .income
-                ? Text("\(details): \(amountText) received on \(dateText). Next expected payment on \(nextText).")
-                : Text("\(details): \(amountText) paid out on \(dateText). Next expected payment on \(nextText).")
+                ? Text("\(details): \(amountText) received on \(dateText). Next occurrence expected on \(nextText).")
+                : Text("\(details): \(amountText) paid out on \(dateText). Next occurrence expected on \(nextText).")
             return facts.isLate ? base + lateSuffix : base
         }
     }
@@ -315,8 +354,8 @@ private struct AddTarget: Identifiable {
     var id: UUID { assetID }
 }
 
-/// Sheet items pairing a record with its owning asset id, needed by the store's
-/// duplicate methods when saving from the Log & Edit sheets.
+/// Sheet items pairing a record with its owning asset id, needed by the store's update/
+/// duplicate methods when saving from the tap-to-open and Log & Edit sheets.
 private struct ResolvedEvent: Identifiable {
     let event: Event
     let assetID: UUID

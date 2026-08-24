@@ -92,10 +92,15 @@ final class LedgerDigestTests: XCTestCase {
 
     // MARK: - Next expected / late
 
-    func testNextExpectedUsesDueDateWhenPresent() {
-        let e = event(date: date(2026, 1, 1), recurrence: .monthly, dueDate: date(2026, 3, 1))
+    func testNextExpectedIsOneIntervalPastDueDateWhenPresent() {
+        // Quarterly item due Jun 1 → next occurrence is one interval past that, Sep 1 — not
+        // Jun 1 itself. This is the worked example a stale-due-date display bug was fixed
+        // against: editing a recurring record's `date` forward without also advancing its
+        // `dueDate` (anything other than Log Now) previously showed the stale due date as
+        // "next expected," which could already be in the past relative to the edited date.
+        let e = event(date: date(2026, 8, 23), recurrence: .quarterly, dueDate: date(2026, 6, 1))
         let facts = LedgerDigest.recurringFacts(for: e, calendar: calendar, now: fixedNow)
-        XCTAssertEqual(facts?.nextExpected, date(2026, 3, 1))
+        XCTAssertEqual(facts?.nextExpected, date(2026, 9, 1))
     }
 
     func testNextExpectedFallsBackToDatePlusIntervalWhenNoDueDate() {
@@ -106,13 +111,15 @@ final class LedgerDigestTests: XCTestCase {
     }
 
     func testLateWhenTodayStrictlyAfterNextExpectedDay() {
-        let e = event(date: date(2026, 1, 1), recurrence: .monthly, dueDate: date(2026, 8, 10))
+        // dueDate Jul 10 + one month = next expected Aug 10, strictly before fixedNow (Aug 15).
+        let e = event(date: date(2026, 1, 1), recurrence: .monthly, dueDate: date(2026, 7, 10))
         let facts = LedgerDigest.recurringFacts(for: e, calendar: calendar, now: fixedNow)
         XCTAssertEqual(facts?.isLate, true)
     }
 
     func testNotLateOnNextExpectedDayItself() {
-        let e = event(date: date(2026, 1, 1), recurrence: .monthly, dueDate: date(2026, 8, 15))
+        // dueDate Jul 15 + one month = next expected Aug 15, exactly fixedNow.
+        let e = event(date: date(2026, 1, 1), recurrence: .monthly, dueDate: date(2026, 7, 15))
         let facts = LedgerDigest.recurringFacts(for: e, calendar: calendar, now: fixedNow)
         XCTAssertEqual(facts?.isLate, false)
     }
@@ -172,40 +179,49 @@ final class LedgerDigestTests: XCTestCase {
         XCTAssertTrue(groups.isEmpty)
     }
 
-    // MARK: - Filter modes
+    // MARK: - Filters
 
-    func testFilterModeAllIncludesEverything() {
+    func testTypeFilterAllIncludesEverything() {
         let e = event(date: date(2026, 8, 1))
         let t = transaction(date: date(2026, 8, 1))
         let source = LedgerSource(assetID: UUID(), assetName: "Asset", events: [e], transactions: [t])
-        let groups = LedgerDigest.build(sources: [source], mode: .all, windowMonths: 6, calendar: calendar, now: fixedNow)
+        let groups = LedgerDigest.build(sources: [source], typeFilter: .all, windowMonths: 6, calendar: calendar, now: fixedNow)
         XCTAssertEqual(groups.first!.entries.count, 2)
     }
 
-    func testFilterModeEventsOnly() {
+    func testTypeFilterEventsOnly() {
         let e = event(date: date(2026, 8, 1))
         let t = transaction(date: date(2026, 8, 1))
         let source = LedgerSource(assetID: UUID(), assetName: "Asset", events: [e], transactions: [t])
-        let groups = LedgerDigest.build(sources: [source], mode: .eventsOnly, windowMonths: 6, calendar: calendar, now: fixedNow)
+        let groups = LedgerDigest.build(sources: [source], typeFilter: .eventsOnly, windowMonths: 6, calendar: calendar, now: fixedNow)
         XCTAssertEqual(groups.first!.entries.map(\.recordID), [e.id])
     }
 
-    func testFilterModeTransactionsOnly() {
+    func testTypeFilterTransactionsOnly() {
         let e = event(date: date(2026, 8, 1))
         let t = transaction(date: date(2026, 8, 1))
         let source = LedgerSource(assetID: UUID(), assetName: "Asset", events: [e], transactions: [t])
-        let groups = LedgerDigest.build(sources: [source], mode: .transactionsOnly, windowMonths: 6, calendar: calendar, now: fixedNow)
+        let groups = LedgerDigest.build(sources: [source], typeFilter: .transactionsOnly, windowMonths: 6, calendar: calendar, now: fixedNow)
         XCTAssertEqual(groups.first!.entries.map(\.recordID), [t.id])
     }
 
-    func testFilterModeLateOnlyKeepsOnlyLateEntriesAndDropsEmptyGroups() {
+    func testLateOnlyKeepsOnlyLateEntriesAndDropsEmptyGroups() {
         let lateEvent = event(date: date(2026, 1, 1), recurrence: .monthly, dueDate: date(2026, 2, 1))
         let onTimeEvent = event(date: date(2026, 1, 1), recurrence: .monthly, dueDate: date(2026, 12, 1))
         let recentNonRecurring = event(date: date(2026, 8, 1))
         let lateAsset = LedgerSource(assetID: UUID(), assetName: "Late Asset", events: [lateEvent], transactions: [])
         let onTimeAsset = LedgerSource(assetID: UUID(), assetName: "On Time Asset", events: [onTimeEvent, recentNonRecurring], transactions: [])
-        let groups = LedgerDigest.build(sources: [lateAsset, onTimeAsset], mode: .lateOnly, windowMonths: 6, calendar: calendar, now: fixedNow)
+        let groups = LedgerDigest.build(sources: [lateAsset, onTimeAsset], lateOnly: true, windowMonths: 6, calendar: calendar, now: fixedNow)
         XCTAssertEqual(groups.map(\.assetName), ["Late Asset"])
+        XCTAssertEqual(groups.first!.entries.map(\.recordID), [lateEvent.id])
+    }
+
+    // Late-only is independent of, and combines with, the type filter — not one of its cases.
+    func testLateOnlyCombinesIndependentlyWithTypeFilter() {
+        let lateEvent = event(date: date(2026, 1, 1), recurrence: .monthly, dueDate: date(2026, 2, 1))
+        let lateTransaction = transaction(date: date(2026, 1, 1), recurrence: .monthly, dueDate: date(2026, 2, 1))
+        let source = LedgerSource(assetID: UUID(), assetName: "Asset", events: [lateEvent], transactions: [lateTransaction])
+        let groups = LedgerDigest.build(sources: [source], typeFilter: .eventsOnly, lateOnly: true, windowMonths: 6, calendar: calendar, now: fixedNow)
         XCTAssertEqual(groups.first!.entries.map(\.recordID), [lateEvent.id])
     }
 }

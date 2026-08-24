@@ -11,10 +11,13 @@ enum AppPreference {
     static let nonRecurringLimitDefault = 12
     static let nonRecurringLimitRange = 6.0...24.0
 
-    /// Filter controls on the Logs tab.
-    static let ledgerFilterModeKey = "ledgerFilterMode"
+    /// Filter controls on the Logs tab. `ledgerLateOnlyKey` is independent of
+    /// `ledgerTypeFilterKey` — the two combine (e.g. events-only + late-only shows only late
+    /// events), rather than being mutually exclusive options of one control.
+    static let ledgerTypeFilterKey = "ledgerTypeFilter"
+    static let ledgerLateOnlyKey = "ledgerLateOnly"
     static let ledgerWindowMonthsKey = "ledgerWindowMonths"
-    static let ledgerWindowMonthsOptions = [1, 3, 6, 12, 24]
+    static let ledgerWindowMonthsRange = 1...24
 
     /// How many days a soft-deleted asset or category is kept before hard deletion.
     static let DaysToRetainDeletedItems = 14

@@ -9,8 +9,10 @@ protocol LedgerRecord: SeriesRecord {
 extension Event: LedgerRecord {}
 extension Transaction: LedgerRecord {}
 
-enum LedgerFilterMode: String, CaseIterable {
-    case all, eventsOnly, transactionsOnly, lateOnly
+/// Which record types to include. Independent of, and combinable with, the "late only" toggle
+/// — e.g. `.eventsOnly` + late-only shows only late events, not late events and transactions.
+enum LedgerTypeFilter: String, CaseIterable {
+    case all, eventsOnly, transactionsOnly
 }
 
 struct LedgerRecurringFacts: Equatable {
@@ -77,7 +79,7 @@ struct LedgerAssetGroup: Identifiable {
 enum LedgerDigest {
     static let defaultWindowMonths = 6
 
-    static func build(sources: [LedgerSource], mode: LedgerFilterMode = .all, windowMonths: Int = defaultWindowMonths, calendar: Calendar = .current, now: Date = Date()) -> [LedgerAssetGroup] {
+    static func build(sources: [LedgerSource], typeFilter: LedgerTypeFilter = .all, lateOnly: Bool = false, windowMonths: Int = defaultWindowMonths, calendar: Calendar = .current, now: Date = Date()) -> [LedgerAssetGroup] {
         sources.compactMap { source in
             let events = select(source.events, windowMonths: windowMonths, calendar: calendar, now: now)
             let transactions = select(source.transactions, windowMonths: windowMonths, calendar: calendar, now: now)
@@ -88,7 +90,8 @@ enum LedgerDigest {
             entries += transactions.recurring.map { LedgerEntry.transaction($0.record, $0.facts) }
             entries += transactions.nonRecurring.map { LedgerEntry.transaction($0, nil) }
 
-            let filtered = applyMode(entries, mode: mode)
+            var filtered = filterByType(entries, typeFilter: typeFilter)
+            if lateOnly { filtered = filtered.filter { $0.facts?.isLate == true } }
             guard !filtered.isEmpty else { return nil }
 
             let sorted = filtered.sorted(by: precedes)
@@ -124,28 +127,30 @@ enum LedgerDigest {
         return (picked, includedNonRecurring)
     }
 
-    /// `record.dueDate` is the next expected occurrence — logging a recurring record already
-    /// advances its duplicate's due date by one interval (see `SeriesLogic.advancedDueDate`).
-    /// Falls back to `date` + one interval only when no due date has ever been set.
+    /// Next occurrence = one recurrence interval past `dueDate` (falling back to `date` when no
+    /// due date has ever been set). Deliberate choice, not an oversight: `dueDate` on the newest
+    /// occurrence of a series produced via Log Now is already advanced one interval past the
+    /// *previous* occurrence's due date (see `SeriesLogic.advancedDueDate`), so this display
+    /// formula reads one interval further out than that — e.g. a quarterly item due Jun 1,
+    /// logged via Log Now, gets a fresh `dueDate` of Sep 1 on the new record, and this shows
+    /// "next occurrence" as Dec 1. That tradeoff was chosen deliberately over trusting `dueDate`
+    /// directly, which reads wrong whenever a record's `date` was edited forward without also
+    /// advancing its `dueDate` (anything other than Log Now) — see LedgerDigestTests for the
+    /// worked "stale due date" example this was chosen to fix.
     static func recurringFacts<R: LedgerRecord>(for record: R, calendar: Calendar = .current, now: Date = Date()) -> LedgerRecurringFacts? {
         guard let interval = record.recurrence else { return nil }
-        let nextExpected: Date
-        if let dueDate = record.dueDate {
-            nextExpected = dueDate
-        } else {
-            let (component, value) = interval.componentAndValue
-            nextExpected = calendar.date(byAdding: component, value: value, to: record.date) ?? record.date
-        }
+        let (component, value) = interval.componentAndValue
+        let base = record.dueDate ?? record.date
+        let nextExpected = calendar.date(byAdding: component, value: value, to: base) ?? base
         let isLate = calendar.startOfDay(for: now) > calendar.startOfDay(for: nextExpected)
         return LedgerRecurringFacts(interval: interval, nextExpected: nextExpected, isLate: isLate)
     }
 
-    private static func applyMode(_ entries: [LedgerEntry], mode: LedgerFilterMode) -> [LedgerEntry] {
-        switch mode {
+    private static func filterByType(_ entries: [LedgerEntry], typeFilter: LedgerTypeFilter) -> [LedgerEntry] {
+        switch typeFilter {
         case .all: return entries
         case .eventsOnly: return entries.filter { if case .event = $0 { return true }; return false }
         case .transactionsOnly: return entries.filter { if case .transaction = $0 { return true }; return false }
-        case .lateOnly: return entries.filter { $0.facts?.isLate == true }
         }
     }
 
