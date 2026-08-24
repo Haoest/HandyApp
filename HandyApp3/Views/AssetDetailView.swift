@@ -566,7 +566,7 @@ private struct AssetDetailContent: View {
                 EventEditView(
                     prefill: source,
                     prefillTitle: store.suggestedDuplicateTitle(forEventID: source.id, onAssetID: asset.id),
-                    prefillDue: DueSettings(dueDate: SeriesLogic.advancedDueDate(for: source), messageDaysBefore: source.messageDaysBefore, messageDaysAfter: source.messageDaysAfter, deviceNotificationOn: source.deviceNotificationOn, deviceNotificationDaysBefore: source.deviceNotificationDaysBefore),
+                    prefillDue: store.suggestedDuplicateDue(forEventID: source.id, onAssetID: asset.id),
                     assetName: asset.name,
                     assetID: asset.id
                 ) { title, date, notes, recurrence, due in
@@ -584,7 +584,7 @@ private struct AssetDetailContent: View {
                 TransactionEditView(
                     prefill: source,
                     prefillDetails: store.suggestedDuplicateTitle(forTransactionID: source.id, onAssetID: asset.id),
-                    prefillDue: DueSettings(dueDate: SeriesLogic.advancedDueDate(for: source), messageDaysBefore: source.messageDaysBefore, messageDaysAfter: source.messageDaysAfter, deviceNotificationOn: source.deviceNotificationOn, deviceNotificationDaysBefore: source.deviceNotificationDaysBefore),
+                    prefillDue: store.suggestedDuplicateDue(forTransactionID: source.id, onAssetID: asset.id),
                     assetName: asset.name,
                     assetID: asset.id
                 ) { details, amount, date, kind, payeeID, notes, recurrence, due in

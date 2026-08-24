@@ -157,20 +157,80 @@ final class SeriesLogicTests: XCTestCase {
         XCTAssertFalse(SeriesLogic.isDueMessageActive(record, calendar: calendar, now: date(2026, 1, 1)))
     }
 
-    // MARK: - advancedDueDate
+    // MARK: - rollForward
 
-    func testAdvancedDueDateAdvancesRecurringSourceByOneInterval() {
+    func testRollForwardStepsPastTarget() {
+        let result = SeriesLogic.rollForward(date(2026, 6, 1), past: date(2026, 8, 23), interval: .quarterly, calendar: calendar)
+        XCTAssertEqual(result, date(2026, 9, 1))
+    }
+
+    func testRollForwardLeavesBaseAlreadyPastTargetUntouched() {
+        let result = SeriesLogic.rollForward(date(2026, 12, 1), past: date(2026, 8, 23), interval: .quarterly, calendar: calendar)
+        XCTAssertEqual(result, date(2026, 12, 1))
+    }
+
+    // Landing exactly on the target day is not "past" it — one more step is taken.
+    func testRollForwardStepsPastAnExactDayMatch() {
+        let result = SeriesLogic.rollForward(date(2026, 7, 23), past: date(2026, 8, 23), interval: .monthly, calendar: calendar)
+        XCTAssertEqual(result, date(2026, 9, 23))
+    }
+
+    func testRollForwardCrossesManyIntervalsFromAStaleAnchor() {
+        let result = SeriesLogic.rollForward(date(2020, 1, 15), past: date(2026, 8, 23), interval: .monthly, calendar: calendar)
+        XCTAssertEqual(result, date(2026, 9, 15))
+    }
+
+    // MARK: - projectedDueDate
+
+    // The occurrence being logged anchors on the *previous* occurrence's due date, so a
+    // quarterly series due Jun 1 logged Aug 23 lands on Sep 1 — staying on the series' grid
+    // rather than jumping one interval past today (Nov 23).
+    func testProjectedDueDateStaysOnTheSeriesGrid() {
+        let source = Event(title: "Air filter", date: date(2026, 5, 1), recurrence: .quarterly, dueDate: date(2026, 6, 1))
+        let projected = SeriesLogic.projectedDueDate(for: source, in: [source], occurrenceDate: date(2026, 8, 23),
+                                                     interval: .quarterly, calendar: calendar)
+        XCTAssertEqual(projected, date(2026, 9, 1))
+    }
+
+    // The anchor is the latest due date *before* the occurrence date, not simply the newest
+    // series member — a member due after it can't anchor the occurrence preceding it.
+    func testProjectedDueDateAnchorsOnLatestDueDateBeforeOccurrence() {
+        let seriesID = UUID()
+        let older = Event(title: "Rent", date: date(2026, 1, 1), recurrence: .monthly, dueDate: date(2026, 2, 1), seriesID: seriesID)
+        let newer = Event(title: "Rent", date: date(2026, 4, 1), recurrence: .monthly, dueDate: date(2026, 5, 1), seriesID: seriesID)
+        let projected = SeriesLogic.projectedDueDate(for: newer, in: [older, newer], occurrenceDate: date(2026, 3, 10),
+                                                     interval: .monthly, calendar: calendar)
+        XCTAssertEqual(projected, date(2026, 4, 1), "anchors on Feb 1 (the last due date before Mar 10), not May 1")
+    }
+
+    // Nothing in the series precedes the occurrence date, so the earliest recorded due date
+    // stands in as the anchor and is already past it.
+    func testProjectedDueDateFallsBackToEarliestWhenAllDueDatesAreAhead() {
+        let source = Event(title: "Rent", date: date(2026, 1, 1), recurrence: .monthly, dueDate: date(2026, 6, 1))
+        let projected = SeriesLogic.projectedDueDate(for: source, in: [source], occurrenceDate: date(2026, 1, 15),
+                                                     interval: .monthly, calendar: calendar)
+        XCTAssertEqual(projected, date(2026, 6, 1))
+    }
+
+    // The interval is supplied by the caller, so the edit sheet can project against an interval
+    // the user changed but hasn't saved yet.
+    func testProjectedDueDateUsesSuppliedIntervalNotTheSourcesOwn() {
         let source = Event(title: "Rent", date: date(2026, 1, 1), recurrence: .monthly, dueDate: date(2026, 2, 1))
-        XCTAssertEqual(SeriesLogic.advancedDueDate(for: source, calendar: calendar), date(2026, 3, 1))
+        let projected = SeriesLogic.projectedDueDate(for: source, in: [source], occurrenceDate: date(2026, 8, 23),
+                                                     interval: .annually, calendar: calendar)
+        XCTAssertEqual(projected, date(2027, 2, 1))
     }
 
-    func testAdvancedDueDateCopiesVerbatimForNonRecurringSource() {
+    func testProjectedDueDateCopiesVerbatimForNonRecurringSource() {
         let source = Event(title: "One-off", date: date(2026, 1, 1), dueDate: date(2026, 2, 1))
-        XCTAssertEqual(SeriesLogic.advancedDueDate(for: source, calendar: calendar), date(2026, 2, 1))
+        let projected = SeriesLogic.projectedDueDate(for: source, in: [source], occurrenceDate: date(2026, 8, 23),
+                                                     interval: nil, calendar: calendar)
+        XCTAssertEqual(projected, date(2026, 2, 1))
     }
 
-    func testAdvancedDueDateNilWhenNoDueDate() {
+    func testProjectedDueDateNilWhenNoDueDate() {
         let source = Event(title: "X", date: date(2026, 1, 1), recurrence: .monthly)
-        XCTAssertNil(SeriesLogic.advancedDueDate(for: source, calendar: calendar))
+        XCTAssertNil(SeriesLogic.projectedDueDate(for: source, in: [source], occurrenceDate: date(2026, 8, 23),
+                                                  interval: .monthly, calendar: calendar))
     }
 }

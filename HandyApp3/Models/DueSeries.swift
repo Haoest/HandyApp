@@ -117,16 +117,51 @@ enum SeriesLogic {
         }
     }
 
-    /// Due date a fresh series occurrence duplicated from `source` should start with. A
-    /// recurring source's due date advances by one recurrence interval (a verbatim copy would
-    /// make every new occurrence instantly overdue and — being the series' newest member —
-    /// un-suppressible). A non-recurring source's due date copies verbatim. `nil` if `source`
-    /// has no due date.
-    static func advancedDueDate<R: SeriesRecord>(for source: R, calendar: Calendar = .current) -> Date? {
-        guard let dueDate = source.dueDate else { return nil }
-        guard let recurrence = source.recurrence else { return dueDate }
-        let (component, value) = recurrence.componentAndValue
-        return calendar.date(byAdding: component, value: value, to: dueDate) ?? dueDate
+    /// Rolls `base` forward in whole `interval` steps until it lands strictly after `target`,
+    /// compared at day granularity. Returns `base` untouched when it is already past `target`.
+    static func rollForward(_ base: Date, past target: Date, interval: RecurrenceInterval, calendar: Calendar = .current) -> Date {
+        let (component, value) = interval.componentAndValue
+        let targetDay = calendar.startOfDay(for: target)
+        var result = base
+        // Bounded walk: a years-stale anchor still resolves in a few hundred steps, and a
+        // calendar that declines to advance (or advances backwards) can't spin here forever.
+        for _ in 0..<maxRollForwardSteps {
+            guard calendar.startOfDay(for: result) <= targetDay else { break }
+            guard let next = calendar.date(byAdding: component, value: value, to: result), next > result else { break }
+            result = next
+        }
+        return result
+    }
+
+    private static let maxRollForwardSteps = 5_000
+
+    /// Due date a new occurrence of `source`'s series, dated `occurrenceDate`, should start
+    /// with: the series' latest due date falling strictly before `occurrenceDate`, rolled
+    /// forward in whole intervals until it is the first such date after it.
+    ///
+    /// The anchor is the last *existing* occurrence's due date — the occurrence being logged
+    /// is not a series member yet and never anchors itself — which keeps a logged occurrence
+    /// on the series' original grid instead of one interval past today: a quarterly series due
+    /// Jun 1, logged Aug 23, comes due Sep 1, not Nov 23.
+    ///
+    /// Falls back to the series' earliest due date when every recorded due date is still ahead
+    /// of `occurrenceDate` (nothing precedes it to anchor on), which `rollForward` then returns
+    /// untouched. A non-recurring source's due date copies verbatim; `nil` when `source` has no
+    /// due date at all. `interval` is passed in rather than read off `source` so the edit sheet
+    /// can project against an interval the user has changed but not yet saved.
+    static func projectedDueDate<R: SeriesRecord>(for source: R, in siblings: [R], occurrenceDate: Date, interval: RecurrenceInterval?, calendar: Calendar = .current) -> Date? {
+        guard let sourceDue = source.dueDate else { return nil }
+        guard let interval else { return sourceDue }
+        var candidates = members(of: source, in: siblings)
+        // `members` filters `siblings` by series id, so a source not present in that array
+        // (a record still being composed) would otherwise drop its own due date.
+        if !candidates.contains(where: { $0.id == source.id }) { candidates.append(source) }
+        let dueDates = candidates.compactMap(\.dueDate)
+        let occurrenceDay = calendar.startOfDay(for: occurrenceDate)
+        let anchor = dueDates.filter { calendar.startOfDay(for: $0) < occurrenceDay }.max()
+            ?? dueDates.min()
+            ?? sourceDue
+        return rollForward(anchor, past: occurrenceDate, interval: interval, calendar: calendar)
     }
 
     /// Title for a new duplicate created at `creationDate`.

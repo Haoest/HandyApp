@@ -1116,6 +1116,28 @@ final class AssetStore {
         return SeriesLogic.duplicateTitle(source: source.title, seriesTitles: siblingTitles, creationDate: date)
     }
 
+    /// Due settings the "Log & Edit"/"Duplicate & Edit" sheet prefills for a duplicate of
+    /// `sourceID` dated `date`: the projected next due date (see `SeriesLogic.projectedDueDate`)
+    /// plus the source's message/notification window. Companion to `suggestedDuplicateTitle`.
+    /// Unlike the immediate "Log Now" path this carries `deviceNotificationOn` verbatim even for
+    /// a non-recurring source — the sheet shows both fields before the user commits.
+    func suggestedDuplicateDue(forEventID id: UUID, onAssetID assetID: UUID, at date: Date = Date()) -> DueSettings {
+        guard let asset = assets[assetID], let source = asset.liveEvents.first(where: { $0.id == id }) else { return DueSettings() }
+        return DueSettings(dueDate: SeriesLogic.projectedDueDate(for: source, in: asset.liveEvents, occurrenceDate: date, interval: source.recurrence),
+                           messageDaysBefore: source.messageDaysBefore, messageDaysAfter: source.messageDaysAfter,
+                           deviceNotificationOn: source.deviceNotificationOn,
+                           deviceNotificationDaysBefore: source.deviceNotificationDaysBefore)
+    }
+
+    /// See `suggestedDuplicateDue(forEventID:onAssetID:at:)` — same rule, mirrored for Transaction.
+    func suggestedDuplicateDue(forTransactionID id: UUID, onAssetID assetID: UUID, at date: Date = Date()) -> DueSettings {
+        guard let asset = assets[assetID], let source = asset.liveTransactions.first(where: { $0.id == id }) else { return DueSettings() }
+        return DueSettings(dueDate: SeriesLogic.projectedDueDate(for: source, in: asset.liveTransactions, occurrenceDate: date, interval: source.recurrence),
+                           messageDaysBefore: source.messageDaysBefore, messageDaysAfter: source.messageDaysAfter,
+                           deviceNotificationOn: source.deviceNotificationOn,
+                           deviceNotificationDaysBefore: source.deviceNotificationDaysBefore)
+    }
+
     /// Immediate duplicate (context-menu "Log Now"/"Duplicate"): date = now, title = suggested suffix,
     /// everything else copied from the source. If the source is recurring, the copy inherits
     /// recurrence and joins (or starts) the source's series.
@@ -1125,9 +1147,10 @@ final class AssetStore {
         guard let source = asset.liveEvents.first(where: { $0.id == sourceID }) else { throw AssetStoreError.eventNotFound(sourceID) }
         let now = Date()
         let title = suggestedDuplicateTitle(forEventID: sourceID, onAssetID: assetID, at: now)
-        let due = DueSettings(dueDate: SeriesLogic.advancedDueDate(for: source), messageDaysBefore: source.messageDaysBefore,
+        let due = DueSettings(dueDate: SeriesLogic.projectedDueDate(for: source, in: asset.liveEvents, occurrenceDate: now, interval: source.recurrence),
+                              messageDaysBefore: source.messageDaysBefore,
                               messageDaysAfter: source.messageDaysAfter,
-                              // advancedDueDate only advances a *recurring* source, so a
+                              // projectedDueDate only rolls a *recurring* source forward, so a
                               // non-recurring duplicate carries the source's due date verbatim.
                               // Inheriting the toggle here would schedule a second identical
                               // reminder for the same moment — and since no seriesID is
@@ -1253,7 +1276,8 @@ final class AssetStore {
         guard let source = asset.liveTransactions.first(where: { $0.id == sourceID }) else { throw AssetStoreError.transactionNotFound(sourceID) }
         let now = Date()
         let details = suggestedDuplicateTitle(forTransactionID: sourceID, onAssetID: assetID, at: now)
-        let due = DueSettings(dueDate: SeriesLogic.advancedDueDate(for: source), messageDaysBefore: source.messageDaysBefore,
+        let due = DueSettings(dueDate: SeriesLogic.projectedDueDate(for: source, in: asset.liveTransactions, occurrenceDate: now, interval: source.recurrence),
+                              messageDaysBefore: source.messageDaysBefore,
                               messageDaysAfter: source.messageDaysAfter,
                               // See duplicateEvent(id:onAssetID:) — same non-recurring
                               // double-notification guard, mirrored for Transaction.

@@ -116,7 +116,7 @@ final class NotificationPlannerTests: XCTestCase {
     }
 
     func testDuplicateOfNonRecurringSourceDoesNotDoubleScheduleDueNotification() throws {
-        // Source's due date is copied verbatim (advancedDueDate only advances a recurring
+        // Source's due date is copied verbatim (projectedDueDate only rolls a recurring
         // source), and no seriesID is assigned, so without the guard in
         // duplicateEvent(id:onAssetID:) both records would schedule identical reminders.
         let source = try store.addEvent(title: "Warranty check", date: date(2026, 1, 1),

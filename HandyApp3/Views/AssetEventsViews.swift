@@ -174,6 +174,9 @@ struct EventEditView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(AssetStore.self) private var store
     let existing: Event?
+    /// Series source this sheet is logging a new occurrence from ("Log & Edit"), used to
+    /// re-project the due date as the occurrence date changes. Nil for plain add/edit.
+    let prefill: Event?
     let seriesCount: Int
     /// Asset name and ID, used only by the debug "send test notification" button to
     /// mirror the real notification's title and tap-routing target.
@@ -192,10 +195,16 @@ struct EventEditView: View {
     @State private var messageDaysAfter: Int
     @State private var deviceNotificationOn: Bool
     @State private var deviceNotificationDaysBefore: Int
+    /// True while the due date is still derived from the series rather than typed by the user.
+    /// Set only for "Log & Edit" on a recurring source that has a due date to project from, and
+    /// cleared for good the first time the user edits the field. Deliberately per-sheet-instance
+    /// state, not persisted: cancelling and reopening starts the projection fresh.
+    @State private var dueDateAutoManaged: Bool
 
     init(existing: Event? = nil, prefill: Event? = nil, prefillTitle: String? = nil, prefillDue: DueSettings? = nil,
          seriesCount: Int = 1, assetName: String, assetID: UUID, onSave: @escaping (String, Date, String, RecurrenceInterval?, DueSettings) -> Void) {
         self.existing = existing
+        self.prefill = prefill
         self.seriesCount = seriesCount
         self.assetName = assetName
         self.assetID = assetID
@@ -219,6 +228,33 @@ struct EventEditView: View {
         _messageDaysAfter = State(initialValue: due.messageDaysAfter)
         _deviceNotificationOn = State(initialValue: due.deviceNotificationOn)
         _deviceNotificationDaysBefore = State(initialValue: due.deviceNotificationDaysBefore)
+        _dueDateAutoManaged = State(initialValue: existing == nil && prefill?.recurrence != nil && due.dueDate != nil)
+    }
+
+    /// Whether the due date is currently being kept in step with the occurrence date. Toggling
+    /// recurrence off stops the projection without discarding the flag, so turning it back on
+    /// resumes where it left off.
+    private var projectsDueDate: Bool { dueDateAutoManaged && isRecurring }
+
+    /// Writes from the date picker mark the field as user-owned; the projection assigns
+    /// `dueDate` directly and so leaves the flag alone.
+    private var dueDateBinding: Binding<Date> {
+        Binding(
+            get: { dueDate },
+            set: { newValue in
+                dueDate = newValue
+                dueDateAutoManaged = false
+            }
+        )
+    }
+
+    /// Re-anchors the due date on the series whenever the occurrence date — or the interval the
+    /// projection walks by — changes, until the user takes the field over.
+    private func projectDueDate() {
+        guard projectsDueDate, let source = prefill else { return }
+        let siblings = store.assets[assetID]?.liveEvents ?? []
+        guard let projected = SeriesLogic.projectedDueDate(for: source, in: siblings, occurrenceDate: date, interval: interval) else { return }
+        dueDate = projected
     }
 
     var body: some View {
@@ -250,8 +286,15 @@ struct EventEditView: View {
                 Section("Due Date") {
                     Toggle("Has Due Date", isOn: $hasDueDate)
                     if hasDueDate {
-                        DatePicker("", selection: $dueDate, displayedComponents: .date)
-                            .labelsHidden()
+                        VStack(alignment: .leading, spacing: 2) {
+                            DatePicker("", selection: dueDateBinding, displayedComponents: .date)
+                                .labelsHidden()
+                            if projectsDueDate {
+                                Text("(automatically set to next interval)")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
                         StepSlider(title: "Show message before due date", value: $messageDaysBefore)
                         StepSlider(title: "Keep message after due date", value: $messageDaysAfter)
                         Toggle("Device Notification", isOn: $deviceNotificationOn)
@@ -274,6 +317,8 @@ struct EventEditView: View {
             }
             .navigationTitle(existing == nil ? "New Event" : "Edit Event")
             .navigationBarTitleDisplayMode(.inline)
+            .onChange(of: date) { _, _ in projectDueDate() }
+            .onChange(of: interval) { _, _ in projectDueDate() }
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") { dismiss() }

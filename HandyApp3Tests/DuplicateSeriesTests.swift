@@ -53,18 +53,29 @@ final class DuplicateSeriesTests: XCTestCase {
         XCTAssertEqual(copy.title, "One-off", "non-recurring duplicates keep the title verbatim")
     }
 
-    func testDuplicateAdvancesDueDateByOneRecurrenceInterval() throws {
-        let calendar = Calendar(identifier: .gregorian)
-        let due = calendar.date(from: DateComponents(year: 2026, month: 2, day: 1))!
-        let source = try store.addEvent(title: "Rent", date: Date(), recurrence: .monthly,
-                                        due: DueSettings(dueDate: due), toAssetID: asset.id)
+    // Log Now dates the occurrence today and rolls the previous occurrence's due date forward
+    // in whole intervals until it clears that date — so logging against a stale series lands on
+    // the next grid date rather than one interval past today, and is never born overdue.
+    // Asserted by property rather than by literal date: the store stamps the occurrence with
+    // the real `Date()`, which no test can pin.
+    func testLogNowRollsDueDateForwardToTheFirstGridDateAfterToday() throws {
+        let calendar = Calendar.current
+        let today = Date()
+        let staleDue = calendar.date(byAdding: .month, value: -3, to: today)!
+        let source = try store.addEvent(title: "Rent", date: today, recurrence: .monthly,
+                                        due: DueSettings(dueDate: staleDue), toAssetID: asset.id)
         let copy = try store.duplicateEvent(id: source.id, onAssetID: asset.id)
-        let expected = calendar.date(from: DateComponents(year: 2026, month: 3, day: 1))!
-        XCTAssertEqual(copy.dueDate, expected)
+
+        let projected = try XCTUnwrap(copy.dueDate)
+        XCTAssertGreaterThan(calendar.startOfDay(for: projected), calendar.startOfDay(for: today),
+                             "a freshly logged occurrence is never already overdue")
+        let oneIntervalEarlier = calendar.date(byAdding: .month, value: -1, to: projected)!
+        XCTAssertLessThanOrEqual(calendar.startOfDay(for: oneIntervalEarlier), calendar.startOfDay(for: today),
+                                 "it is the first such date, not several intervals out")
     }
 
     func testLogNowDuplicateOfNonRecurringSourceTurnsDeviceNotificationOff() throws {
-        // advancedDueDate copies a non-recurring source's due date verbatim, so inheriting the
+        // projectedDueDate copies a non-recurring source's due date verbatim, so inheriting the
         // toggle would schedule two identical reminders for the same moment (no seriesID is
         // assigned to silence either via isSuppressed).
         let source = try store.addEvent(title: "Warranty check", date: Date(),

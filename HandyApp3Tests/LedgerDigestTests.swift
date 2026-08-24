@@ -92,15 +92,31 @@ final class LedgerDigestTests: XCTestCase {
 
     // MARK: - Next expected / late
 
-    func testNextExpectedIsOneIntervalPastDueDateWhenPresent() {
-        // Quarterly item due Jun 1 → next occurrence is one interval past that, Sep 1 — not
-        // Jun 1 itself. This is the worked example a stale-due-date display bug was fixed
-        // against: editing a recurring record's `date` forward without also advancing its
-        // `dueDate` (anything other than Log Now) previously showed the stale due date as
-        // "next expected," which could already be in the past relative to the edited date.
+    // A stale due date is repaired for display: the record was dated forward to Aug 23 but
+    // still carries its Jun 1 due date, so the quarterly grid rolls to Sep 1 rather than
+    // reporting a "next occurrence" that already passed.
+    func testNextExpectedRollsAStaleDueDatePastTheRecordsOwnDate() {
         let e = event(date: date(2026, 8, 23), recurrence: .quarterly, dueDate: date(2026, 6, 1))
         let facts = LedgerDigest.recurringFacts(for: e, calendar: calendar, now: fixedNow)
         XCTAssertEqual(facts?.nextExpected, date(2026, 9, 1))
+    }
+
+    // The mirror case: a due date already ahead of its record's date is shown as-is, never
+    // advanced a second time. This is what a freshly logged occurrence looks like, since
+    // `SeriesLogic.projectedDueDate` already rolled it forward at write time.
+    func testNextExpectedLeavesAnAlreadyForwardDueDateAlone() {
+        let e = event(date: date(2026, 8, 23), recurrence: .quarterly, dueDate: date(2026, 9, 1))
+        let facts = LedgerDigest.recurringFacts(for: e, calendar: calendar, now: fixedNow)
+        XCTAssertEqual(facts?.nextExpected, date(2026, 9, 1))
+    }
+
+    // Rolling is anchored on the record's own date, never on `now`, so a series that really is
+    // overdue stays overdue instead of being quietly rolled into the future.
+    func testNextExpectedDoesNotRollAnOverdueSeriesPastToday() {
+        let e = event(date: date(2026, 1, 1), recurrence: .quarterly, dueDate: date(2026, 3, 1))
+        let facts = LedgerDigest.recurringFacts(for: e, calendar: calendar, now: fixedNow)
+        XCTAssertEqual(facts?.nextExpected, date(2026, 3, 1))
+        XCTAssertEqual(facts?.isLate, true)
     }
 
     func testNextExpectedFallsBackToDatePlusIntervalWhenNoDueDate() {
@@ -111,15 +127,15 @@ final class LedgerDigestTests: XCTestCase {
     }
 
     func testLateWhenTodayStrictlyAfterNextExpectedDay() {
-        // dueDate Jul 10 + one month = next expected Aug 10, strictly before fixedNow (Aug 15).
-        let e = event(date: date(2026, 1, 1), recurrence: .monthly, dueDate: date(2026, 7, 10))
+        // Next expected Aug 10, strictly before fixedNow (Aug 15).
+        let e = event(date: date(2026, 1, 1), recurrence: .monthly, dueDate: date(2026, 8, 10))
         let facts = LedgerDigest.recurringFacts(for: e, calendar: calendar, now: fixedNow)
         XCTAssertEqual(facts?.isLate, true)
     }
 
     func testNotLateOnNextExpectedDayItself() {
-        // dueDate Jul 15 + one month = next expected Aug 15, exactly fixedNow.
-        let e = event(date: date(2026, 1, 1), recurrence: .monthly, dueDate: date(2026, 7, 15))
+        // Next expected Aug 15, exactly fixedNow — due today is not yet late.
+        let e = event(date: date(2026, 1, 1), recurrence: .monthly, dueDate: date(2026, 8, 15))
         let facts = LedgerDigest.recurringFacts(for: e, calendar: calendar, now: fixedNow)
         XCTAssertEqual(facts?.isLate, false)
     }

@@ -127,21 +127,25 @@ enum LedgerDigest {
         return (picked, includedNonRecurring)
     }
 
-    /// Next occurrence = one recurrence interval past `dueDate` (falling back to `date` when no
-    /// due date has ever been set). Deliberate choice, not an oversight: `dueDate` on the newest
-    /// occurrence of a series produced via Log Now is already advanced one interval past the
-    /// *previous* occurrence's due date (see `SeriesLogic.advancedDueDate`), so this display
-    /// formula reads one interval further out than that — e.g. a quarterly item due Jun 1,
-    /// logged via Log Now, gets a fresh `dueDate` of Sep 1 on the new record, and this shows
-    /// "next occurrence" as Dec 1. That tradeoff was chosen deliberately over trusting `dueDate`
-    /// directly, which reads wrong whenever a record's `date` was edited forward without also
-    /// advancing its `dueDate` (anything other than Log Now) — see LedgerDigestTests for the
-    /// worked "stale due date" example this was chosen to fix.
+    /// Next occurrence = `dueDate` rolled forward in whole intervals until it clears the
+    /// record's own date — the same projection `SeriesLogic.projectedDueDate` writes when an
+    /// occurrence is logged, re-applied at read time.
+    ///
+    /// Rolling here rather than trusting `dueDate` outright repairs a *stale* due date in the
+    /// display: editing a record's date forward without touching its due date (anything other
+    /// than Log Now) otherwise reads as "next occurrence" in the past — a quarterly item dated
+    /// Aug 23 still carrying its Jun 1 due date shows Sep 1, not Jun 1. And rolling only past
+    /// the record's own date — never past `now` — leaves a genuinely overdue series overdue, so
+    /// `isLate` still fires.
+    ///
+    /// A record whose due date is already correct is untouched by this: an occurrence logged
+    /// Aug 23 carrying its freshly projected Sep 1 due date shows Sep 1, not one interval more.
+    /// Falls back to `date` when no due date has ever been set, which the same roll then
+    /// advances by exactly one interval.
     static func recurringFacts<R: LedgerRecord>(for record: R, calendar: Calendar = .current, now: Date = Date()) -> LedgerRecurringFacts? {
         guard let interval = record.recurrence else { return nil }
-        let (component, value) = interval.componentAndValue
         let base = record.dueDate ?? record.date
-        let nextExpected = calendar.date(byAdding: component, value: value, to: base) ?? base
+        let nextExpected = SeriesLogic.rollForward(base, past: record.date, interval: interval, calendar: calendar)
         let isLate = calendar.startOfDay(for: now) > calendar.startOfDay(for: nextExpected)
         return LedgerRecurringFacts(interval: interval, nextExpected: nextExpected, isLate: isLate)
     }
