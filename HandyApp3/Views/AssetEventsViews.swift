@@ -34,7 +34,8 @@ struct EventsSection: View {
     let onLimitReached: () -> Void
 
     /// Non-recurring items shown inline before collapsing behind the "Show All"
-    /// row; recurring items are never collapsed. User-tunable in Preferences.
+    /// row; recurring items are never collapsed. Fixed at `AppPreference.nonRecurringLimitDefault`
+    /// (the Preferences screen that used to tune this was removed).
     @AppStorage(AppPreference.eventLimitKey)
     private var nonRecurringLimit = AppPreference.nonRecurringLimitDefault
 

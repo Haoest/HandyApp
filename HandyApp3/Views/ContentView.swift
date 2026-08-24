@@ -16,15 +16,15 @@ struct ContentView: View {
                 AssetTab()
                     .tabItem { Image(systemName: "shippingbox") }
                     .tag(AppTab.assets)
+                EventsTransactionsTab()
+                    .tabItem { Image(systemName: "list.bullet.clipboard") }
+                    .tag(AppTab.eventsTransactions)
                 CategoryTab()
                     .tabItem { Image(systemName: "folder") }
                     .tag(AppTab.categories)
                 ToolsTab()
                     .tabItem { Image(systemName: "wrench.and.screwdriver") }
                     .tag(AppTab.tools)
-                PreferenceTab()
-                    .tabItem { Image(systemName: "gearshape") }
-                    .tag(AppTab.preferences)
             }
             if store.storeRequiresNewerApp {
                 UpdateRequiredBanner()
@@ -69,83 +69,6 @@ private struct SyncSuspendedBanner: View {
             .shadow(radius: 2)
             .padding(.top, 4)
             .transition(.move(edge: .top).combined(with: .opacity))
-    }
-}
-
-// MARK: - Preference tab
-
-struct PreferenceTab: View {
-    @Environment(AssetStore.self) private var store
-    @AppStorage(AppPreference.eventLimitKey)
-    private var eventLimit = AppPreference.nonRecurringLimitDefault
-    @AppStorage(AppPreference.transactionLimitKey)
-    private var transactionLimit = AppPreference.nonRecurringLimitDefault
-    @AppStorage(AppPreference.languageKey)
-    private var languageCode: String = ""
-
-    var body: some View {
-        @Bindable var store = store
-        return NavigationStack {
-            ZStack {
-                AppBackground()
-                Form {
-                    Section("Appearance") {
-                        Picker("Background", selection: $store.backgroundTheme) {
-                            ForEach(BackgroundTheme.allCases) { theme in
-                                Text(theme.displayName).tag(theme)
-                            }
-                        }
-                        .pickerStyle(.segmented)
-                    }
-                    .listRowBackground(Color.white.opacity(0.5))
-                    Section("Asset Detail") {
-                        LimitSlider(title: "Events to show", value: $eventLimit)
-                        LimitSlider(title: "Transactions to show", value: $transactionLimit)
-                    }
-                    .listRowBackground(Color.white.opacity(0.5))
-                    Section("Language") {
-                        Picker("Language", selection: $languageCode) {
-                            ForEach(AppPreference.supportedLanguages, id: \.code) { lang in
-                                Text(lang.label).tag(lang.code)
-                            }
-                        }
-                    }
-                    .listRowBackground(Color.white.opacity(0.5))
-                }
-                .scrollContentBackground(.hidden)
-                // Background is always a light gradient — pin the scheme light so the
-                // form's labels stay dark for contrast even in system dark mode.
-                .environment(\.colorScheme, .light)
-            }
-            .navigationTitle("Preferences")
-            .toolbarColorScheme(.light, for: .navigationBar)
-            .toolbarBackground(.hidden, for: .navigationBar)
-        }
-    }
-}
-
-private struct LimitSlider: View {
-    let title: LocalizedStringKey
-    @Binding var value: Int
-
-    var body: some View {
-        VStack(alignment: .leading) {
-            HStack {
-                Text(title)
-                Spacer()
-                Text("\(value)")
-                    .foregroundStyle(.secondary)
-                    .monospacedDigit()
-            }
-            Slider(
-                value: Binding(
-                    get: { Double(value) },
-                    set: { value = Int($0) }
-                ),
-                in: AppPreference.nonRecurringLimitRange,
-                step: 1
-            )
-        }
     }
 }
 

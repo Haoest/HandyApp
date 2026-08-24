@@ -68,7 +68,7 @@ An `Asset` is a named physical object. It belongs to one `AssetCategory`, which 
 - beautify screens
 - auto parse photo for transaction?
 - ~~list event/transaction~~
-- preference screen (eg how many event/transaction to show)
+- ~~preference screen (eg how many event/transaction to show)~~ (the Preferences tab was replaced by the Events & Transactions tab, which aggregates events/transactions across all assets with its own filter/window controls; Appearance and Language moved to Tools → Preference)
 - ~~add logging~~
 - add tools (communication, data export)
 - ~~summarize home screen~~

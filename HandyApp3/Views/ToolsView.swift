@@ -34,6 +34,8 @@ struct ToolsTab: View {
     @State private var showingResetDone = false
     @State private var isRestoringPurchases = false
     @State private var restoreResultMessage: String?
+    @AppStorage(AppPreference.languageKey)
+    private var languageCode: String = ""
 
     private var exportFilename: String {
         let formatter = DateFormatter()
@@ -61,7 +63,8 @@ struct ToolsTab: View {
     }
 
     var body: some View {
-        NavigationStack {
+        @Bindable var store = store
+        return NavigationStack {
             ZStack {
                 AppBackground()
                 List {
@@ -102,6 +105,22 @@ struct ToolsTab: View {
                     Section("Communication") {
                         NavigationLink(destination: BulkCommunicationView()) {
                             Label("Bulk Communication", systemImage: "bubble.left.and.bubble.right")
+                        }
+                        .listRowBackground(Color.white.opacity(0.5))
+                    }
+
+                    Section("Preference") {
+                        Picker("Background", selection: $store.backgroundTheme) {
+                            ForEach(BackgroundTheme.allCases) { theme in
+                                Text(theme.displayName).tag(theme)
+                            }
+                        }
+                        .pickerStyle(.segmented)
+                        .listRowBackground(Color.white.opacity(0.5))
+                        Picker("Language", selection: $languageCode) {
+                            ForEach(AppPreference.supportedLanguages, id: \.code) { lang in
+                                Text(lang.label).tag(lang.code)
+                            }
                         }
                         .listRowBackground(Color.white.opacity(0.5))
                     }

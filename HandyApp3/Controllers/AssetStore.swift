@@ -81,7 +81,7 @@ final class AssetStore {
     /// genuine foreign change and write its own value right back, forever. Backed directly by
     /// UserDefaults rather than `@AppStorage` (a View-only property wrapper) so `@Observable`
     /// still instruments this as a normal stored property — the `Picker` binding in
-    /// `ContentView` needs that. `_applyLoaded`/`applyInPlace` never touch this.
+    /// `ToolsView` needs that. `_applyLoaded`/`applyInPlace` never touch this.
     var backgroundTheme: BackgroundTheme = AssetStore.loadBackgroundThemeFromDefaults() {
         didSet { UserDefaults.standard.set(backgroundTheme.rawValue, forKey: Self.backgroundThemeDefaultsKey) }
     }

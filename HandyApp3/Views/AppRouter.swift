@@ -2,7 +2,7 @@ import SwiftUI
 
 /// Identifies the top-level tabs so one tab can steer the selection of another.
 enum AppTab: Hashable {
-    case home, assets, categories, tools, preferences
+    case home, assets, eventsTransactions, categories, tools
 }
 
 enum ToolsAction: Hashable {
