@@ -330,8 +330,8 @@ struct TransactionEditView: View {
     var body: some View {
         NavigationStack {
             Form {
-                Section("Description") {
-                    TextField("Description", text: $details)
+                Section("Title") {
+                    TextField("Title", text: $details)
                         .limitLength(TextLimits.transactionDetails, text: $details)
                     if seriesCount > 1 {
                         Text("This series has ^[\(seriesCount) transaction](inflect: true)")
