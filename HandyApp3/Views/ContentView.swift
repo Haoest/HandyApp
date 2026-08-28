@@ -10,15 +10,12 @@ struct ContentView: View {
         @Bindable var router = router
         ZStack(alignment: .top) {
             TabView(selection: $router.selectedTab) {
-                HomeTab()
-                    .tabItem { Image(systemName: "house") }
-                    .tag(AppTab.home)
+                TimelineTab()
+                    .tabItem { Image(systemName: "list.bullet.indent") }
+                    .tag(AppTab.timeline)
                 AssetTab()
                     .tabItem { Image(systemName: "shippingbox") }
                     .tag(AppTab.assets)
-                EventsTransactionsTab()
-                    .tabItem { Image(systemName: "list.bullet.clipboard") }
-                    .tag(AppTab.eventsTransactions)
                 CategoryTab()
                     .tabItem { Image(systemName: "folder") }
                     .tag(AppTab.categories)

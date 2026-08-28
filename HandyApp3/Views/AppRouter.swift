@@ -1,8 +1,11 @@
 import SwiftUI
 
 /// Identifies the top-level tabs so one tab can steer the selection of another.
+///
+/// `timeline` replaced the old `home` and `eventsTransactions` tabs, which the Baron Book
+/// redesign merges into a single screen — see `TimelineTab`.
 enum AppTab: Hashable {
-    case home, assets, eventsTransactions, categories, tools
+    case timeline, assets, categories, tools
 }
 
 enum ToolsAction: Hashable {
@@ -13,7 +16,7 @@ enum ToolsAction: Hashable {
 /// Categories tab sends the user to the Assets tab focused on a specific category.
 @Observable
 final class AppRouter {
-    var selectedTab: AppTab = .home
+    var selectedTab: AppTab = .timeline
 
     /// When non-nil, the Assets tab switches to "All", scrolls that category into
     /// view, and flashes a highlighted border around it. The Assets tab clears this
