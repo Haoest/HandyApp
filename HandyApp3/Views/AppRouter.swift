@@ -46,3 +46,21 @@ final class AppRouter {
     /// When non-nil, the asset detail screen opens the add-transaction sheet with this kind pre-selected.
     var pendingTransactionKind: TransactionKind? = nil
 }
+
+/// Where a deep link from the activity log should land inside a thing. Finer-grained than
+/// the four sub-tabs Thing detail actually has — `ThingSubTab.init(anchor:)` maps them down.
+/// Lives here rather than with the detail screen because `AppRouter.pendingAssetAnchor` is
+/// what carries it across the app.
+enum DetailAnchor: String, CaseIterable {
+    case category = "Category"
+    case custom = "Custom"
+    case photos = "Photos"
+    case events = "Events"
+    case transactions = "Transactions"
+    case relationship = "Relationship"
+    case contents = "What's Inside"
+}
+
+extension DetailAnchor {
+    var localizedName: LocalizedStringKey { LocalizedStringKey(rawValue) }
+}

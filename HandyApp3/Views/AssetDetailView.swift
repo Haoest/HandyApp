@@ -2,22 +2,6 @@ import SwiftUI
 import PhotosUI
 import UIKit
 
-/// Jump targets for the section index on the trailing edge of the detail form, and
-/// for deep links from the activity log that open straight to a section.
-enum DetailAnchor: String, CaseIterable {
-    case category = "Category"
-    case custom = "Custom"
-    case photos = "Photos"
-    case events = "Events"
-    case transactions = "Transactions"
-    case relationship = "Relationship"
-    case contents = "What's Inside"
-}
-
-extension DetailAnchor {
-    var localizedName: LocalizedStringKey { LocalizedStringKey(rawValue) }
-}
-
 /// Section header with a trailing add button, e.g. "Photos  +".
 struct AddSectionHeader: View {
     let title: LocalizedStringKey

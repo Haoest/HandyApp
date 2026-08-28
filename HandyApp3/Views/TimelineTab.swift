@@ -75,7 +75,7 @@ struct TimelineTab: View {
             .toolbar(.hidden, for: .navigationBar)
             .navigationDestination(item: $pushedAsset) { pushed in
                 if let asset = store.assets[pushed.id], !asset.isDeleted, !asset.isPurged {
-                    AssetDetailView(asset: asset, initialAnchor: pushed.section)
+                    ThingDetailView(asset: asset, initialAnchor: pushed.section)
                 } else {
                     ContentUnavailableView("Asset Not Found", systemImage: "shippingbox",
                                            description: Text("This asset no longer exists."))

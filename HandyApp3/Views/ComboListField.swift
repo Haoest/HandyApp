@@ -122,7 +122,9 @@ struct ComboListField: View {
 /// Lays out its children left-to-right, wrapping to a new row when the next child would
 /// overflow the available width — the natural "pill row" flow `ComboListField`'s suggestion
 /// chips want, which none of `HStack`/`LazyVGrid` produce on their own.
-private struct FlowLayout: Layout {
+/// Wrapping row layout. Internal rather than file-private since the Thing detail screen's
+/// combo-list editor lays its option chips out the same way.
+struct FlowLayout: Layout {
     var spacing: CGFloat = 8
 
     func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
