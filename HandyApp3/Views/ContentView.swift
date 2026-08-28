@@ -13,7 +13,7 @@ struct ContentView: View {
                 TimelineTab()
                     .tabItem { Image(systemName: "list.bullet.indent") }
                     .tag(AppTab.timeline)
-                AssetTab()
+                ThingsTab()
                     .tabItem { Image(systemName: "shippingbox") }
                     .tag(AppTab.assets)
                 CategoryTab()
