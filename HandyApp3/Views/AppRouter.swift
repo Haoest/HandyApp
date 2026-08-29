@@ -5,7 +5,7 @@ import SwiftUI
 /// `timeline` replaced the old `home` and `eventsTransactions` tabs, which the Baron Book
 /// redesign merges into a single screen — see `TimelineTab`.
 enum AppTab: Hashable {
-    case timeline, assets, categories, tools
+    case timeline, assets, setup
 }
 
 enum ToolsAction: Hashable {

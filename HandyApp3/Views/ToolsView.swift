@@ -4,7 +4,8 @@ import UniformTypeIdentifiers
 
 // MARK: - JSON export document
 
-private struct JSONExportDocument: FileDocument {
+/// Wraps the store's JSON export for `fileExporter`. Internal so Setup can present it.
+struct JSONExportDocument: FileDocument {
     static var readableContentTypes: [UTType] { [.json] }
     let data: Data
     init(data: Data) { self.data = data }

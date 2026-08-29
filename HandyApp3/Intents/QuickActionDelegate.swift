@@ -52,7 +52,7 @@ final class QuickActionSceneDelegate: NSObject, UIWindowSceneDelegate {
         guard item.type == exportShortcutType else { return false }
         Task { @MainActor in
             let router = AppDependencies.shared.router
-            router.selectedTab = .tools
+            router.selectedTab = .setup
             router.pendingToolsAction = .export
         }
         return true

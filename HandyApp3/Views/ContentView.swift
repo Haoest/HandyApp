@@ -11,17 +11,14 @@ struct ContentView: View {
         ZStack(alignment: .top) {
             TabView(selection: $router.selectedTab) {
                 TimelineTab()
-                    .tabItem { Image(systemName: "list.bullet.indent") }
+                    .tabItem { Label("Timeline", systemImage: "list.bullet.indent") }
                     .tag(AppTab.timeline)
                 ThingsTab()
-                    .tabItem { Image(systemName: "shippingbox") }
+                    .tabItem { Label("Things", systemImage: "shippingbox") }
                     .tag(AppTab.assets)
-                CategoryTab()
-                    .tabItem { Image(systemName: "folder") }
-                    .tag(AppTab.categories)
-                ToolsTab()
-                    .tabItem { Image(systemName: "wrench.and.screwdriver") }
-                    .tag(AppTab.tools)
+                SetupTab()
+                    .tabItem { Label("Setup", systemImage: "slider.horizontal.3") }
+                    .tag(AppTab.setup)
             }
             if store.storeRequiresNewerApp {
                 UpdateRequiredBanner()
