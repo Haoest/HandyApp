@@ -412,16 +412,41 @@ private struct SpecComboEditor: View {
 /// full `CompositeEditView` beneath. A user-defined composite may hold a date, contact, or
 /// combo-list field that has no sensible inline shape — those are what the link is for, so no
 /// sub-field is ever unreachable.
+///
+/// The parts are accumulated here before the store sees any of them. `AssetStore.validate`
+/// rejects a composite that is missing a required part, and 2D Size requires both Width and
+/// Length — so writing each part through as it was typed meant every write was refused and
+/// nothing could ever be entered, since the first number could never be stored on its own.
 private struct SpecCompositeEditor: View {
     @Environment(AssetStore.self) private var store
     let assetID: UUID
     let property: AssetProperty
     let definition: CompositeTypeDefinition
 
+    /// Parts typed so far, including a set the store won't accept yet. Seeded from the stored
+    /// value and re-seeded when that changes underneath us (a sync, or an edit made on the
+    /// pushed screen).
+    @State private var working: [String: StoredValue]
+
+    init(assetID: UUID, property: AssetProperty, definition: CompositeTypeDefinition) {
+        self.assetID = assetID
+        self.property = property
+        self.definition = definition
+        _working = State(initialValue: Self.parts(of: property.value))
+    }
+
+    private static func parts(of value: StoredValue?) -> [String: StoredValue] {
+        if case .composite(let dict) = value { return dict }
+        return [:]
+    }
+
     private var valueBinding: Binding<StoredValue?> {
         Binding(
-            get: { property.value },
-            set: { write($0) }
+            get: { working.isEmpty ? nil : .composite(working) },
+            set: { newValue in
+                working = Self.parts(of: newValue)
+                push()
+            }
         )
     }
 
@@ -432,6 +457,14 @@ private struct SpecCompositeEditor: View {
             default: return false
             }
         }
+    }
+
+    /// Required parts with nothing in them. While this is non-empty the store refuses the whole
+    /// value, so the row says which part is holding it up rather than looking broken.
+    private var missingRequired: [String] {
+        definition.fields
+            .filter { $0.isRequired && working[$0.name] == nil }
+            .map(\.name)
     }
 
     var body: some View {
@@ -446,13 +479,19 @@ private struct SpecCompositeEditor: View {
                                 .textCase(.uppercase)
                                 .foregroundStyle(Baron.neutral500)
                                 .lineLimit(1)
-                            CompositePartField(field: field, parent: property.value) { sub in
-                                write(StoredValue.updatingComposite(property.value, field: field.name, to: sub))
+                            CompositePartField(field: field, value: working[field.name]) { sub in
+                                set(field.name, to: sub)
                             }
                         }
                         .frame(maxWidth: .infinity, alignment: .leading)
                     }
                 }
+            }
+            if !working.isEmpty, !missingRequired.isEmpty {
+                Text("Add \(missingRequired.formatted(.list(type: .and))) to save this.")
+                    .font(Baron.body(11.5))
+                    .foregroundStyle(Baron.accent800)
+                    .fixedSize(horizontal: false, vertical: true)
             }
             NavigationLink {
                 CompositeEditView(definition: definition, value: valueBinding)
@@ -462,30 +501,44 @@ private struct SpecCompositeEditor: View {
                     .foregroundStyle(Baron.accent800)
             }
         }
+        .onChange(of: property.value) { _, newValue in
+            let stored = Self.parts(of: newValue)
+            // Only adopt a change that didn't come from here. A refused write leaves the stored
+            // value behind the draft, and re-seeding from it would wipe what was just typed.
+            guard stored != working, !stored.isEmpty || working.isEmpty else { return }
+            working = stored
+        }
     }
 
-    private func write(_ value: StoredValue?) {
-        if let value {
-            try? store.setPropertyValue(value, forDefinitionID: property.definition.id, onAssetID: assetID)
-        } else {
+    private func set(_ name: String, to sub: StoredValue?) {
+        if let sub { working[name] = sub } else { working.removeValue(forKey: name) }
+        push()
+    }
+
+    /// Attempts the whole composite. An incomplete one throws — that is expected mid-entry, and
+    /// the parts stay in `working` so the next part completes it.
+    private func push() {
+        if working.isEmpty {
             try? store.removePropertyValue(forDefinitionID: property.definition.id, fromAssetID: assetID)
+        } else {
+            try? store.setPropertyValue(.composite(working), forDefinitionID: property.definition.id, onAssetID: assetID)
         }
     }
 }
 
 private struct CompositePartField: View {
     let field: PropertyDefinition
-    let parent: StoredValue?
+    let value: StoredValue?
     let onCommit: (StoredValue?) -> Void
 
     @State private var draft: String
     @FocusState private var isFocused: Bool
 
-    init(field: PropertyDefinition, parent: StoredValue?, onCommit: @escaping (StoredValue?) -> Void) {
+    init(field: PropertyDefinition, value: StoredValue?, onCommit: @escaping (StoredValue?) -> Void) {
         self.field = field
-        self.parent = parent
+        self.value = value
         self.onCommit = onCommit
-        _draft = State(initialValue: Self.text(from: parent?.compositeField(field.name)))
+        _draft = State(initialValue: Self.text(from: value))
     }
 
     private static func text(from value: StoredValue?) -> String {
@@ -503,9 +556,9 @@ private struct CompositePartField: View {
             .focused($isFocused)
             .onSubmit { commit() }
             .commitsPendingEdit(focused: isFocused) { commit() }
-            .onChange(of: parent) { _, newValue in
+            .onChange(of: value) { _, newValue in
                 guard !isFocused else { return }
-                draft = Self.text(from: newValue?.compositeField(field.name))
+                draft = Self.text(from: newValue)
             }
             .specField()
     }
@@ -524,7 +577,7 @@ private struct CompositePartField: View {
         default:
             sub = draft.isEmpty ? nil : .text(draft)
         }
-        guard sub != parent?.compositeField(field.name) else { return }
+        guard sub != value else { return }
         onCommit(sub)
     }
 }
