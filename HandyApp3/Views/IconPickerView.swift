@@ -1,5 +1,9 @@
 import SwiftUI
 
+/// The symbol grid behind a category's icon. Presented as a sheet from both the category
+/// editor and the new-category form, so it carries its own Baron chrome rather than the
+/// record sheets' Cancel/Save header — there is nothing to save here, tapping a symbol is the
+/// commit.
 struct IconPickerView: View {
     let current: String
     let onSelect: (String) -> Void
@@ -59,42 +63,87 @@ struct IconPickerView: View {
     }
 
     var body: some View {
-        NavigationStack {
-            ScrollView {
-                LazyVGrid(columns: [GridItem(.adaptive(minimum: 56), spacing: 8)], spacing: 8) {
-                    ForEach(filtered, id: \.self) { name in
-                        Button { onSelect(name) } label: {
-                            iconCell(name: name)
-                        }
-                        .buttonStyle(.plain)
+        ZStack {
+            Baron.background.ignoresSafeArea()
+            VStack(spacing: 0) {
+                header
+                ScrollView {
+                    if filtered.isEmpty {
+                        Text("No symbol matches \"\(searchText)\".")
+                            .font(Baron.body(13))
+                            .foregroundStyle(Baron.neutral600)
+                            .frame(maxWidth: .infinity)
+                            .padding(.top, 40)
                     }
-                }
-                .padding()
-            }
-            .searchable(text: $searchText, prompt: "Search symbols")
-            .navigationTitle("Choose Icon")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") { dismiss() }
+                    LazyVGrid(columns: [GridItem(.adaptive(minimum: 60), spacing: 9)], spacing: 9) {
+                        ForEach(filtered, id: \.self) { name in
+                            Button { onSelect(name) } label: { iconCell(name: name) }
+                                .buttonStyle(.plain)
+                        }
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 14)
                 }
             }
         }
     }
 
-    @ViewBuilder
+    private var header: some View {
+        VStack(spacing: 12) {
+            HStack(spacing: 10) {
+                Button { dismiss() } label: {
+                    Text("Cancel")
+                        .font(Baron.body(12.5, .medium))
+                        .foregroundStyle(Baron.neutral700)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 8)
+                        .background(Baron.inset, in: RoundedRectangle(cornerRadius: 11, style: .continuous))
+                }
+                .buttonStyle(.plain)
+                Spacer(minLength: 0)
+                Text("Choose a symbol")
+                    .font(Baron.heading(15))
+                    .foregroundStyle(Baron.text)
+                Spacer(minLength: 0)
+                // Balances the Cancel button so the title stays centred.
+                Color.clear.frame(width: 62, height: 1)
+            }
+            HStack(spacing: 8) {
+                Image(systemName: "magnifyingglass")
+                    .font(.system(size: 12))
+                    .foregroundStyle(Baron.neutral500)
+                TextField("Search symbols", text: $searchText)
+                    .font(Baron.body(14))
+                    .foregroundStyle(Baron.text)
+                    .autocorrectionDisabled()
+                    .textInputAutocapitalization(.never)
+                if !searchText.isEmpty {
+                    Button { searchText = "" } label: {
+                        Image(systemName: "xmark.circle.fill")
+                            .font(.system(size: 13))
+                            .foregroundStyle(Baron.neutral400)
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 10)
+            .background(Baron.inset, in: RoundedRectangle(cornerRadius: Baron.Radius.field, style: .continuous))
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 14)
+        .background(Baron.surface)
+    }
+
     private func iconCell(name: String) -> some View {
         let selected = name == current
-        let bg: Color = selected ? Color.accentColor.opacity(0.2) : Color(.secondarySystemGroupedBackground)
-        let border: Color = selected ? Color.accentColor : .clear
-        ZStack {
-            RoundedRectangle(cornerRadius: 10)
-                .fill(bg)
-                .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(border, lineWidth: 2))
-            Image(systemName: name)
-                .font(.title2)
-                .foregroundStyle(selected ? AnyShapeStyle(Color.accentColor) : AnyShapeStyle(.primary))
-        }
-        .frame(width: 56, height: 56)
+        return Image(systemName: name)
+            .font(.system(size: 21, weight: .light))
+            .foregroundStyle(selected ? Color.white : Baron.text)
+            .frame(width: 60, height: 60)
+            .background(selected ? Baron.fill : Baron.surface,
+                        in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .strokeBorder(selected ? Color.clear : Baron.neutral300, lineWidth: 1))
     }
 }

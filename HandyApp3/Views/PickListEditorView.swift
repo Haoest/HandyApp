@@ -372,3 +372,187 @@ private struct PickListValueRow: View {
         try? store.renameUserOption(option, to: trimmed, inComboListID: listID)
     }
 }
+
+// MARK: - New pick list
+
+/// The new-pick-list sheet. Shaped like `PickListEditorView` above: every value is its own
+/// editable row rather than the old single field at the bottom whose placeholder flipped
+/// between "Add option" and "Edit option".
+///
+/// The list is only created on Save, so the rows edit a local `[String]` — there is no
+/// definition to call `AssetStore.addUserOption` against yet.
+struct ComboListNewView: View {
+    @Environment(AssetStore.self) private var store
+    @Environment(\.dismiss) private var dismiss
+
+    @State private var name = ""
+    @State private var options: [String] = []
+    @State private var newOption = ""
+    @State private var isUserExtensible = true
+    @State private var showDuplicateNameAlert = false
+
+    var body: some View {
+        RecordSheetScaffold(
+            title: "New pick list",
+            saveLabel: "Create",
+            canSave: !name.trimmingCharacters(in: .whitespaces).isEmpty,
+            onSave: save,
+            dismissesOnSave: false
+        ) {
+            RecordField(label: "List name") {
+                TextField("e.g. Condition", text: $name)
+                    .limitLength(TextLimits.comboListName, text: $name)
+                    .recordInput()
+            }
+            valuesSection
+            freeformCard
+        }
+        .alert("Name already used", isPresented: $showDuplicateNameAlert) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text("A pick list named \"\(name.trimmingCharacters(in: .whitespaces))\" already exists.")
+        }
+    }
+
+    private var valuesSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .firstTextBaseline) {
+                RecordFieldLabel(text: "Values")
+                Spacer(minLength: 0)
+                Text("\(options.count)")
+                    .font(Baron.body(11.5, .medium))
+                    .foregroundStyle(Baron.neutral600)
+            }
+            VStack(spacing: 8) {
+                ForEach(Array(options.enumerated()), id: \.offset) { index, _ in
+                    valueRow(at: index)
+                }
+                addRow
+            }
+        }
+    }
+
+    private func valueRow(at index: Int) -> some View {
+        HStack(spacing: 9) {
+            Text("\(index + 1)")
+                .font(Baron.body(11, .medium))
+                .foregroundStyle(Baron.neutral400)
+                .frame(minWidth: 14, alignment: .trailing)
+            TextField("Value", text: Binding(
+                get: { options.indices.contains(index) ? options[index] : "" },
+                set: { if options.indices.contains(index) { options[index] = $0 } }
+            ))
+            .font(Baron.body(14, .medium))
+            .foregroundStyle(Baron.text)
+            .limitLength(TextLimits.comboListOption, text: Binding(
+                get: { options.indices.contains(index) ? options[index] : "" },
+                set: { if options.indices.contains(index) { options[index] = $0 } }
+            ))
+            .padding(.horizontal, 11)
+            .padding(.vertical, 10)
+            .background(Baron.inset, in: RoundedRectangle(cornerRadius: 11, style: .continuous))
+            iconButton("chevron.up", enabled: index > 0) { swap(index, index - 1) }
+            iconButton("chevron.down", enabled: index < options.count - 1) { swap(index, index + 1) }
+            iconButton("xmark", tint: Baron.danger) { options.remove(at: index) }
+        }
+        .padding(.horizontal, 11)
+        .padding(.vertical, 9)
+        .baronCard(radius: 14, elevation: .low)
+    }
+
+    private var addRow: some View {
+        HStack(spacing: 9) {
+            TextField("Add a value", text: $newOption)
+                .font(Baron.body(14, .medium))
+                .foregroundStyle(Baron.text)
+                .onSubmit { commitNewOption() }
+                .limitLength(TextLimits.comboListOption, text: $newOption)
+                .padding(.horizontal, 11)
+                .padding(.vertical, 10)
+                .background(Baron.inset, in: RoundedRectangle(cornerRadius: 11, style: .continuous))
+            Button { commitNewOption() } label: {
+                Image(systemName: "plus")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(newOption.trimmingCharacters(in: .whitespaces).isEmpty ? Baron.neutral400 : Baron.accent800)
+                    .frame(width: 34, height: 34)
+                    .overlay(RoundedRectangle(cornerRadius: Baron.Radius.control, style: .continuous)
+                        .strokeBorder(Baron.neutral300, lineWidth: 1))
+            }
+            .buttonStyle(.plain)
+            .disabled(newOption.trimmingCharacters(in: .whitespaces).isEmpty)
+        }
+        .padding(.horizontal, 11)
+        .padding(.vertical, 9)
+        .baronCard(radius: 14, elevation: .low)
+    }
+
+    private var freeformCard: some View {
+        Button { isUserExtensible.toggle() } label: {
+            HStack(spacing: 10) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Allow off-list answers")
+                        .font(Baron.body(14.5, .medium))
+                        .foregroundStyle(Baron.text)
+                    Text(isUserExtensible
+                         ? "Typing a new value adds it to this list."
+                         : "Only the values above can be chosen.")
+                        .font(Baron.body(11.5))
+                        .foregroundStyle(Baron.neutral600)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .multilineTextAlignment(.leading)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                ToggleTrack(isOn: isUserExtensible)
+            }
+            .contentShape(Rectangle())
+            .padding(15)
+            .baronCard(elevation: .low)
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func iconButton(_ systemName: String, enabled: Bool = true, tint: Color = Baron.neutral600,
+                            action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: systemName)
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(enabled ? tint : Baron.neutral300)
+                .frame(width: 28, height: 28)
+                .overlay(RoundedRectangle(cornerRadius: 9, style: .continuous)
+                    .strokeBorder(Baron.neutral300, lineWidth: 1))
+        }
+        .buttonStyle(.plain)
+        .disabled(!enabled)
+    }
+
+    private func swap(_ a: Int, _ b: Int) {
+        guard options.indices.contains(a), options.indices.contains(b) else { return }
+        options.swapAt(a, b)
+    }
+
+    private func commitNewOption() {
+        let trimmed = newOption.trimmingCharacters(in: .whitespaces)
+        guard !trimmed.isEmpty, !options.contains(trimmed) else { newOption = ""; return }
+        options.append(trimmed)
+        newOption = ""
+    }
+
+    private func save() {
+        // Folds in whatever's still sitting in the add field — so hitting Create right after
+        // typing a value doesn't silently discard it just because + was never tapped.
+        commitNewOption()
+        let trimmed = name.trimmingCharacters(in: .whitespaces)
+        guard store.comboListNameIsAvailable(trimmed) else {
+            showDuplicateNameAlert = true
+            return
+        }
+        // Rows are editable in place, so a value can be blanked out or duplicated on its way
+        // here; the list is normalised once rather than fighting the user mid-edit.
+        var seen = Set<String>()
+        let cleaned = options
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .filter { !$0.isEmpty && seen.insert($0).inserted }
+        store.createComboList(name: trimmed, userOptions: cleaned, isUserExtensible: isUserExtensible)
+        dismiss()
+    }
+}
