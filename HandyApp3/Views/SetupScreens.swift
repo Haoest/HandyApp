@@ -185,7 +185,7 @@ struct CategoriesListView: View {
         }
         .navigationDestination(item: $openCategoryID) { id in
             if let category = store.categories[id], !category.isDeleted {
-                CategoryPropertyDefsView(category: category)
+                CategoryEditorView(category: category)
             } else {
                 ContentUnavailableView("Category Not Found", systemImage: "folder",
                                        description: Text("This category no longer exists."))
@@ -283,7 +283,7 @@ struct PickListsView: View {
         }
         .navigationDestination(item: $openListID) { id in
             if let list = store.comboListDefinitions[id], !list.isDeleted {
-                ComboListDetailView(list: list)
+                PickListEditorView(list: list)
             } else {
                 ContentUnavailableView("Pick List Not Found", systemImage: "list.bullet.rectangle",
                                        description: Text("This pick list no longer exists."))

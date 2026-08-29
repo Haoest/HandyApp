@@ -273,7 +273,7 @@ final class AssetStore {
     }
 
     /// Reorders a category's property templates: `fromOffsets`/`toOffset` index the same
-    /// sorted, live list `CategoryPropertyDefsView` renders (`SwiftUI`'s `.onMove` convention).
+    /// sorted, live list `CategoryEditorView` renders (`SwiftUI`'s `.onMove` convention).
     func moveTemplateProperties(fromOffsets: IndexSet, toOffset: Int, inCategoryID categoryID: UUID) throws {
         guard let cat = categories[categoryID] else { throw AssetStoreError.categoryNotFound(categoryID) }
         let writes = Self.moveWrites(fromOffsets: fromOffsets, toOffset: toOffset, live: cat.liveTemplates.sorted(by: SortOrdering.precedes))
@@ -742,6 +742,17 @@ final class AssetStore {
         markDirty()
     }
 
+    /// Turns off-list answers on or off. When off, `handleComboListAutoAdd` stops appending
+    /// typed values, so the list becomes a closed set — existing values already stored on
+    /// assets are left alone, since narrowing the list must not silently blank them.
+    func setComboListExtensible(id: UUID, _ isUserExtensible: Bool) throws {
+        guard let cl = comboListDefinitions[id] else { throw AssetStoreError.comboListNotFound(id) }
+        guard cl.isUserExtensible != isUserExtensible else { return }
+        cl.isUserExtensible = isUserExtensible
+        cl.modifyDate = Date()
+        markDirty()
+    }
+
     /// Case-insensitive uniqueness check over live lists, for the authoring UI.
     /// `createComboList` itself does not enforce this (it's also the seeder's entry point).
     func comboListNameIsAvailable(_ name: String, excluding id: UUID? = nil) -> Bool {
@@ -799,6 +810,25 @@ final class AssetStore {
             throw AssetStoreError.cannotModifySystemOption(listID: id, option: option)
         }
         cl.userOptions.removeAll { $0 == option }
+        cl.modifyDate = Date()
+        markDirty()
+    }
+
+    /// Moves a user option one place up or down within `userOptions`, which is what the pick
+    /// list editor's ↑/↓ buttons drive. System options are fixed at the head of `allOptions`
+    /// and are not part of this ordering.
+    ///
+    /// Order is not a merged field: `SnapshotReconciler.joinComboList` takes the winning side's
+    /// `userOptions` wholesale and appends only what the loser had that the winner lacked, so a
+    /// reorder that races a peer's reorder resolves to one side's arrangement rather than an
+    /// interleaving. Options are never lost either way.
+    func moveUserOption(_ option: String, inComboListID id: UUID, by offset: Int) throws {
+        guard let cl = comboListDefinitions[id] else { throw AssetStoreError.comboListNotFound(id) }
+        guard let index = cl.userOptions.firstIndex(of: option) else { return }
+        let destination = index + offset
+        guard destination >= 0, destination < cl.userOptions.count else { return }
+        cl.userOptions.remove(at: index)
+        cl.userOptions.insert(option, at: destination)
         cl.modifyDate = Date()
         markDirty()
     }

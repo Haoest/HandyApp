@@ -32,7 +32,12 @@ final class ComboListDefinition: Identifiable, Equatable {
     /// When `true`, application users can type new values that are not yet in
     /// the list; those values are appended to `userOptions` automatically.
     /// When `false`, only the options already present in `allOptions` are accepted.
-    let isUserExtensible: Bool
+    ///
+    /// Settable through `AssetStore.setComboListExtensible` — the pick-list editor exposes it
+    /// as "Allow off-list answers". `modifyDate` already covers it for sync (see below), and
+    /// `SnapshotReconciler.joinComboList` takes the whole winning header, so it merges
+    /// last-writer-wins alongside `name` with no extra machinery.
+    var isUserExtensible: Bool
 
     /// Soft-delete tombstone. A deleted list is hidden from pickers (`AssetStore.
     /// allComboListDefinitions` filters it out) but never purged — see `AssetStore.

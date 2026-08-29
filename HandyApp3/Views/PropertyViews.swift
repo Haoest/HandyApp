@@ -159,11 +159,9 @@ struct PropertyEditView: View {
                         get: { typeChoice },
                         set: { typeChoice = $0; selectedComboListID = nil; clearValue() }
                     )) {
-                        Text("Text").tag(TypeChoice.basic(.text))
-                        Text("Number").tag(TypeChoice.basic(.number))
-                        Text("Currency").tag(TypeChoice.basic(.currency))
-                        Text("Date").tag(TypeChoice.basic(.date))
-                        Text("Contact").tag(TypeChoice.basic(.contact))
+                        ForEach(BasicType.userSelectable, id: \.self) { basic in
+                            Text(basic.displayName).tag(TypeChoice.basic(basic))
+                        }
                         ForEach(sortedComposites) { ct in
                             Text(ct.name).tag(TypeChoice.composite(ct.id))
                         }

@@ -11,6 +11,13 @@ enum BasicType: String, CaseIterable, Equatable, Hashable, Codable {
     case contact
     /// Raw binary data (Foundation.Data).
     case data
+
+    /// The basics a user may pick for a field. `.data` is excluded — it backs photo payloads,
+    /// not anything anyone would choose for a property. Both the property sheet and the
+    /// category editor's type chips read this, so they can't drift apart.
+    static let userSelectable: [BasicType] = [.text, .number, .currency, .date, .contact]
+
+    var displayName: String { rawValue.capitalized }
 }
 
 // MARK: - Property type (basic or composite, recursive)
