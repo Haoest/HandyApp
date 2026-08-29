@@ -204,7 +204,7 @@ struct RecordChipPicker<Option: Hashable>: View {
     }
 }
 
-/// Label · value · slider. Same `DueDefaults.sliderRange` and day semantics as `StepSlider`,
+/// Label · value · slider. Same `DueDefaults.sliderRange` and day semantics as the old step slider,
 /// restyled — the tick marks are dropped because the value now reads out above the track.
 struct RecordDaySlider: View {
     let label: LocalizedStringKey

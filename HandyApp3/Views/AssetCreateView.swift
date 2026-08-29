@@ -103,7 +103,7 @@ struct AssetCreateView: View {
                         // option on save; a closed one would have the store reject it, so the
                         // field is only offered where it can actually succeed.
                         if typeList.isUserExtensible {
-                            ComboListField(label: nil, list: typeList, current: selectedType ?? "",
+                            ComboListField(list: typeList, current: selectedType ?? "",
                                            maxLength: typeDefinition.maxLength,
                                            showsSuggestions: false,
                                            prompt: "Something else") { newValue in

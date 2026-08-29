@@ -12,7 +12,7 @@ extension BuiltInTypes {
     ///   • Width  — Number   (required)
     ///   • Length — Number   (required)
     ///   • Height — Number   (required)
-    ///   • Unit   — Text     (optional, e.g. UnitIndex.feet.symbol → "ft")
+    ///   • Unit   — Text     (optional, e.g. "ft")
     static func size3D() -> CompositeTypeDefinition {
         CompositeTypeDefinition(
             id: deterministicID("compositeType.3DSize"),

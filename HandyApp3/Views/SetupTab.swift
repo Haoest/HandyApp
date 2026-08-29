@@ -1,6 +1,22 @@
 import SwiftUI
 import UniformTypeIdentifiers
 
+// MARK: - JSON export document
+
+/// Wraps the store's JSON export for `fileExporter`. Internal so Setup can present it.
+struct JSONExportDocument: FileDocument {
+    static var readableContentTypes: [UTType] { [.json] }
+    let data: Data
+    init(data: Data) { self.data = data }
+    init(configuration: ReadConfiguration) throws {
+        guard let d = configuration.file.regularFileContents else { throw CocoaError(.fileReadCorruptFile) }
+        data = d
+    }
+    func fileWrapper(configuration: WriteConfiguration) throws -> FileWrapper {
+        FileWrapper(regularFileWithContents: data)
+    }
+}
+
 /// Setup — the redesign's third and last tab. Merges the old Categories and Tools tabs, which
 /// the design treats as one place: templates, app preferences, data, extras, and a fenced-off
 /// "Careful" group. The original audit's complaint about Tools was that a cosmetic theme picker

@@ -392,7 +392,7 @@ struct PropertyEditView: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             .baronCard(elevation: .low)
         case .comboList(let list):
-            ComboListField(label: nil, list: list, current: valueCombo,
+            ComboListField(list: list, current: valueCombo,
                            maxLength: parsedMaxLength) { newValue in
                 valueCombo = newValue ?? ""
             }

@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// The category editor. Replaces `CategoryPropertyDefsView`'s `Form`.
+/// The category editor. Replaces the old `Form`-based template screen.
 ///
 /// Two things change beyond styling. Field rows carry explicit ↑/↓/× buttons instead of
 /// drag-to-reorder and swipe-to-delete — the same discoverability argument the design makes

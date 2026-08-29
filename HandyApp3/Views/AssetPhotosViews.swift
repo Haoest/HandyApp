@@ -49,7 +49,7 @@ enum ThumbnailCache {
     }()
 
     /// The photo's thumbnail, decoded once and reused. Nil until its bytes have been
-    /// loaded from disk (see the `.task` in `PhotosSection.thumbnailCell`).
+    /// loaded from disk (see the `.task` in the Photos tab's thumbnail).
     static func image(for photo: Photo) -> UIImage? {
         guard let data = photo.thumbnailData else { return nil }
         let key = photo.id as NSUUID
@@ -58,69 +58,6 @@ enum ThumbnailCache {
         let image = decoded.preparingForDisplay() ?? decoded
         cache.setObject(Entry(image: image, byteCount: data.count), forKey: key)
         return image
-    }
-}
-
-// MARK: - Photos section
-
-struct PhotosSection: View {
-    @Environment(AssetStore.self) private var store
-    let asset: Asset
-    // Selection is owned by the parent Form (not this Section) so re-evaluating the
-    // section's body during presentation can't cancel the first present — same reason
-    // the event/transaction sheets live at the Form level.
-    @Binding var selectedPhoto: Photo?
-    let onAdd: () -> Void
-
-    private var sorted: [Photo] { asset.livePhotos.sorted { $0.addedDate > $1.addedDate } }
-
-    var body: some View {
-        Section {
-            if sorted.isEmpty {
-                Text("None").foregroundStyle(.secondary)
-            } else {
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 10) {
-                        ForEach(sorted) { photo in
-                            thumbnailCell(photo)
-                        }
-                    }
-                    .padding(.vertical, 4)
-                }
-                .pagingExcludedRow(id: "photos")
-            }
-        } header: {
-            AddSectionHeader(title: "Photos", action: onAdd)
-        }
-    }
-
-    @ViewBuilder
-    private func thumbnailCell(_ photo: Photo) -> some View {
-        Button { selectedPhoto = photo } label: {
-            Group {
-                if let img = ThumbnailCache.image(for: photo) {
-                    Image(uiImage: img)
-                        .resizable()
-                        .scaledToFill()
-                } else {
-                    Color.secondary.opacity(0.15)
-                }
-            }
-            .frame(width: 80, height: 80)
-            .clipShape(RoundedRectangle(cornerRadius: 8))
-        }
-        .buttonStyle(.plain)
-        .task(id: photo.id) {
-            guard photo.thumbnailData == nil else { return }
-            for _ in 0..<10 {
-                if Task.isCancelled { return }
-                if let data = PhotoStorage.loadThumb(id: photo.id) {
-                    photo.thumbnailData = data
-                    return
-                }
-                try? await Task.sleep(for: .seconds(1))
-            }
-        }
     }
 }
 

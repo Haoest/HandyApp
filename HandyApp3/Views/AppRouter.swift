@@ -34,7 +34,7 @@ final class AppRouter {
     /// to nil once the destination view appears.
     var pendingAssetAnchor: DetailAnchor?
 
-    /// When non-nil, ToolsTab consumes this action (e.g. trigger export), then resets to nil.
+    /// When non-nil, SetupTab consumes this action (e.g. trigger export), then resets to nil.
     var pendingToolsAction: ToolsAction?
 
     /// When true, the Assets tab opens the new-asset creation sheet. Cleared after consumption.

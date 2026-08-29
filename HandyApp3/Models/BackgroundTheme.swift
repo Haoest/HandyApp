@@ -3,9 +3,10 @@ import Foundation
 /// User-selectable app backdrop. Each case is a calm, light, geometric gradient; the
 /// choice lives on `AssetStore.backgroundTheme` and persists as the raw value.
 ///
-/// The colors themselves are a view concern — see `BackgroundTheme.palette` in
-/// `Views/AppBackground.swift`. Only the identity of a theme belongs here, so the
-/// store and the persistence layer don't have to reach into the view layer.
+/// Nothing renders this any more: the Baron palette follows the system light/dark setting, so
+/// the gradient backdrops and their picker are gone. The type stays because the choice is
+/// persisted and synced per device, and dropping it would mean a migration for a setting a
+/// future theme picker could still use.
 enum BackgroundTheme: String, CaseIterable, Identifiable {
     case mist, sand, facets
 

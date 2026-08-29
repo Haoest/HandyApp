@@ -6,7 +6,7 @@ import UIKit
 ///
 /// Every color is a single dynamic `Color` carrying both schemes, so views never branch on
 /// `colorScheme` — the same token renders correctly in either. That is what lets the new screens
-/// drop the old `.environment(\.colorScheme, .light)` pin that `AppBackground`'s gradients forced.
+/// drop the old `.environment(\.colorScheme, .light)` pin the gradient backdrops forced.
 enum Baron {
 
     // MARK: - Surfaces

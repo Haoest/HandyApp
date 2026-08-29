@@ -297,9 +297,9 @@ struct StoreSnapshotDTO: Codable {
 // but disagree on encoding. `StoreFileLayout.writeLocked` canonicalizes before every write, so
 // on-disk files are always canonical no matter what produced the in-memory snapshot.
 //
-// Every display site already re-sorts for its own UI order — `AssetPhotosViews` by
-// `addedDate`, `AssetEventsViews`/`AssetTransactionsViews` by `recurringFirstDateDescending()`,
-// `AssetDetailView.sortedBase/sortedCustom` by `sortOrder` — so on-disk order is invisible to
+// Every display site already re-sorts for its own UI order — photos by `addedDate`, the log
+// rows by `ThingLogDigest`,
+// the Specs tab by `sortOrder` — so on-disk order is invisible to
 // the UI. `CompositeTypeDTO.fields` and `ComboListDTO.userOptions` are deliberately NOT
 // reordered here: field order is a semantic display order preserved by whole-record
 // last-writer-wins in the reconciler, and `userOptions`' merge order is constructed

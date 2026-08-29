@@ -39,7 +39,7 @@ struct TimelineItem: Identifiable {
     /// The representative record — the series member whose due date is most urgent.
     let id: UUID
     /// The newest occurrence in the same series, which "Log it"/"Log & edit" acts on. Equal to
-    /// `id` for a record with no series. Mirrors `HomeTab`'s due-line behavior: the *soonest*
+    /// `id` for a record with no series. Mirrors the timeline's due-line behavior: the *soonest*
     /// due member decides when the row appears, the *newest* member is what gets duplicated.
     let openRecordID: UUID
     let assetID: UUID
@@ -81,7 +81,7 @@ struct TimelineSummary: Equatable {
 /// Buckets watched (due-bearing) events and transactions across every asset into the Timeline's
 /// relative windows — overdue, this week, next two weeks, later this month.
 ///
-/// Series collapsing matches `HomeTab.dueCandidates`: one row per series, represented by the
+/// Series collapsing matches the timeline's due candidates: one row per series, represented by the
 /// member with the soonest due date, acting on the newest member. `SeriesLogic.isSuppressed`
 /// still applies, so an occurrence that has already been logged this period drops off.
 ///

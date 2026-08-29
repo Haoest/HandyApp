@@ -13,7 +13,6 @@ import SwiftUI
 /// appending "E", "El", "Ele", … to `userOptions` for an extensible list, each one syncing under
 /// a grow-only union that never lets a peer remove them.
 struct ComboListField: View {
-    let label: String?
     let list: ComboListDefinition
     /// Authoritative value from the owner (`nil`-backed `StoredValue?` reduced to `""`).
     let current: String
@@ -28,7 +27,6 @@ struct ComboListField: View {
     /// Placeholder. Worth setting when suggestions are off, since the field then has nothing
     /// else to say what it is for.
     var prompt: LocalizedStringKey = ""
-    var onEditLabel: (() -> Void)? = nil
     /// Called once per completed edit. `nil` means the value was cleared.
     let onCommit: (String?) -> Void
 
@@ -39,22 +37,18 @@ struct ComboListField: View {
     @State private var lastCommitted: String?
 
     init(
-        label: String?,
         list: ComboListDefinition,
         current: String,
         maxLength: Int? = nil,
         showsSuggestions: Bool = true,
         prompt: LocalizedStringKey = "",
-        onEditLabel: (() -> Void)? = nil,
         onCommit: @escaping (String?) -> Void
     ) {
-        self.label = label
         self.list = list
         self.current = current
         self.maxLength = maxLength
         self.showsSuggestions = showsSuggestions
         self.prompt = prompt
-        self.onEditLabel = onEditLabel
         self.onCommit = onCommit
         _draft = State(initialValue: current)
     }
@@ -75,9 +69,6 @@ struct ComboListField: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
-            if let label {
-                PropertyLabel(name: label, onEditLabel: onEditLabel)
-            }
             TextField(prompt, text: $draft)
                 .focused($isFocused)
                 .autocorrectionDisabled()

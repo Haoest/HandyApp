@@ -11,7 +11,7 @@ extension BuiltInTypes {
     /// Fields:
     ///   • Width  — Number   (required)
     ///   • Length — Number   (required)
-    ///   • Unit   — Text     (optional, e.g. UnitIndex.feet.symbol → "ft")
+    ///   • Unit   — Text     (optional, e.g. "ft")
     static func size2D() -> CompositeTypeDefinition {
         CompositeTypeDefinition(
             id: deterministicID("compositeType.2DSize"),

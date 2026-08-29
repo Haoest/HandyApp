@@ -600,7 +600,7 @@ final class AssetStore {
     }
 
     /// Reorders an asset's base (category-derived) properties: `fromOffsets`/`toOffset` index
-    /// the same sorted, live list `AssetDetailView` renders.
+    /// the same sorted, live list the Specs tab renders.
     func moveBaseProperties(fromOffsets: IndexSet, toOffset: Int, onAssetID assetID: UUID) throws {
         guard let asset = assets[assetID] else { throw AssetStoreError.assetNotFound(assetID) }
         let writes = Self.moveWrites(fromOffsets: fromOffsets, toOffset: toOffset, live: asset.liveBaseProperties.sorted(by: SortOrdering.precedes))
@@ -618,7 +618,7 @@ final class AssetStore {
     }
 
     /// Reorders an asset's custom properties: `fromOffsets`/`toOffset` index the same sorted,
-    /// live list `AssetDetailView` renders.
+    /// live list the Specs tab renders.
     func moveCustomProperties(fromOffsets: IndexSet, toOffset: Int, onAssetID assetID: UUID) throws {
         guard let asset = assets[assetID] else { throw AssetStoreError.assetNotFound(assetID) }
         let writes = Self.moveWrites(fromOffsets: fromOffsets, toOffset: toOffset, live: asset.liveCustomProperties.sorted(by: SortOrdering.precedes))

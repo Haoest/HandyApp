@@ -305,7 +305,7 @@ private struct PartComboEditor: View {
                 }
             }
             if list.isUserExtensible {
-                ComboListField(label: nil, list: list, current: current, maxLength: maxLength,
+                ComboListField(list: list, current: current, maxLength: maxLength,
                                showsSuggestions: false, prompt: "Something else") { newValue in
                     write(newValue)
                 }

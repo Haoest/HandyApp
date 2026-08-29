@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// The pick-list editor. Replaces `ComboListDetailView`.
+/// The pick-list editor. Replaces the old combo-list detail screen.
 ///
 /// The old screen edited one option at a time through a single field at the bottom whose
 /// placeholder flipped between "Add option" and "Edit option" — you had to tap a row to load it

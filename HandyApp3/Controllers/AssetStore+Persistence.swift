@@ -997,7 +997,7 @@ extension AssetStore {
     /// Every other existing local asset is left untouched. Such an asset falls back to being
     /// a root (`parentID = nil`, not left dangling) when its incoming parent is missing,
     /// itself, soft-deleted, or would form a cycle — a cycle is not just bad data,
-    /// `Asset.descendants` and `AssetDetailView.anchorIndex` are unbounded walks that would
+    /// `Asset.descendants` and the detail screen's paging walk are unbounded walks that would
     /// hang on one.
     private func mergeHierarchy(newAssets: [(Asset, AssetDTO)], assetMap: [UUID: Asset]) {
         let newAssetIDs = Set(newAssets.map { $0.0.id })

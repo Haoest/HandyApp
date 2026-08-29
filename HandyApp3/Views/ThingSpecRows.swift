@@ -265,7 +265,7 @@ private struct SpecDateEditor: View {
 
 // MARK: - Contact
 
-/// Expands to the actions the contact supports, exactly as the old `ContactActionBar` decided
+/// Expands to the actions the contact supports, exactly as the old contact row decided
 /// them: a button appears only when that method exists on the resolved contact.
 private struct SpecContactEditor: View {
     @Environment(AssetStore.self) private var store
@@ -384,7 +384,6 @@ private struct SpecComboEditor: View {
             // would revert whatever was typed, which reads as the app ignoring you.
             if list.isUserExtensible {
                 ComboListField(
-                    label: nil,
                     list: list,
                     current: current,
                     maxLength: property.definition.maxLength,
