@@ -21,18 +21,30 @@ struct ComboListField: View {
     /// dropped rather than offered — tapping one would commit a value the field can't actually
     /// hold once clamped, silently storing something that matches no option on the list.
     var maxLength: Int? = nil
+    /// Whether the field offers its own matching-option chips while focused. Turn this off
+    /// where the caller already lays the options out itself — otherwise focusing the field
+    /// paints a second, identical set of choices under the first.
+    var showsSuggestions: Bool = true
+    /// Placeholder. Worth setting when suggestions are off, since the field then has nothing
+    /// else to say what it is for.
+    var prompt: LocalizedStringKey = ""
     var onEditLabel: (() -> Void)? = nil
     /// Called once per completed edit. `nil` means the value was cleared.
     let onCommit: (String?) -> Void
 
     @State private var draft: String
     @FocusState private var isFocused: Bool
+    /// The last value this field itself committed. Lets the `current` observer tell its own
+    /// write echoing back through the store from a change made somewhere else — see `body`.
+    @State private var lastCommitted: String?
 
     init(
         label: String?,
         list: ComboListDefinition,
         current: String,
         maxLength: Int? = nil,
+        showsSuggestions: Bool = true,
+        prompt: LocalizedStringKey = "",
         onEditLabel: (() -> Void)? = nil,
         onCommit: @escaping (String?) -> Void
     ) {
@@ -40,6 +52,8 @@ struct ComboListField: View {
         self.list = list
         self.current = current
         self.maxLength = maxLength
+        self.showsSuggestions = showsSuggestions
+        self.prompt = prompt
         self.onEditLabel = onEditLabel
         self.onCommit = onCommit
         _draft = State(initialValue: current)
@@ -64,17 +78,24 @@ struct ComboListField: View {
             if let label {
                 PropertyLabel(name: label, onEditLabel: onEditLabel)
             }
-            TextField("", text: $draft)
+            TextField(prompt, text: $draft)
                 .focused($isFocused)
                 .autocorrectionDisabled()
                 .onSubmit { commit() }
                 .commitsPendingEdit(focused: isFocused) { commit() }
                 .limitLength(maxLength, text: $draft)
+                // `current` changes for two very different reasons. One is this field's own
+                // commit coming back through the store, which must not disturb an edit still
+                // in progress. The other is someone setting the value from outside — tapping
+                // an option chip laid out beside the field — and that has to win, focused or
+                // not, or the chip appears to do nothing. Guarding on focus alone conflated
+                // the two and swallowed the second.
                 .onChange(of: current) { _, new in
-                    guard !isFocused else { return }
+                    guard new != lastCommitted else { return }
                     draft = new
+                    if isFocused { isFocused = false }
                 }
-            if isFocused {
+            if isFocused && showsSuggestions {
                 FlowLayout(spacing: 8) {
                     ForEach(suggestions, id: \.self) { option in
                         Text(option)
@@ -104,6 +125,7 @@ struct ComboListField: View {
         let trimmed = draft.trimmingCharacters(in: .whitespaces)
         guard trimmed != current else { return }
         if trimmed.isEmpty {
+            lastCommitted = ""
             onCommit(nil)
             return
         }
@@ -113,6 +135,7 @@ struct ComboListField: View {
             draft = current
             return
         }
+        lastCommitted = trimmed
         onCommit(trimmed)
     }
 }

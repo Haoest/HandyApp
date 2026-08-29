@@ -18,7 +18,32 @@ struct RecordSheetScaffold<Content: View>: View {
     let saveLabel: LocalizedStringKey
     let canSave: Bool
     let onSave: () -> Void
+    /// What the leading button does. Defaults to dismissing, which is right for a sheet's root
+    /// view; a view *pushed* inside a sheet must pass its own closure, since `dismiss` there
+    /// pops the stack rather than closing the sheet.
+    var onCancel: (() -> Void)? = nil
+    /// Whether the scaffold dismisses itself after a successful save. False when `onSave` owns
+    /// the outcome — the create form, for instance, hands the new thing back to its presenter,
+    /// which closes the sheet and then navigates.
+    var dismissesOnSave: Bool = true
+    /// Leading button label. "Back" where the action steps backward through a flow rather than
+    /// abandoning it.
+    var cancelLabel: LocalizedStringKey = "Cancel"
     @ViewBuilder let content: Content
+
+    init(title: LocalizedStringKey, saveLabel: LocalizedStringKey, canSave: Bool,
+         onSave: @escaping () -> Void, onCancel: (() -> Void)? = nil,
+         dismissesOnSave: Bool = true, cancelLabel: LocalizedStringKey = "Cancel",
+         @ViewBuilder content: () -> Content) {
+        self.title = title
+        self.saveLabel = saveLabel
+        self.canSave = canSave
+        self.onSave = onSave
+        self.onCancel = onCancel
+        self.dismissesOnSave = dismissesOnSave
+        self.cancelLabel = cancelLabel
+        self.content = content()
+    }
 
     var body: some View {
         ZStack {
@@ -37,8 +62,8 @@ struct RecordSheetScaffold<Content: View>: View {
 
     private var header: some View {
         HStack(spacing: 10) {
-            Button { dismiss() } label: {
-                Text("Cancel")
+            Button { if let onCancel { onCancel() } else { dismiss() } } label: {
+                Text(cancelLabel)
                     .font(Baron.body(12.5, .medium))
                     .foregroundStyle(Baron.neutral700)
                     .padding(.horizontal, 12)
@@ -52,7 +77,7 @@ struct RecordSheetScaffold<Content: View>: View {
                 .foregroundStyle(Baron.text)
                 .lineLimit(1)
             Spacer(minLength: 0)
-            Button { onSave(); dismiss() } label: {
+            Button { onSave(); if dismissesOnSave { dismiss() } } label: {
                 Text(saveLabel)
                     .font(Baron.heading(11.5))
                     .tracking(0.7)

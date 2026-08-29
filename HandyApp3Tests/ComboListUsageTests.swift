@@ -56,6 +56,35 @@ final class ComboListUsageTests: XCTestCase {
         XCTAssertEqual(asset.value(for: definition.id), .text("Petrol"))
     }
 
+    /// The path the new-thing form's Type field takes: an off-list value typed at creation is
+    /// stored *and* adopted as a new option, so the next thing can pick it from the chips.
+    func testOffListTypeChosenAtCreationJoinsTheList() throws {
+        let store = makeStore()
+        let list = store.createComboList(name: "Appliance type", userOptions: ["Fridge"], isUserExtensible: true)
+        let definition = PropertyDefinition(name: "Type", type: .comboList(list), isRequired: true)
+        let category = try store.createCategory(name: "Appliance", propertyTemplates: [AssetProperty(definition: definition)])
+        let asset = try store.createAsset(name: "Kitchen dishwasher", categoryID: category.id)
+
+        try store.setPropertyValue(.text("Dishwasher"), forDefinitionID: definition.id, onAssetID: asset.id)
+
+        XCTAssertEqual(asset.value(for: definition.id), .text("Dishwasher"))
+        XCTAssertTrue(list.allOptions.contains("Dishwasher"))
+    }
+
+    /// The same value on a *closed* list is refused outright — which is why the create form
+    /// only offers the free-text field when the list is extensible.
+    func testOffListTypeIsRejectedOnAClosedList() throws {
+        let store = makeStore()
+        let list = store.createComboList(name: "Appliance type", userOptions: ["Fridge"], isUserExtensible: false)
+        let definition = PropertyDefinition(name: "Type", type: .comboList(list), isRequired: true)
+        let category = try store.createCategory(name: "Appliance", propertyTemplates: [AssetProperty(definition: definition)])
+        let asset = try store.createAsset(name: "Kitchen dishwasher", categoryID: category.id)
+
+        XCTAssertThrowsError(try store.setPropertyValue(.text("Dishwasher"), forDefinitionID: definition.id, onAssetID: asset.id))
+        XCTAssertNil(asset.value(for: definition.id))
+        XCTAssertFalse(list.allOptions.contains("Dishwasher"))
+    }
+
     // MARK: - Reordering
 
     func testMovingAUserOptionUpAndDown() throws {

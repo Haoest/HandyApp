@@ -20,7 +20,8 @@ struct AssetCreateView: View {
     /// Called with the freshly created asset once Save commits it to the store.
     /// The presenter is responsible for dismissing and navigating to it.
     let onCreated: (Asset) -> Void
-    /// Called when the user cancels. The presenter is responsible for dismissing.
+    /// Called by the leading "Back" button. `NewAssetSheet` uses it to return to the category
+    /// step; the sheet's own swipe-down is what abandons the whole flow.
     let onCancel: () -> Void
 
     @State private var name = ""
@@ -56,53 +57,103 @@ struct AssetCreateView: View {
         return typeValue == nil
     }
 
+    private var typeList: ComboListDefinition? {
+        guard let typeDefinition, case .comboList(let list) = typeDefinition.type else { return nil }
+        return list
+    }
+
+    /// Options for the required "Type" field, when the category has one.
+    private var typeOptions: [String] {
+        guard let typeDefinition, case .comboList(let list) = typeDefinition.type else { return [] }
+        guard let maxLength = typeDefinition.maxLength else { return list.allOptions }
+        return list.allOptions.filter { $0.count <= maxLength }
+    }
+
+    private var selectedType: String? {
+        if case .text(let value) = typeValue { return value }
+        return nil
+    }
+
+    private var fieldCount: Int { category.liveTemplates.count }
+
     var body: some View {
-        Form {
-            Section {
-                VStack(alignment: .leading, spacing: 4) {
-                    PropertyLabel(name: "Category", onEditLabel: nil)
-                    Label(category.name, systemImage: category.iconName)
-                }
-                if let typeDefinition {
-                    PropertyEditRow(definition: typeDefinition, value: $typeValue)
-                        .onChange(of: typeValue) { _, newValue in applyTypeSelection(newValue) }
-                }
-                VStack(alignment: .leading, spacing: 4) {
-                    PropertyLabel(name: "Name", onEditLabel: nil)
-                    HStack {
-                        TextField("Asset name", text: $name)
-                            .limitLength(TextLimits.assetName, text: $name)
-                        if !name.isEmpty {
-                            Button {
-                                name = ""
-                            } label: {
-                                Image(systemName: "xmark.circle.fill")
-                                    .foregroundStyle(.secondary)
+        RecordSheetScaffold(
+            title: "New thing",
+            saveLabel: "Create",
+            canSave: !trimmedName.isEmpty && !isTypeMissing,
+            onSave: save,
+            onCancel: onCancel,
+            dismissesOnSave: false,
+            cancelLabel: "Back"
+        ) {
+            Text("Step 2 of 2 — \(category.name)")
+                .font(Baron.body(12.5))
+                .foregroundStyle(Baron.neutral600)
+
+            if let typeList, let typeDefinition {
+                RecordField(label: isTypeMissing ? "Type · required" : "Type") {
+                    VStack(alignment: .leading, spacing: 10) {
+                        if !typeOptions.isEmpty {
+                            RecordChipPicker(options: typeOptions, selection: selectedType ?? "",
+                                             title: { $0 }) { option in
+                                typeValue = .text(option)
                             }
-                            .buttonStyle(.plain)
+                        }
+                        // An extensible list accepts anything typed and adopts it as a new
+                        // option on save; a closed one would have the store reject it, so the
+                        // field is only offered where it can actually succeed.
+                        if typeList.isUserExtensible {
+                            ComboListField(label: nil, list: typeList, current: selectedType ?? "",
+                                           maxLength: typeDefinition.maxLength,
+                                           showsSuggestions: false,
+                                           prompt: "Something else") { newValue in
+                                typeValue = newValue.map(StoredValue.text)
+                            }
+                            .font(Baron.body(14, .medium))
+                            .foregroundStyle(Baron.text)
+                            .padding(.horizontal, 13)
+                            .padding(.vertical, 10)
+                            .baronCard(radius: Baron.Radius.field, elevation: .low)
+                            Text("Not on the list? Type it in — it'll be added to \(typeList.name).")
+                                .font(Baron.body(11.5))
+                                .foregroundStyle(Baron.neutral600)
                         }
                     }
                 }
-                AssetParentSelectionRow(parentID: $parentID)
+            }
+
+            RecordField(label: "Name") {
+                HStack(spacing: 9) {
+                    TextField("What do you call it?", text: $name)
+                        .font(Baron.body(15, .medium))
+                        .foregroundStyle(Baron.text)
+                        .limitLength(TextLimits.assetName, text: $name)
+                    if !name.isEmpty {
+                        Button { name = "" } label: {
+                            Image(systemName: "xmark.circle.fill")
+                                .font(.footnote)
+                                .foregroundStyle(Baron.neutral400)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+                .padding(.horizontal, 15)
+                .padding(.vertical, 12)
+                .baronCard(radius: Baron.Radius.field, elevation: .low)
+            }
+
+            AssetParentSelectionRow(parentID: $parentID)
+
+            if fieldCount > 0 {
+                RecordNote(text: String(localized: "^[\(fieldCount) field](inflect: true) from \(category.name) will be copied in, ready to fill."))
             }
         }
-        .navigationTitle("New \(category.name)")
-        .navigationBarTitleDisplayMode(.inline)
-        .navigationBarBackButtonHidden(true)
-        .toolbar {
-            ToolbarItem(placement: .cancellationAction) {
-                Button("Cancel") { onCancel() }
-            }
-            ToolbarItem(placement: .confirmationAction) {
-                Button("Save") { save() }
-                    .disabled(trimmedName.isEmpty || isTypeMissing)
-            }
-        }
+        .onChange(of: typeValue) { _, newValue in applyTypeSelection(newValue) }
         .onAppear { prefillDraft() }
         .sheet(isPresented: $paywallPresented) {
             PaywallView(reason: .assets)
         }
-        .alert("Could Not Create Asset", isPresented: Binding(
+        .alert("Could not create", isPresented: Binding(
             get: { errorMessage != nil },
             set: { if !$0 { errorMessage = nil } }
         )) {
@@ -162,7 +213,7 @@ struct AssetCreateView: View {
     }
 }
 
-// MARK: - New asset sheet (category picker)
+// MARK: - New thing sheet (step 1: category)
 
 struct NewAssetSheet: View {
     @Environment(AssetStore.self) private var store
@@ -174,56 +225,114 @@ struct NewAssetSheet: View {
 
     @State private var selectedCategoryID: UUID?
 
-    var body: some View {
-        NavigationStack {
-            CategoryPickerContent { category in selectedCategoryID = category.id }
-                .navigationTitle("New Asset")
-                .toolbar {
-                    ToolbarItem(placement: .cancellationAction) {
-                        Button("Cancel") { dismiss() }
-                    }
-                }
-                .navigationDestination(item: $selectedCategoryID) { id in
-                    if let category = store.categories[id] {
-                        AssetCreateView(
-                            category: category,
-                            initialName: initialName,
-                            initialParentID: initialParentID,
-                            onCreated: { asset in onCreated(asset) },
-                            onCancel: { dismiss() }
-                        )
-                    }
-                }
-        }
-    }
-}
-
-private struct CategoryPickerContent: View {
-    @Environment(AssetStore.self) private var store
-    let onSelect: (AssetCategory) -> Void
-
     private var sortedCategories: [AssetCategory] {
         store.allCategories.sorted { $0.name.localizedCompare($1.name) == .orderedAscending }
     }
 
     var body: some View {
-        if store.allCategories.isEmpty {
-            ContentUnavailableView(
-                "No Categories",
-                systemImage: "folder",
-                description: Text("Create a category first in the Categories tab.")
-            )
-        } else {
-            List {
-                Section("Select Category") {
-                    ForEach(sortedCategories) { category in
-                        Button(category.name) {
-                            onSelect(category)
-                        }
-                        .foregroundStyle(.primary)
+        NavigationStack {
+            ZStack {
+                Baron.background.ignoresSafeArea()
+                VStack(spacing: 0) {
+                    header
+                    if store.allCategories.isEmpty {
+                        emptyState
+                    } else {
+                        picker
                     }
                 }
             }
+            .toolbar(.hidden, for: .navigationBar)
+            .navigationDestination(item: $selectedCategoryID) { id in
+                if let category = store.categories[id], !category.isDeleted {
+                    AssetCreateView(
+                        category: category,
+                        initialName: initialName,
+                        initialParentID: initialParentID,
+                        onCreated: { asset in onCreated(asset) },
+                        onCancel: { selectedCategoryID = nil }
+                    )
+                    .toolbar(.hidden, for: .navigationBar)
+                }
+            }
         }
+    }
+
+    private var header: some View {
+        HStack {
+            Button { dismiss() } label: {
+                Text("Cancel")
+                    .font(Baron.body(12.5, .medium))
+                    .foregroundStyle(Baron.neutral700)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 8)
+                    .background(Baron.inset, in: RoundedRectangle(cornerRadius: 11, style: .continuous))
+            }
+            .buttonStyle(.plain)
+            Spacer(minLength: 0)
+            Text("New thing")
+                .font(Baron.heading(15))
+                .foregroundStyle(Baron.text)
+            Spacer(minLength: 0)
+            // Balances the Cancel button so the title stays centred.
+            Color.clear.frame(width: 62, height: 1)
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 14)
+        .background(Baron.surface)
+    }
+
+    private var picker: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 10) {
+                Text("Step 1 of 2 — pick a category template")
+                    .font(Baron.body(12.5))
+                    .foregroundStyle(Baron.neutral600)
+                ForEach(sortedCategories) { category in
+                    Button { selectedCategoryID = category.id } label: {
+                        HStack(spacing: 12) {
+                            Image(systemName: category.iconName)
+                                .font(.system(size: 17, weight: .light))
+                                .foregroundStyle(Baron.accent800)
+                                .frame(width: 38, height: 38)
+                                .background(Baron.accent100, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                            VStack(alignment: .leading, spacing: 3) {
+                                Text(category.name)
+                                    .font(Baron.heading(16))
+                                    .foregroundStyle(Baron.text)
+                                    .lineLimit(1)
+                                Text("^[\(category.liveTemplates.count) field](inflect: true) copied in")
+                                    .font(Baron.body(12))
+                                    .foregroundStyle(Baron.neutral600)
+                            }
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            Text("›")
+                                .font(Baron.body(13, .medium))
+                                .foregroundStyle(Baron.neutral400)
+                        }
+                        .padding(14)
+                        .baronCard(elevation: .low)
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .padding(.horizontal, 16)
+            .padding(.top, 14)
+            .padding(.bottom, 24)
+        }
+    }
+
+    private var emptyState: some View {
+        VStack(spacing: 8) {
+            Text("No categories yet")
+                .font(Baron.heading(18))
+                .foregroundStyle(Baron.text)
+            Text("A thing needs a category to copy its fields from. Create one under Setup → Categories.")
+                .font(Baron.body(13))
+                .foregroundStyle(Baron.neutral600)
+                .multilineTextAlignment(.center)
+        }
+        .padding(.horizontal, 32)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 }

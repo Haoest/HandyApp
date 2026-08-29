@@ -379,13 +379,19 @@ private struct SpecComboEditor: View {
                     .buttonStyle(.plain)
                 }
             }
-            ComboListField(
-                label: nil,
-                list: list,
-                current: current,
-                maxLength: property.definition.maxLength
-            ) { newValue in
-                write(newValue.map(StoredValue.text))
+            // Only where an off-list value can actually be stored. On a closed list the field
+            // would revert whatever was typed, which reads as the app ignoring you.
+            if list.isUserExtensible {
+                ComboListField(
+                    label: nil,
+                    list: list,
+                    current: current,
+                    maxLength: property.definition.maxLength,
+                    showsSuggestions: false,
+                    prompt: "Something else"
+                ) { newValue in
+                    write(newValue.map(StoredValue.text))
+                }
             }
         }
     }

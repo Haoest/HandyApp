@@ -575,9 +575,7 @@ private struct ThingDetailContent: View {
                 .foregroundStyle(Baron.neutral600)
             dashedButton("+ Add thing inside") { startChild() }
             BelongsToRow(asset: asset)
-                .padding(.horizontal, 13)
-                .padding(.vertical, 10)
-                .baronCard(radius: 16, elevation: .low)
+                .padding(.top, 4)
         }
     }
 
