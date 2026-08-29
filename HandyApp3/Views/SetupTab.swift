@@ -178,9 +178,9 @@ struct SetupTab: View {
 
     private var appGroup: some View {
         SetupGroup("App") {
-            SetupRow(name: "Appearance & language",
-                     sub: "\(store.backgroundTheme.displayName) theme · \(languageLabel)",
-                     value: "") { path.append(SetupDestination.appearance) }
+            SetupRow(name: "Language", sub: languageLabel, value: "") {
+                path.append(SetupDestination.appearance)
+            }
             SetupRow(name: "Quick start guide", sub: "What you can say to Siri",
                      value: "", isLast: true) { path.append(SetupDestination.quickStart) }
         }

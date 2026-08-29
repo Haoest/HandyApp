@@ -328,134 +328,219 @@ struct TransactionEditView: View {
     }
 
     var body: some View {
-        NavigationStack {
-            Form {
-                Section("Title") {
-                    TextField("Title", text: $details)
-                        .limitLength(TextLimits.transactionDetails, text: $details)
-                    if seriesCount > 1 {
-                        Text("This series has ^[\(seriesCount) transaction](inflect: true)")
-                            .font(.footnote)
-                            .foregroundStyle(.secondary)
-                    }
-                }
-                Section("Amount") {
-                    TextField("0.00", text: $amountText)
-                        .keyboardType(.decimalPad)
-                    Picker("Type", selection: $kind) {
-                        ForEach(TransactionKind.allCases, id: \.self) { k in
-                            Text(k.rawValue).tag(k)
-                        }
-                    }
-                    .pickerStyle(.segmented)
-                }
-                Section("Date of Transaction") {
-                    DatePicker("", selection: $date, displayedComponents: .date)
-                        .labelsHidden()
-                }
-                Section("Recurrence") {
-                    Toggle("Recurring", isOn: $isRecurring)
-                    if isRecurring {
-                        Picker("Repeats", selection: $interval) {
-                            ForEach(RecurrenceInterval.allCases, id: \.self) { option in
-                                Text(option.rawValue).tag(option)
-                            }
-                        }
-                    }
-                }
-                Section("Due Date") {
-                    Toggle("Has Due Date", isOn: $hasDueDate)
-                    if hasDueDate {
-                        VStack(alignment: .leading, spacing: 2) {
-                            DatePicker("", selection: dueDateBinding, displayedComponents: .date)
-                                .labelsHidden()
-                            if projectsDueDate {
-                                Text("(automatically set to next interval)")
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                            }
-                        }
-                        StepSlider(title: "Show message before due date", value: $messageDaysBefore)
-                        StepSlider(title: "Keep message after due date", value: $messageDaysAfter)
-                        Toggle("Device Notification", isOn: $deviceNotificationOn)
-                        if deviceNotificationOn {
-                            StepSlider(title: "Notify before due date", value: $deviceNotificationDaysBefore)
-                            #if DEBUG
-                            Button("Send Test Notification Now") {
-                                let body = NotificationPlanner.transactionDueBody(kind: kind, amount: parsedAmount ?? 0, notes: notes, daysBefore: deviceNotificationDaysBefore)
-                                store.notificationScheduler?.fireDebugNotification(
-                                    title: assetName, body: body,
-                                    assetID: assetID, kind: .transaction
-                                )
-                            }
-                            #endif
-                        }
-                    }
-                }
-                Section("Notes") {
-                    TextField("Optional notes", text: $notes, axis: .vertical)
-                        .lineLimit(3...)
-                        .limitLength(TextLimits.transactionNotes, text: $notes)
-                }
-                Section("Contact") {
-                    if payeeContactID != nil {
-                        HStack {
-                            Text(payeeName.isEmpty ? "(not found)" : payeeName)
-                                .foregroundStyle(payeeName.isEmpty ? .tertiary : .primary)
-                            Spacer()
-                            Button { contactPickerPresented = true } label: {
-                                Image(systemName: "person.crop.circle")
-                            }
-                            .buttonStyle(.borderless)
-                            Button {
-                                payeeContactID = nil
-                                payeeName = ""
-                            } label: {
-                                Image(systemName: "xmark.circle.fill")
-                            }
-                            .buttonStyle(.borderless)
-                            .foregroundStyle(.secondary)
-                        }
-                    } else {
-                        Button { contactPickerPresented = true } label: {
-                            Label("Choose Contact", systemImage: "person.crop.circle")
-                        }
-                    }
-                }
+        RecordSheetScaffold(
+            title: existing == nil ? "New money record" : "Edit money record",
+            saveLabel: "Save",
+            canSave: !details.trimmingCharacters(in: .whitespaces).isEmpty && parsedAmount != nil,
+            onSave: save
+        ) {
+            RecordField(label: "What happened") {
+                TextField("Rent, repair, insurance…", text: $details)
+                    .limitLength(TextLimits.transactionDetails, text: $details)
+                    .recordInput()
             }
-            .navigationTitle(existing == nil ? "New Transaction" : "Edit Transaction")
-            .navigationBarTitleDisplayMode(.inline)
-            .onChange(of: date) { _, _ in
-                projectDueDate()
-                projectDetails()
+            amountCard
+            RecordDateField(label: "Date", date: $date)
+            recurrenceCard
+            watchCard
+            payeeCard
+            RecordField(label: "Notes") {
+                TextField("Optional", text: $notes, axis: .vertical)
+                    .lineLimit(3...)
+                    .limitLength(TextLimits.transactionNotes, text: $notes)
+                    .recordInput()
             }
-            .onChange(of: interval) { _, _ in projectDueDate() }
-            .onChange(of: details) { _, newValue in
-                guard detailsAutoManaged, newValue != lastAutoDetails else { return }
-                detailsAutoManaged = false
+            if seriesCount > 1 {
+                Text("This series has ^[\(seriesCount) record](inflect: true).")
+                    .font(Baron.body(12.5))
+                    .foregroundStyle(Baron.neutral600)
             }
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") { dismiss() }
-                }
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Save") {
-                        let amount = parsedAmount ?? 0
-                        let due = DueSettings(dueDate: hasDueDate ? dueDate : nil, messageDaysBefore: messageDaysBefore,
-                                              messageDaysAfter: messageDaysAfter, deviceNotificationOn: deviceNotificationOn,
-                                              deviceNotificationDaysBefore: deviceNotificationDaysBefore)
-                        onSave(details.trimmingCharacters(in: .whitespaces), amount, date, kind, payeeContactID, notes.trimmingCharacters(in: .whitespaces), isRecurring ? interval : nil, due)
-                        dismiss()
-                    }
-                    .disabled(details.trimmingCharacters(in: .whitespaces).isEmpty || parsedAmount == nil)
-                }
-            }
-            .background(
-                ContactPicker(isPresented: $contactPickerPresented) { id, name in
-                    payeeContactID = id
-                    payeeName = name
-                }
-            )
         }
+        .onChange(of: date) { _, _ in
+            projectDueDate()
+            projectDetails()
+        }
+        .onChange(of: interval) { _, _ in projectDueDate() }
+        .onChange(of: details) { _, newValue in
+            guard detailsAutoManaged, newValue != lastAutoDetails else { return }
+            detailsAutoManaged = false
+        }
+        .background(
+            ContactPicker(isPresented: $contactPickerPresented) { id, name in
+                payeeContactID = id
+                payeeName = name
+            }
+        )
+    }
+
+    private func save() {
+        let amount = parsedAmount ?? 0
+        let due = DueSettings(dueDate: hasDueDate ? dueDate : nil, messageDaysBefore: messageDaysBefore,
+                              messageDaysAfter: messageDaysAfter, deviceNotificationOn: deviceNotificationOn,
+                              deviceNotificationDaysBefore: deviceNotificationDaysBefore)
+        onSave(details.trimmingCharacters(in: .whitespaces), amount, date, kind, payeeContactID,
+               notes.trimmingCharacters(in: .whitespaces), isRecurring ? interval : nil, due)
+    }
+
+    /// Amount reads as one large signed figure with the direction chosen beneath it, rather
+    /// than a plain number plus a separate "Expense/Income" picker — money out and money in are
+    /// the same field seen from two sides, and the sign should be visible while typing.
+    private var amountCard: some View {
+        let tint = kind == .expense ? Baron.danger : Baron.good
+        return VStack(spacing: 13) {
+            HStack(spacing: 9) {
+                Text(kind == .expense ? "−" : "+")
+                    .font(Baron.heading(29))
+                    .foregroundStyle(tint)
+                TextField("0.00", text: $amountText)
+                    .keyboardType(.decimalPad)
+                    .font(Baron.heading(29))
+                    .foregroundStyle(tint)
+            }
+            HStack(spacing: 8) {
+                directionButton("Money out", active: kind == .expense,
+                                activeBackground: Baron.dangerBackground, activeForeground: Baron.danger) {
+                    kind = .expense
+                }
+                directionButton("Money in", active: kind == .income,
+                                activeBackground: Baron.goodBackground, activeForeground: Baron.good) {
+                    kind = .income
+                }
+            }
+        }
+        .padding(15)
+        .baronCard(elevation: .low)
+    }
+
+    private func directionButton(_ title: LocalizedStringKey, active: Bool, activeBackground: Color,
+                                 activeForeground: Color, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Text(title)
+                .font(Baron.heading(11.5))
+                .tracking(0.8)
+                .textCase(.uppercase)
+                .foregroundStyle(active ? activeForeground : Baron.neutral600)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 10)
+                .background(active ? activeBackground : Baron.inset,
+                            in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        }
+        .buttonStyle(.plain)
+    }
+
+    private var recurrenceCard: some View {
+        RecordToggleCard(
+            title: "Repeats",
+            hint: isRecurring
+                ? String(localized: "Logging one occurrence offers the next.")
+                : String(localized: "A one-off. Turn this on for anything on a cycle."),
+            isOn: isRecurring,
+            onToggle: { isRecurring.toggle() }
+        ) {
+            RecordChipPicker(options: RecurrenceInterval.allCases, selection: interval,
+                             title: { $0.rawValue }) { interval = $0 }
+        }
+    }
+
+    private var watchCard: some View {
+        RecordToggleCard(
+            title: "Watch it on the timeline",
+            hint: hasDueDate
+                ? String(localized: "Counts toward the Timeline's net figure, and toward Overdue once the date passes.")
+                : String(localized: "Off means this is history only — it never appears on the Timeline."),
+            isOn: hasDueDate,
+            onToggle: { hasDueDate.toggle() }
+        ) {
+            RecordField(label: "Due") {
+                VStack(alignment: .leading, spacing: 6) {
+                    DatePicker("", selection: dueDateBinding, displayedComponents: .date)
+                        .labelsHidden()
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.horizontal, 11)
+                        .padding(.vertical, 8)
+                        .background(Baron.inset, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    if projectsDueDate {
+                        Text("Following the series — edit to take it over.")
+                            .font(Baron.body(11.5))
+                            .foregroundStyle(Baron.neutral600)
+                    }
+                }
+            }
+            RecordDaySlider(label: "Appears this long before", value: $messageDaysBefore, zeroLabel: "on the day")
+            RecordDaySlider(label: "Stays overdue this long after", value: $messageDaysAfter, zeroLabel: "not at all")
+            notifyBlock
+        }
+    }
+
+    @ViewBuilder
+    private var notifyBlock: some View {
+        Divider().overlay(Baron.line)
+        Button { deviceNotificationOn.toggle() } label: {
+            HStack(spacing: 10) {
+                Image(systemName: "bell")
+                    .font(.system(size: 14))
+                    .foregroundStyle(deviceNotificationOn ? Baron.accent800 : Baron.neutral600)
+                    .frame(width: 32, height: 32)
+                    .background(deviceNotificationOn ? Baron.accent100 : Baron.inset,
+                                in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                Text("Notify me on this device")
+                    .font(Baron.body(14, .medium))
+                    .foregroundStyle(Baron.text)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                ToggleTrack(isOn: deviceNotificationOn)
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        if deviceNotificationOn {
+            RecordDaySlider(label: "Alert lead time", value: $deviceNotificationDaysBefore, zeroLabel: "same day")
+            #if DEBUG
+            Button("Send a test notification now") {
+                let body = NotificationPlanner.transactionDueBody(kind: kind, amount: parsedAmount ?? 0,
+                                                                  notes: notes, daysBefore: deviceNotificationDaysBefore)
+                store.notificationScheduler?.fireDebugNotification(title: assetName, body: body,
+                                                                   assetID: assetID, kind: .transaction)
+            }
+            .font(Baron.body(12, .medium))
+            .foregroundStyle(Baron.accent800)
+            #endif
+        }
+    }
+
+    private var payeeCard: some View {
+        RecordField(label: "Who it was with") {
+            HStack(spacing: 9) {
+                if payeeContactID != nil {
+                    Text(payeeName.isEmpty ? String(localized: "(not found)") : payeeName)
+                        .font(Baron.body(14, .medium))
+                        .foregroundStyle(payeeName.isEmpty ? Baron.neutral500 : Baron.text)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    smallAction("Change") { contactPickerPresented = true }
+                    smallAction("Clear", tint: Baron.danger) {
+                        payeeContactID = nil
+                        payeeName = ""
+                    }
+                } else {
+                    smallAction("Choose a contact") { contactPickerPresented = true }
+                }
+            }
+            .padding(.horizontal, 13)
+            .padding(.vertical, 10)
+            .baronCard(radius: Baron.Radius.field, elevation: .low)
+        }
+    }
+
+    private func smallAction(_ title: LocalizedStringKey, tint: Color = Baron.accent800,
+                             action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Text(title)
+                .font(Baron.body(12, .medium))
+                .foregroundStyle(tint)
+                .padding(.horizontal, 11)
+                .padding(.vertical, 8)
+                .overlay(RoundedRectangle(cornerRadius: Baron.Radius.control, style: .continuous)
+                    .strokeBorder(Baron.neutral300, lineWidth: 1))
+        }
+        .buttonStyle(.plain)
     }
 }

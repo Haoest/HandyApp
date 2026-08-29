@@ -282,89 +282,125 @@ struct EventEditView: View {
     }
 
     var body: some View {
-        NavigationStack {
-            Form {
-                Section("Title") {
-                    TextField("Event title", text: $title)
-                        .limitLength(TextLimits.eventTitle, text: $title)
-                    if seriesCount > 1 {
-                        Text("This series has ^[\(seriesCount) event](inflect: true)")
-                            .font(.footnote)
-                            .foregroundStyle(.secondary)
-                    }
-                }
-                Section("Date of Event") {
-                    DatePicker("", selection: $date, displayedComponents: .date)
+        RecordSheetScaffold(
+            title: existing == nil ? "New event" : "Edit event",
+            saveLabel: "Save",
+            canSave: !title.trimmingCharacters(in: .whitespaces).isEmpty,
+            onSave: save
+        ) {
+            RecordField(label: "What happened") {
+                TextField("Oil change, inspection, repair…", text: $title)
+                    .limitLength(TextLimits.eventTitle, text: $title)
+                    .recordInput()
+            }
+            RecordDateField(label: "Date", date: $date)
+            recurrenceCard
+            watchCard
+            RecordField(label: "Notes") {
+                TextField("Optional", text: $notes, axis: .vertical)
+                    .lineLimit(3...)
+                    .limitLength(TextLimits.eventNotes, text: $notes)
+                    .recordInput()
+            }
+            if seriesCount > 1 {
+                Text("This series has ^[\(seriesCount) event](inflect: true).")
+                    .font(Baron.body(12.5))
+                    .foregroundStyle(Baron.neutral600)
+            }
+        }
+        .onChange(of: date) { _, _ in
+            projectDueDate()
+            projectTitle()
+        }
+        .onChange(of: interval) { _, _ in projectDueDate() }
+        .onChange(of: title) { _, newValue in
+            guard titleAutoManaged, newValue != lastAutoTitle else { return }
+            titleAutoManaged = false
+        }
+    }
+
+    private func save() {
+        let due = DueSettings(dueDate: hasDueDate ? dueDate : nil, messageDaysBefore: messageDaysBefore,
+                              messageDaysAfter: messageDaysAfter, deviceNotificationOn: deviceNotificationOn,
+                              deviceNotificationDaysBefore: deviceNotificationDaysBefore)
+        onSave(title.trimmingCharacters(in: .whitespaces), date, notes.trimmingCharacters(in: .whitespaces),
+               isRecurring ? interval : nil, due)
+    }
+
+    private var recurrenceCard: some View {
+        RecordToggleCard(
+            title: "Repeats",
+            hint: isRecurring
+                ? String(localized: "Logging one occurrence offers the next.")
+                : String(localized: "A one-off. Turn this on for anything on a cycle."),
+            isOn: isRecurring,
+            onToggle: { isRecurring.toggle() }
+        ) {
+            RecordChipPicker(options: RecurrenceInterval.allCases, selection: interval,
+                             title: { $0.rawValue }) { interval = $0 }
+        }
+    }
+
+    private var watchCard: some View {
+        RecordToggleCard(
+            title: "Watch it on the timeline",
+            hint: hasDueDate
+                ? String(localized: "Shows up under Coming up, and counts toward Overdue once the date passes.")
+                : String(localized: "Off means this is history only — it never appears on the Timeline."),
+            isOn: hasDueDate,
+            onToggle: { hasDueDate.toggle() }
+        ) {
+            RecordField(label: "Due") {
+                VStack(alignment: .leading, spacing: 6) {
+                    DatePicker("", selection: dueDateBinding, displayedComponents: .date)
                         .labelsHidden()
-                }
-                Section("Recurrence") {
-                    Toggle("Recurring", isOn: $isRecurring)
-                    if isRecurring {
-                        Picker("Repeats", selection: $interval) {
-                            ForEach(RecurrenceInterval.allCases, id: \.self) { option in
-                                Text(option.rawValue).tag(option)
-                            }
-                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.horizontal, 11)
+                        .padding(.vertical, 8)
+                        .background(Baron.inset, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    if projectsDueDate {
+                        Text("Following the series — edit to take it over.")
+                            .font(Baron.body(11.5))
+                            .foregroundStyle(Baron.neutral600)
                     }
                 }
-                Section("Due Date") {
-                    Toggle("Has Due Date", isOn: $hasDueDate)
-                    if hasDueDate {
-                        VStack(alignment: .leading, spacing: 2) {
-                            DatePicker("", selection: dueDateBinding, displayedComponents: .date)
-                                .labelsHidden()
-                            if projectsDueDate {
-                                Text("(automatically set to next interval)")
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                            }
-                        }
-                        StepSlider(title: "Show message before due date", value: $messageDaysBefore)
-                        StepSlider(title: "Keep message after due date", value: $messageDaysAfter)
-                        Toggle("Device Notification", isOn: $deviceNotificationOn)
-                        if deviceNotificationOn {
-                            StepSlider(title: "Notify before due date", value: $deviceNotificationDaysBefore)
-                            #if DEBUG
-                            Button("Send Test Notification Now") {
-                                let body = NotificationPlanner.eventDueBody(title: title, notes: notes, daysBefore: deviceNotificationDaysBefore)
-                                store.notificationScheduler?.fireDebugNotification(title: assetName, body: body, assetID: assetID, kind: .event)
-                            }
-                            #endif
-                        }
-                    }
-                }
-                Section("Notes") {
-                    TextField("Optional notes", text: $notes, axis: .vertical)
-                        .lineLimit(3...)
-                        .limitLength(TextLimits.eventNotes, text: $notes)
-                }
             }
-            .navigationTitle(existing == nil ? "New Event" : "Edit Event")
-            .navigationBarTitleDisplayMode(.inline)
-            .onChange(of: date) { _, _ in
-                projectDueDate()
-                projectTitle()
+            RecordDaySlider(label: "Appears this long before", value: $messageDaysBefore, zeroLabel: "on the day")
+            RecordDaySlider(label: "Stays overdue this long after", value: $messageDaysAfter, zeroLabel: "not at all")
+            notifyBlock
+        }
+    }
+
+    @ViewBuilder
+    private var notifyBlock: some View {
+        Divider().overlay(Baron.line)
+        Button { deviceNotificationOn.toggle() } label: {
+            HStack(spacing: 10) {
+                Image(systemName: "bell")
+                    .font(.system(size: 14))
+                    .foregroundStyle(deviceNotificationOn ? Baron.accent800 : Baron.neutral600)
+                    .frame(width: 32, height: 32)
+                    .background(deviceNotificationOn ? Baron.accent100 : Baron.inset,
+                                in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                Text("Notify me on this device")
+                    .font(Baron.body(14, .medium))
+                    .foregroundStyle(Baron.text)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                ToggleTrack(isOn: deviceNotificationOn)
             }
-            .onChange(of: interval) { _, _ in projectDueDate() }
-            .onChange(of: title) { _, newValue in
-                guard titleAutoManaged, newValue != lastAutoTitle else { return }
-                titleAutoManaged = false
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        if deviceNotificationOn {
+            RecordDaySlider(label: "Alert lead time", value: $deviceNotificationDaysBefore, zeroLabel: "same day")
+            #if DEBUG
+            Button("Send a test notification now") {
+                let body = NotificationPlanner.eventDueBody(title: title, notes: notes, daysBefore: deviceNotificationDaysBefore)
+                store.notificationScheduler?.fireDebugNotification(title: assetName, body: body, assetID: assetID, kind: .event)
             }
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") { dismiss() }
-                }
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Save") {
-                        let due = DueSettings(dueDate: hasDueDate ? dueDate : nil, messageDaysBefore: messageDaysBefore,
-                                              messageDaysAfter: messageDaysAfter, deviceNotificationOn: deviceNotificationOn,
-                                              deviceNotificationDaysBefore: deviceNotificationDaysBefore)
-                        onSave(title.trimmingCharacters(in: .whitespaces), date, notes.trimmingCharacters(in: .whitespaces), isRecurring ? interval : nil, due)
-                        dismiss()
-                    }
-                    .disabled(title.trimmingCharacters(in: .whitespaces).isEmpty)
-                }
-            }
+            .font(Baron.body(12, .medium))
+            .foregroundStyle(Baron.accent800)
+            #endif
         }
     }
 }

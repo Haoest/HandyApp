@@ -295,78 +295,48 @@ struct PickListsView: View {
 
 // MARK: - Appearance & language
 
+/// Language only. The Mist/Sand/Facets theme picker that used to live here is gone: every
+/// screen it tinted now uses the Baron palette, which follows the system light/dark setting, so
+/// the control had stopped affecting anything visible. `BackgroundTheme` itself is untouched in
+/// the model and still persists and syncs, so restoring the picker is a view change if the
+/// gradients ever come back.
 struct AppearanceView: View {
-    @Environment(AssetStore.self) private var store
     @AppStorage(AppPreference.languageKey) private var languageCode: String = ""
 
     var body: some View {
-        @Bindable var store = store
         SetupScreenBody {
             SetupScreenHeader(breadcrumb: "Setup")
             SetupScreenTitle(
-                title: "Appearance & language",
-                blurb: "The theme tints the paywall and the screens that haven't moved to the new look yet. Light and dark follow the system setting."
+                title: "Language",
+                blurb: "Light and dark follow your device's own setting — there's nothing to choose here."
             )
-            VStack(alignment: .leading, spacing: 10) {
-                Text("Theme")
-                    .font(Baron.body(10.5, .medium))
-                    .tracking(1.1)
-                    .textCase(.uppercase)
-                    .foregroundStyle(Baron.neutral500)
-                HStack(spacing: 7) {
-                    ForEach(BackgroundTheme.allCases) { theme in
-                        let selected = theme == store.backgroundTheme
-                        Button { store.backgroundTheme = theme } label: {
-                            Text(theme.displayName)
-                                .font(Baron.body(13, .medium))
-                                .foregroundStyle(selected ? Color.white : Baron.text)
-                                .frame(maxWidth: .infinity)
-                                .padding(.vertical, 11)
-                                .background(selected ? Baron.fill : Baron.surface,
-                                            in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-                                .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous)
-                                    .strokeBorder(selected ? Color.clear : Baron.neutral300, lineWidth: 1))
-                        }
-                        .buttonStyle(.plain)
-                    }
-                }
-            }
-            .padding(.top, 22)
-
-            VStack(alignment: .leading, spacing: 10) {
-                Text("Language")
-                    .font(Baron.body(10.5, .medium))
-                    .tracking(1.1)
-                    .textCase(.uppercase)
-                    .foregroundStyle(Baron.neutral500)
-                VStack(spacing: 0) {
-                    ForEach(Array(AppPreference.supportedLanguages.enumerated()), id: \.element.code) { index, language in
-                        Button { languageCode = language.code } label: {
-                            VStack(spacing: 0) {
-                                HStack {
-                                    Text(language.label)
-                                        .font(Baron.body(14.5, .medium))
-                                        .foregroundStyle(Baron.text)
-                                    Spacer(minLength: 0)
-                                    if language.code == languageCode {
-                                        Image(systemName: "checkmark")
-                                            .font(.footnote.weight(.semibold))
-                                            .foregroundStyle(Baron.accent800)
-                                    }
-                                }
-                                .padding(.horizontal, 15)
-                                .padding(.vertical, 13)
-                                if index < AppPreference.supportedLanguages.count - 1 {
-                                    Baron.line.frame(height: 1).padding(.leading, 15)
+            VStack(spacing: 0) {
+                ForEach(Array(AppPreference.supportedLanguages.enumerated()), id: \.element.code) { index, language in
+                    Button { languageCode = language.code } label: {
+                        VStack(spacing: 0) {
+                            HStack {
+                                Text(language.label)
+                                    .font(Baron.body(14.5, .medium))
+                                    .foregroundStyle(Baron.text)
+                                Spacer(minLength: 0)
+                                if language.code == languageCode {
+                                    Image(systemName: "checkmark")
+                                        .font(.footnote.weight(.semibold))
+                                        .foregroundStyle(Baron.accent800)
                                 }
                             }
-                            .contentShape(Rectangle())
+                            .padding(.horizontal, 15)
+                            .padding(.vertical, 13)
+                            if index < AppPreference.supportedLanguages.count - 1 {
+                                Baron.line.frame(height: 1).padding(.leading, 15)
+                            }
                         }
-                        .buttonStyle(.plain)
+                        .contentShape(Rectangle())
                     }
+                    .buttonStyle(.plain)
                 }
-                .baronCard(elevation: .low)
             }
+            .baronCard(elevation: .low)
             .padding(.top, 22)
         }
     }
