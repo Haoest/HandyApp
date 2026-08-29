@@ -8,7 +8,9 @@ private struct ContactRow: Identifiable {
     let id: UUID
     let asset: Asset
     let propertyName: String
-    let contact: CNContact
+    let identifier: String
+    /// Nil when the identifier no longer resolves — the card says so rather than vanishing.
+    let contact: CNContact?
     let availableMethods: [ContactMethod]
 }
 
@@ -29,9 +31,13 @@ private enum ContactMethod: String, CaseIterable, Identifiable {
 /// Writes one message and sends it to the contacts attached to your things — the plumber on the
 /// boiler, the mechanic on the car.
 ///
-/// The gathering logic and the URL schemes are unchanged. What changes is that each row's
-/// method is now a set of chips including an explicit "Don't send", rather than a segmented
-/// control whose "None" was the leftmost segment and easy to read as a fourth channel.
+/// Each row's method is a set of chips including an explicit "Don't send", rather than a
+/// segmented control whose "None" was the leftmost segment and easy to read as a fourth channel.
+///
+/// Everything with a contact on it is listed. The old screen walked only root things, so a
+/// contact on anything filed inside another thing was silently absent; and it dropped any
+/// contact with no phone or email, which looked the same as not finding it at all. Both now
+/// appear, the second as a card that says why it can't be messaged.
 struct BulkCommunicationView: View {
     @Environment(AssetStore.self) private var store
 
@@ -80,7 +86,7 @@ struct BulkCommunicationView: View {
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 40)
         } else if rows.isEmpty {
-            Text("No contacts to message. Give a thing a contact field — an owner, a plumber, a landlord — and they'll show up here.")
+            Text("No contacts yet. Give a thing a contact field — an owner, a plumber, a landlord — and they'll show up here.")
                 .font(Baron.body(13))
                 .foregroundStyle(Baron.neutral600)
                 .multilineTextAlignment(.center)
@@ -111,21 +117,30 @@ struct BulkCommunicationView: View {
     }
 
     private func contactCard(_ row: ContactRow) -> some View {
-        let name = ContactResolver.shared.displayName(for: row.contact.identifier) ?? row.contact.identifier
+        let name = ContactResolver.shared.displayName(for: row.identifier)
         let chosen = selectedMethods[row.id]
         return VStack(alignment: .leading, spacing: 10) {
             VStack(alignment: .leading, spacing: 3) {
-                Text(name)
+                Text(name ?? String(localized: "(not in your contacts)"))
                     .font(Baron.body(15, .medium))
-                    .foregroundStyle(Baron.text)
+                    .foregroundStyle(name == nil ? Baron.neutral500 : Baron.text)
                 Text(row.propertyName)
                     .font(Baron.body(11.5))
                     .foregroundStyle(Baron.neutral600)
             }
-            FlowLayout(spacing: 6) {
-                chip(title: "Don't send", selected: chosen == nil) { selectedMethods[row.id] = nil }
-                ForEach(row.availableMethods) { method in
-                    chip(title: method.label, selected: chosen == method) { selectedMethods[row.id] = method }
+            if row.availableMethods.isEmpty {
+                Text(row.contact == nil
+                     ? "This contact isn't on the phone any more, so there's nothing to send to."
+                     : "No phone number or email on this contact.")
+                    .font(Baron.body(11.5))
+                    .foregroundStyle(Baron.neutral500)
+                    .fixedSize(horizontal: false, vertical: true)
+            } else {
+                FlowLayout(spacing: 6) {
+                    chip(title: "Don't send", selected: chosen == nil) { selectedMethods[row.id] = nil }
+                    ForEach(row.availableMethods) { method in
+                        chip(title: method.label, selected: chosen == method) { selectedMethods[row.id] = method }
+                    }
                 }
             }
         }
@@ -174,21 +189,21 @@ struct BulkCommunicationView: View {
 
     private func loadContacts() async {
         var built: [ContactRow] = []
-        let rootAssets = store.allAssets.filter(\.isRoot).sorted { $0.name.localizedCompare($1.name) == .orderedAscending }
-        for asset in rootAssets {
+        // Every live thing, not just the roots — a contact on something filed inside another
+        // thing (the boiler in the house) is exactly as messageable as one at the top.
+        let things = store.allAssets.sorted { $0.name.localizedCompare($1.name) == .orderedAscending }
+        for asset in things {
             for prop in asset.liveBaseProperties + asset.liveCustomProperties {
                 guard case .basic(.contact) = prop.definition.type,
-                      case .contact(let identifier) = prop.value,
-                      let contact = try? ContactResolver.shared.contact(for: identifier)
-                else { continue }
-                let methods = availableMethods(for: contact)
-                guard !methods.isEmpty else { continue }
+                      case .contact(let identifier) = prop.value else { continue }
+                let contact = try? ContactResolver.shared.contact(for: identifier)
                 built.append(ContactRow(
                     id: UUID(),
                     asset: asset,
                     propertyName: prop.definition.name,
+                    identifier: identifier,
                     contact: contact,
-                    availableMethods: methods
+                    availableMethods: contact.map(availableMethods) ?? []
                 ))
             }
         }
@@ -210,18 +225,18 @@ struct BulkCommunicationView: View {
     private func sendAll() {
         let encoded = messageText.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
         for row in rows {
-            guard let method = selectedMethods[row.id] else { continue }
+            guard let method = selectedMethods[row.id], let contact = row.contact else { continue }
             let urlString: String
             switch method {
             case .sms:
-                let phone = row.contact.phoneNumbers.first?.value.stringValue ?? ""
+                let phone = contact.phoneNumbers.first?.value.stringValue ?? ""
                 let clean = phone.filter { $0.isNumber || $0 == "+" }
                 urlString = "sms:\(clean)?&body=\(encoded)"
             case .email:
-                let email = row.contact.emailAddresses.first.map { $0.value as String } ?? ""
+                let email = contact.emailAddresses.first.map { $0.value as String } ?? ""
                 urlString = "mailto:\(email)?body=\(encoded)"
             case .whatsapp:
-                let phone = row.contact.phoneNumbers.first?.value.stringValue ?? ""
+                let phone = contact.phoneNumbers.first?.value.stringValue ?? ""
                 let clean = phone.filter { $0.isNumber || $0 == "+" }
                 urlString = "whatsapp://send?phone=\(clean)&text=\(encoded)"
             }
