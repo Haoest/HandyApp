@@ -42,6 +42,7 @@ struct SetupTab: View {
     @State private var restoreResultMessage: String?
 
     @AppStorage(AppPreference.languageKey) private var languageCode: String = ""
+    @AppStorage(AppPreference.appearanceKey) private var appearance: String = ""
 
     private var plan: PlanSummary {
         SetupDigest.plan(
@@ -76,6 +77,16 @@ struct SetupTab: View {
     private var languageLabel: String {
         AppPreference.supportedLanguages.first { $0.code == languageCode }?.label
             ?? AppPreference.supportedLanguages[0].label
+    }
+
+    /// Theme · language, so the row says what both settings behind it are currently on.
+    private var appearanceLabel: String {
+        let theme = switch AppearanceMode(rawValue: appearance) ?? .system {
+        case .system: String(localized: "Match device")
+        case .light: String(localized: "Light")
+        case .dark: String(localized: "Dark")
+        }
+        return "\(theme) · \(languageLabel)"
     }
 
     var body: some View {
@@ -194,7 +205,7 @@ struct SetupTab: View {
 
     private var appGroup: some View {
         SetupGroup("App") {
-            SetupRow(name: "Language", sub: languageLabel, value: "") {
+            SetupRow(name: "Appearance", sub: appearanceLabel, value: "") {
                 path.append(SetupDestination.appearance)
             }
             SetupRow(name: "Ask Siri", sub: "What you can say out loud",

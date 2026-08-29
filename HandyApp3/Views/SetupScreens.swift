@@ -302,14 +302,68 @@ struct PickListsView: View {
 /// gradients ever come back.
 struct AppearanceView: View {
     @AppStorage(AppPreference.languageKey) private var languageCode: String = ""
+    @AppStorage(AppPreference.appearanceKey) private var appearance: String = ""
+
+    private var mode: AppearanceMode {
+        AppearanceMode(rawValue: appearance) ?? .system
+    }
 
     var body: some View {
         SetupScreenBody {
             SetupScreenHeader(breadcrumb: "Setup")
             SetupScreenTitle(
-                title: "Language",
-                blurb: "Light and dark follow your device's own setting — there's nothing to choose here."
+                title: "Appearance",
+                blurb: "How the app looks, and what language it speaks."
             )
+            themeSection.padding(.top, 22)
+            languageSection.padding(.top, 24)
+        }
+    }
+
+    // MARK: - Light / dark
+
+    private var themeSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("Theme")
+                .font(Baron.body(10.5, .medium))
+                .tracking(1.1)
+                .textCase(.uppercase)
+                .foregroundStyle(Baron.neutral500)
+            HStack(spacing: 7) {
+                ForEach(AppearanceMode.allCases) { option in
+                    let selected = option == mode
+                    Button { appearance = option.rawValue } label: {
+                        Text(option.label)
+                            .font(Baron.heading(11.5))
+                            .tracking(0.55)
+                            .foregroundStyle(selected ? Color.white : Baron.text)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 11)
+                            .background(selected ? Baron.fill : Baron.surface,
+                                        in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                            .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                .strokeBorder(selected ? Color.clear : Baron.neutral300, lineWidth: 1))
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            Text(mode == .system
+                 ? "Follows Settings › Display & Brightness."
+                 : "Stays this way whatever the device is set to.")
+                .font(Baron.body(12))
+                .foregroundStyle(Baron.neutral500)
+        }
+    }
+
+    // MARK: - Language
+
+    private var languageSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("Language")
+                .font(Baron.body(10.5, .medium))
+                .tracking(1.1)
+                .textCase(.uppercase)
+                .foregroundStyle(Baron.neutral500)
             VStack(spacing: 0) {
                 ForEach(Array(AppPreference.supportedLanguages.enumerated()), id: \.element.code) { index, language in
                     Button { languageCode = language.code } label: {
@@ -337,7 +391,6 @@ struct AppearanceView: View {
                 }
             }
             .baronCard(elevation: .low)
-            .padding(.top, 22)
         }
     }
 }

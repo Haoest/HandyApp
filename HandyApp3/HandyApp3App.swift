@@ -5,6 +5,7 @@ struct HandyApp3App: App {
     @UIApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     @Environment(\.scenePhase) private var scenePhase
     @AppStorage(AppPreference.languageKey) private var languageCode: String = ""
+    @AppStorage(AppPreference.appearanceKey) private var appearance: String = ""
     @State private var router = AppDependencies.shared.router
     @State private var purchases = PurchaseManager()
     @State private var store = AppDependencies.shared.store
@@ -16,6 +17,9 @@ struct HandyApp3App: App {
                 .environment(router)
                 .environment(purchases)
                 .environment(\.locale, languageCode.isEmpty ? .autoupdatingCurrent : Locale(identifier: languageCode))
+                // Applied at the root so sheets and pushed screens, which inherit the
+                // presenting environment, follow it too.
+                .preferredColorScheme(AppearanceMode(rawValue: appearance)?.colorScheme)
                 .task {
                     store.notificationScheduler?.onOpenAsset = { assetID, kind in
                         router.selectedTab = .assets

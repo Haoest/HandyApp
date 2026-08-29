@@ -22,6 +22,9 @@ enum AppPreference {
     /// How many days a soft-deleted asset or category is kept before hard deletion.
     static let DaysToRetainDeletedItems = 14
 
+    /// Light/dark override; empty string = follow the device. See `AppearanceMode`.
+    static let appearanceKey = "appearanceMode"
+
     /// BCP 47 language tag for locale override; empty string = system default.
     static let languageKey = "preferredLanguage"
     static let supportedLanguages: [(code: String, label: String)] = [
@@ -31,4 +34,18 @@ enum AppPreference {
         ("fr",      "Français"),
         ("zh-Hans", "简体中文"),
     ]
+}
+
+/// Whether the app follows the device's light/dark setting or pins one of them.
+///
+/// The raw values are what `@AppStorage` persists, and `system` is deliberately the empty
+/// string: a device that has never touched this setting reads back "" and lands on `system`
+/// without needing a registered default. Mapping to a `ColorScheme` is a view concern and
+/// lives with the other Baron chrome.
+enum AppearanceMode: String, CaseIterable, Identifiable {
+    case system = ""
+    case light
+    case dark
+
+    var id: String { rawValue }
 }

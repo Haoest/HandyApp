@@ -148,3 +148,25 @@ private struct BaronShadow: ViewModifier {
         }
     }
 }
+
+// MARK: - Appearance override
+
+extension AppearanceMode {
+    /// What to hand `preferredColorScheme`. Nil means "don't override", which is how SwiftUI
+    /// spells following the device.
+    var colorScheme: ColorScheme? {
+        switch self {
+        case .system: return nil
+        case .light: return .light
+        case .dark: return .dark
+        }
+    }
+
+    var label: LocalizedStringKey {
+        switch self {
+        case .system: return "Match device"
+        case .light: return "Light"
+        case .dark: return "Dark"
+        }
+    }
+}
