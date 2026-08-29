@@ -132,8 +132,9 @@ struct ThingSpecRow: View {
 
 // MARK: - Shared field chrome
 
-/// The recessed input the design uses inside an expanded row.
-private struct SpecFieldBackground: ViewModifier {
+/// The recessed input the design uses inside an expanded row. Internal because the composite
+/// editor pushed from these rows has to match them.
+struct SpecFieldBackground: ViewModifier {
     func body(content: Content) -> some View {
         content
             .font(Baron.body(14, .medium))
@@ -144,7 +145,7 @@ private struct SpecFieldBackground: ViewModifier {
     }
 }
 
-private extension View {
+extension View {
     func specField() -> some View { modifier(SpecFieldBackground()) }
 }
 

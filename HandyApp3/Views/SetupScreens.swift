@@ -380,7 +380,7 @@ struct DeletedItemsView: View {
                 SetupScreenHeader(breadcrumb: "Setup")
                 SetupScreenTitle(
                     title: "Deleted items",
-                    blurb: "Swipe any row to restore it. Anything still here after \(AppPreference.DaysToRetainDeletedItems) days is removed for good."
+                    blurb: "Restore anything you deleted by mistake. Whatever is still here after \(AppPreference.DaysToRetainDeletedItems) days is removed for good."
                 )
                 HStack(spacing: 7) {
                     ForEach(Bin.allCases) { option in

@@ -181,7 +181,7 @@ struct SetupTab: View {
             SetupRow(name: "Language", sub: languageLabel, value: "") {
                 path.append(SetupDestination.appearance)
             }
-            SetupRow(name: "Quick start guide", sub: "What you can say to Siri",
+            SetupRow(name: "Ask Siri", sub: "What you can say out loud",
                      value: "", isLast: true) { path.append(SetupDestination.quickStart) }
         }
     }
@@ -202,7 +202,7 @@ struct SetupTab: View {
 
     private var extrasGroup: some View {
         SetupGroup("Extras") {
-            SetupRow(name: "Bulk message", sub: "One message to every linked contact",
+            SetupRow(name: "Message everyone", sub: "One message to every linked contact",
                      value: "", isLast: true) { path.append(SetupDestination.bulkMessage) }
         }
     }
