@@ -14,6 +14,9 @@ struct TimelineTab: View {
     @State private var visibleDayCount = HomeActivityDigest.pageSize
     @State private var pushedAsset: PushedAsset?
 
+    /// True while the "Due soon" card is held down — drives the peek overlay.
+    @State private var isPeekingDueSoon = false
+
     // Quick-log flow
     @State private var quickLogStep: QuickLogStep?
     @State private var addEventTarget: AddTarget?
@@ -39,6 +42,9 @@ struct TimelineTab: View {
     private var items: [TimelineItem] { TimelineDigest.items(sources: sources) }
     private var groups: [TimelineWindowGroup] { TimelineDigest.groups(from: items) }
     private var summary: TimelineSummary { TimelineDigest.summary(from: items) }
+
+    /// The rows behind `summary.upcomingCount`, in the same soonest-first order as `items`.
+    private var dueSoonItems: [TimelineItem] { items.filter(\.isDueSoon) }
 
     private var days: [HomeDay] {
         HomeActivityDigest.build(from: store.activityLog, dayLimit: visibleDayCount)
@@ -70,6 +76,9 @@ struct TimelineTab: View {
                         .padding(.bottom, 24)
                     }
                 }
+            }
+            .overlay(alignment: .bottom) {
+                if isPeekingDueSoon { dueSoonPeek }
             }
             .navigationBarTitleDisplayMode(.inline)
             .toolbar(.hidden, for: .navigationBar)
@@ -174,6 +183,10 @@ struct TimelineTab: View {
             statCard("Overdue", value: "\(summary.overdueCount)",
                      color: summary.overdueCount > 0 ? Baron.danger : Baron.text)
             statCard("Due soon", value: "\(summary.upcomingCount)", color: Baron.text)
+                .contentShape(Rectangle())
+                .gesture(dueSoonPeekGesture)
+                .sensoryFeedback(.impact(weight: .light), trigger: isPeekingDueSoon) { _, now in now }
+                .accessibilityHint("Touch and hold to list what is due soon")
             statCard("Net 30 days", value: Self.money(summary.netAmount),
                      color: summary.netAmount < 0 ? Baron.danger : Baron.good)
         }
@@ -199,6 +212,107 @@ struct TimelineTab: View {
         .padding(.vertical, 11)
         .baronCard(radius: 16, elevation: .low)
     }
+
+
+    // MARK: - Due soon peek
+
+    /// Hold the "Due soon" card to list what's behind the number. Sequencing a drag after the
+    /// long press is what keeps the overlay up for as long as the finger is down — a bare
+    /// `onLongPressGesture` ends (and would dismiss) the moment it is recognized. Requiring the
+    /// long press first also means an ordinary scroll that happens to start on the card still
+    /// scrolls, instead of flashing the overlay on touch-down.
+    private var dueSoonPeekGesture: some Gesture {
+        LongPressGesture(minimumDuration: 0.25)
+            .sequenced(before: DragGesture(minimumDistance: 0))
+            .onChanged { value in
+                if case .second(true, _) = value, !isPeekingDueSoon {
+                    withAnimation(Self.peekAnimation) { isPeekingDueSoon = true }
+                }
+            }
+            .onEnded { _ in
+                withAnimation(Self.peekAnimation) { isPeekingDueSoon = false }
+            }
+    }
+
+    /// Anchored to the bottom of the screen: the card being held is up in the header, so the
+    /// finger is nowhere near this. Non-interactive on purpose — it must never swallow the
+    /// touch that is currently holding the gesture open.
+    private var dueSoonPeek: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Text("Due soon")
+                .font(Baron.heading(11))
+                .tracking(1.3)
+                .textCase(.uppercase)
+                .foregroundStyle(Baron.neutral600)
+                .padding(.bottom, 10)
+
+            if dueSoonItems.isEmpty {
+                Text("Nothing due soon")
+                    .font(Baron.body(13))
+                    .foregroundStyle(Baron.neutral600)
+            } else {
+                VStack(spacing: 9) {
+                    ForEach(dueSoonItems.prefix(Self.peekRowLimit)) { item in
+                        dueSoonPeekRow(item)
+                    }
+                }
+                if dueSoonItems.count > Self.peekRowLimit {
+                    Text("+\(dueSoonItems.count - Self.peekRowLimit) more")
+                        .font(Baron.body(11, .medium))
+                        .foregroundStyle(Baron.neutral500)
+                        .padding(.top, 9)
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 16)
+        .padding(.vertical, 14)
+        .baronCard(radius: Self.peekRadius, elevation: .high)
+        .overlay {
+            RoundedRectangle(cornerRadius: Self.peekRadius, style: .continuous)
+                // `strokeBorder` keeps the line inside the bounds, so it traces the card's own
+                // edge instead of straddling it and reading a half-pixel wider than the fill.
+                .strokeBorder(Baron.fill, lineWidth: 1.5)
+        }
+        // Clamped after the card so it fills a phone's width but doesn't stretch across an iPad.
+        .frame(maxWidth: 420)
+        .padding(.horizontal, Baron.pageInset)
+        .padding(.bottom, 28)
+        .allowsHitTesting(false)
+        .transition(.opacity.combined(with: .move(edge: .bottom)))
+    }
+
+    private static let peekAnimation: Animation = .easeOut(duration: 0.16)
+
+    /// Shared by the peek's fill and its border, which must not drift apart.
+    private static let peekRadius = Baron.Radius.card
+
+    private func dueSoonPeekRow(_ item: TimelineItem) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 10) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(item.title)
+                    .font(Baron.body(13, .medium))
+                    .foregroundStyle(Baron.text)
+                    .lineLimit(1)
+                Text(item.assetName)
+                    .font(Baron.body(11))
+                    .foregroundStyle(Baron.neutral600)
+                    .lineLimit(1)
+            }
+            Spacer(minLength: 0)
+            if let amount = item.signedAmount {
+                Text(Self.money(amount))
+                    .font(Baron.body(12, .medium))
+                    .monospacedDigit()
+                    .foregroundStyle(amount < 0 ? Baron.danger : Baron.good)
+                    .lineLimit(1)
+            }
+        }
+    }
+
+    /// Rows shown before the peek collapses into a "+N more" line — enough to cover a typical
+    /// week without the card growing tall enough to reach the finger.
+    private static let peekRowLimit = 6
 
     // MARK: - Coming up
 
