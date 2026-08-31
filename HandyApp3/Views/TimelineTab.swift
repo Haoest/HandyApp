@@ -173,7 +173,7 @@ struct TimelineTab: View {
         HStack(spacing: 9) {
             statCard("Overdue", value: "\(summary.overdueCount)",
                      color: summary.overdueCount > 0 ? Baron.danger : Baron.text)
-            statCard("Next 30 days", value: "\(summary.upcomingCount)", color: Baron.text)
+            statCard("Due soon", value: "\(summary.upcomingCount)", color: Baron.text)
             statCard("Net 30 days", value: Self.money(summary.netAmount),
                      color: summary.netAmount < 0 ? Baron.danger : Baron.good)
         }

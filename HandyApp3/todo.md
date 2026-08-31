@@ -4,15 +4,15 @@
 
 revisit paywall ensure transaction and event has a limited free count
 
--improve asset navigation, especially in tree mode, when going into details view. 
 
 - revisit siri command
 
--facelift
+in timeline screen, add log, add quick filter by category
 
 event /transaction description length, make shorter
 
 == completed ==
+-facelift
 - create transaction / event tab
 - set a hard length on each text form field
 -importing data inserts duplicate assets

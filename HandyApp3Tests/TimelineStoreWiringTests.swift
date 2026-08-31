@@ -23,16 +23,19 @@ final class TimelineStoreWiringTests: XCTestCase {
         }
     }
 
-    /// A transaction saved with a due date inside the horizon reaches the digest and moves the net.
-    func testWatchedTransactionReachesSummary() throws {
+    /// A transaction saved with a due date inside the horizon reaches the digest and moves the
+    /// net — even when it is further out than its own lead time, so "Due soon" stays quiet. The
+    /// two figures are deliberately keyed to different sets; this is the wiring cover for that.
+    func testWatchedTransactionOutsideItsLeadTimeNetsButIsNotDueSoon() throws {
         let (store, assetID) = try makeStore()
         let due = Date().addingTimeInterval(10 * 86_400)
         try store.addTransaction(details: "Property tax", amount: 2480, date: Date(), kind: .expense,
                                  payeeContactID: nil, notes: "", recurrence: nil,
                                  due: DueSettings(dueDate: due), toAssetID: assetID)
 
+        // 10 days out against the default 7-day lead.
         let summary = TimelineDigest.summary(from: TimelineDigest.items(sources: sources(store)))
-        XCTAssertEqual(summary.upcomingCount, 1)
+        XCTAssertEqual(summary.upcomingCount, 0)
         XCTAssertEqual(summary.netAmount, -2480)
     }
 
@@ -64,7 +67,8 @@ final class TimelineStoreWiringTests: XCTestCase {
         XCTAssertEqual(summary.netAmount, 0)
     }
 
-    /// Income and expense net against each other rather than one direction winning.
+    /// Income and expense net against each other rather than one direction winning — and at
+    /// 5 days out both sit inside the default 7-day lead, so both are also counted as due soon.
     func testIncomeAndExpenseNetTogether() throws {
         let (store, assetID) = try makeStore()
         let soon = Date().addingTimeInterval(5 * 86_400)

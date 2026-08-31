@@ -51,12 +51,26 @@ struct TimelineItem: Identifiable {
     let payeeContactID: String?
     let dueDate: Date
     let daysUntilDue: Int
+    /// The representative record's "Appears this long before" setting — the lead time that
+    /// decides whether this row counts as due soon. Taken from the representative, not the
+    /// newest member, because `daysUntilDue` is the representative's too.
+    let messageDaysBefore: Int
     let interval: RecurrenceInterval?
     /// Whether duplicating `openRecordID` would extend a series — drives "Log it" vs
     /// "Duplicate it" wording, matching the existing row context menus.
     let isSeriesEligible: Bool
 
     var isOverdue: Bool { daysUntilDue < 0 }
+
+    /// Inside the record's own lead-in window: from `messageDaysBefore` days out through the
+    /// due date itself, inclusive at both ends. The due-date end must stay inclusive — a record
+    /// due today is not overdue, so excluding it would leave it counted by neither header stat.
+    ///
+    /// Note this clamps at `TimelineDigest.horizonDays`: a lead time longer than the horizon
+    /// (the slider goes to 60) can't be honored here, because the record is filtered out of the
+    /// item pool before it reaches this check. Such a record starts counting once it comes
+    /// within the horizon, while its notifications still fire at the full lead time.
+    var isDueSoon: Bool { daysUntilDue >= 0 && daysUntilDue <= messageDaysBefore }
 }
 
 struct TimelineWindowGroup: Identifiable {
@@ -72,9 +86,12 @@ struct TimelineWindowGroup: Identifiable {
 /// The three figures in the Timeline header.
 struct TimelineSummary: Equatable {
     let overdueCount: Int
-    /// Watched records due from today through the 31-day horizon.
+    /// Watched records inside their own lead-in window — see `TimelineItem.isDueSoon`.
     let upcomingCount: Int
-    /// Signed sum of the money among those upcoming records.
+    /// Signed sum of the money due from today through the 31-day horizon. Deliberately *not*
+    /// keyed to `upcomingCount`'s set: the count answers "what wants my attention now", the
+    /// net answers "what is scheduled this month", and narrowing the net to the lead-in
+    /// window would make it swing as unrelated records enter and leave that window.
     let netAmount: Decimal
 }
 
@@ -88,13 +105,18 @@ struct TimelineSummary: Equatable {
 /// **Window semantics differ from the Home tab's due section.** Home gates purely on
 /// `SeriesLogic.isDueMessageActive`, so a record with the default 7-day lead simply doesn't
 /// appear until a week before it's due — which would leave "Next two weeks" and "Later this
-/// month" permanently empty. Here, `messageDaysBefore` no longer gates membership: everything
-/// watched and due inside `horizonDays` is shown, and the lead-time slider is left to govern
-/// notifications. `messageDaysAfter` *is* still honored as the lower bound on `overdue`, so a
-/// long-ignored record eventually stops nagging exactly as it does today.
+/// month" permanently empty. Here, `messageDaysBefore` does not gate *membership*: everything
+/// watched and due inside `horizonDays` is listed. It does decide the header's "Due soon" count
+/// (`TimelineItem.isDueSoon`), so the lead-time slider governs which rows the header calls out
+/// without emptying the windows below it — meaning the header count is deliberately a subset of
+/// the rows on screen, not a total of them. `messageDaysAfter` *is* still honored as the lower
+/// bound on `overdue`, so a long-ignored record eventually stops nagging exactly as it does
+/// today; the two settings now bound the header's two counts symmetrically, one on each side of
+/// the due date.
 enum TimelineDigest {
-    /// How far ahead the Timeline looks, in days. Records due beyond this are counted by
-    /// neither the windows nor the header summary.
+    /// How far ahead the Timeline looks, in days. Records due beyond this appear in neither the
+    /// windows nor the header summary — including one whose `messageDaysBefore` reaches further
+    /// than the horizon, which therefore starts counting as due soon only once it crosses it.
     static let horizonDays = 31
 
     static func items(sources: [TimelineSource], calendar: Calendar = .current, now: Date = Date()) -> [TimelineItem] {
@@ -112,6 +134,7 @@ enum TimelineDigest {
                     payeeContactID: nil,
                     dueDate: candidate.dueDate,
                     daysUntilDue: candidate.daysUntilDue,
+                    messageDaysBefore: candidate.representative.messageDaysBefore,
                     interval: candidate.newest.recurrence,
                     isSeriesEligible: candidate.newest.recurrence != nil
                 )
@@ -130,6 +153,7 @@ enum TimelineDigest {
                     payeeContactID: record.payeeContactID,
                     dueDate: candidate.dueDate,
                     daysUntilDue: candidate.daysUntilDue,
+                    messageDaysBefore: candidate.representative.messageDaysBefore,
                     interval: record.recurrence,
                     isSeriesEligible: record.recurrence != nil
                 )
@@ -147,11 +171,11 @@ enum TimelineDigest {
     }
 
     static func summary(from items: [TimelineItem]) -> TimelineSummary {
-        let upcoming = items.filter { $0.daysUntilDue >= 0 && $0.daysUntilDue <= horizonDays }
+        let scheduled = items.filter { $0.daysUntilDue >= 0 && $0.daysUntilDue <= horizonDays }
         return TimelineSummary(
             overdueCount: items.filter(\.isOverdue).count,
-            upcomingCount: upcoming.count,
-            netAmount: upcoming.compactMap(\.signedAmount).reduce(0, +)
+            upcomingCount: items.filter(\.isDueSoon).count,
+            netAmount: scheduled.compactMap(\.signedAmount).reduce(0, +)
         )
     }
 

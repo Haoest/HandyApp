@@ -14,15 +14,19 @@ final class TimelineDigestTests: XCTestCase {
 
     private func event(dueDate: Date?, recurrence: RecurrenceInterval? = nil, seriesID: UUID? = nil,
                        createdAt: Date = Date(timeIntervalSince1970: 0),
+                       messageDaysBefore: Int = DueDefaults.messageDaysBefore,
                        messageDaysAfter: Int = DueDefaults.messageDaysAfter) -> Event {
         Event(title: "Event", date: date(2026, 8, 1), recurrence: recurrence, dueDate: dueDate,
-              seriesID: seriesID, createdAt: createdAt, messageDaysAfter: messageDaysAfter)
+              seriesID: seriesID, createdAt: createdAt, messageDaysBefore: messageDaysBefore,
+              messageDaysAfter: messageDaysAfter)
     }
 
     private func transaction(dueDate: Date?, amount: Decimal = 100, kind: TransactionKind = .expense,
-                             recurrence: RecurrenceInterval? = nil) -> Transaction {
+                             recurrence: RecurrenceInterval? = nil,
+                             messageDaysBefore: Int = DueDefaults.messageDaysBefore) -> Transaction {
         Transaction(details: "Txn", amount: amount, date: date(2026, 8, 1), kind: kind,
-                    recurrence: recurrence, dueDate: dueDate, createdAt: Date(timeIntervalSince1970: 0))
+                    recurrence: recurrence, dueDate: dueDate, createdAt: Date(timeIntervalSince1970: 0),
+                    messageDaysBefore: messageDaysBefore)
     }
 
     private func source(events: [Event] = [], transactions: [Transaction] = [], name: String = "Thing") -> TimelineSource {
@@ -127,9 +131,54 @@ final class TimelineDigestTests: XCTestCase {
             from: items([source(events: [upcomingEvent], transactions: [overdue, expense, income])])
         )
         XCTAssertEqual(summary.overdueCount, 1)
-        // Overdue is excluded from the forward-looking count and net.
-        XCTAssertEqual(summary.upcomingCount, 3)
+        // Overdue is excluded from both forward-looking figures. Of the three remaining, only
+        // the Aug 20 expense (5 days out) is inside the default 7-day lead — the Aug 25 event
+        // and the Sep 1 income are still listed below, just not called out by the header.
+        XCTAssertEqual(summary.upcomingCount, 1)
+        // The net is deliberately *not* narrowed to that set: it spans the full horizon, so the
+        // Sep 1 income still lands in it.
         XCTAssertEqual(summary.netAmount, 300)
+    }
+
+    func testDueTodayIsCountedAsDueSoon() {
+        // Due today is not overdue, so if the lead-in window excluded its own due date this
+        // record would fall through both header stats.
+        let summary = TimelineDigest.summary(from: items([source(events: [event(dueDate: now)])]))
+        XCTAssertEqual(summary.overdueCount, 0)
+        XCTAssertEqual(summary.upcomingCount, 1)
+    }
+
+    func testDueSoonHonorsTheRecordsOwnLeadTime() {
+        // Both 10 days out; only the one asking for a 14-day lead is called out.
+        let shortLead = event(dueDate: date(2026, 8, 25), messageDaysBefore: 3)
+        let longLead = event(dueDate: date(2026, 8, 25), messageDaysBefore: 14)
+        XCTAssertEqual(TimelineDigest.summary(from: items([source(events: [shortLead])])).upcomingCount, 0)
+        XCTAssertEqual(TimelineDigest.summary(from: items([source(events: [longLead])])).upcomingCount, 1)
+    }
+
+    func testDueSoonBoundaryIsInclusive() {
+        // Lead of 5 with now = Aug 15: Aug 20 is exactly at the edge, Aug 21 one past it.
+        let atEdge = event(dueDate: date(2026, 8, 20), messageDaysBefore: 5)
+        let pastEdge = event(dueDate: date(2026, 8, 21), messageDaysBefore: 5)
+        XCTAssertEqual(TimelineDigest.summary(from: items([source(events: [atEdge])])).upcomingCount, 1)
+        XCTAssertEqual(TimelineDigest.summary(from: items([source(events: [pastEdge])])).upcomingCount, 0)
+    }
+
+    func testLeadTimeBeyondHorizonClampsToTheHorizon() {
+        // The slider reaches 60 but the item pool stops at 31, so a 60-day lead can only start
+        // counting once the record crosses the horizon. Documents the clamp rather than
+        // endorsing it — see TimelineDigest.horizonDays.
+        let beyond = event(dueDate: date(2026, 9, 16), messageDaysBefore: 60)   // 32 days out
+        let atHorizon = event(dueDate: date(2026, 9, 15), messageDaysBefore: 60) // 31 days out
+        XCTAssertEqual(TimelineDigest.summary(from: items([source(events: [beyond])])).upcomingCount, 0)
+        XCTAssertEqual(TimelineDigest.summary(from: items([source(events: [atHorizon])])).upcomingCount, 1)
+    }
+
+    func testOverdueIsNeverCountedAsDueSoon() {
+        let late = event(dueDate: date(2026, 8, 13), messageDaysBefore: 60)
+        let summary = TimelineDigest.summary(from: items([source(events: [late])]))
+        XCTAssertEqual(summary.overdueCount, 1)
+        XCTAssertEqual(summary.upcomingCount, 0)
     }
 
     func testWindowNetIgnoresEventsButCountsThem() {
