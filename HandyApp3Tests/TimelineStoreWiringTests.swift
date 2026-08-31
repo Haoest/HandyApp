@@ -23,6 +23,11 @@ final class TimelineStoreWiringTests: XCTestCase {
         }
     }
 
+    private func summary(_ store: AssetStore) -> TimelineSummary {
+        let sources = sources(store)
+        return TimelineDigest.summary(from: TimelineDigest.items(sources: sources), sources: sources)
+    }
+
     /// A transaction saved with a due date inside the horizon reaches the digest and moves the
     /// net — even when it is further out than its own lead time, so "Due soon" stays quiet. The
     /// two figures are deliberately keyed to different sets; this is the wiring cover for that.
@@ -33,38 +38,67 @@ final class TimelineStoreWiringTests: XCTestCase {
                                  payeeContactID: nil, notes: "", recurrence: nil,
                                  due: DueSettings(dueDate: due), toAssetID: assetID)
 
-        // 10 days out against the default 7-day lead.
-        let summary = TimelineDigest.summary(from: TimelineDigest.items(sources: sources(store)))
+        // 10 days out against the default 7-day lead, but dated today.
+        let summary = summary(store)
         XCTAssertEqual(summary.upcomingCount, 0)
-        XCTAssertEqual(summary.netAmount, -2480)
+        XCTAssertEqual(summary.recentCashFlow, -2480)
     }
 
-    /// The common real-world reason the net reads zero: nothing has a due date, so nothing is
-    /// watched. The record exists and is perfectly valid — it just isn't on the timeline.
-    func testTransactionWithoutDueDateIsInvisibleToTheTimeline() throws {
+    /// A record with no due date is invisible to everything driven by due dates — no timeline
+    /// row, neither count — yet it is still money that moved, so cash flow counts it. This is
+    /// the case the old due-date-gated net got wrong.
+    func testTransactionWithoutDueDateIsInvisibleToTheTimelineButCountsAsCashFlow() throws {
         let (store, assetID) = try makeStore()
         try store.addTransaction(details: "Fuel", amount: 86.40, date: Date(), kind: .expense,
                                  payeeContactID: nil, notes: "", recurrence: nil,
                                  due: DueSettings(), toAssetID: assetID)
 
-        let items = TimelineDigest.items(sources: sources(store))
-        XCTAssertTrue(items.isEmpty)
-        XCTAssertEqual(TimelineDigest.summary(from: items).netAmount, 0)
+        XCTAssertTrue(TimelineDigest.items(sources: sources(store)).isEmpty)
+        let summary = summary(store)
+        XCTAssertEqual(summary.overdueCount, 0)
+        XCTAssertEqual(summary.upcomingCount, 0)
+        XCTAssertEqual(summary.recentCashFlow, -86.40)
     }
 
-    /// The other way the net reads zero while a pill above it shows a count: overdue money is
-    /// counted by Overdue but deliberately excluded from the forward-looking net.
-    func testOverdueMoneyIsCountedButNotNetted() throws {
+    /// Overdue money is counted by Overdue and, because it was paid three days ago, by cash
+    /// flow too. The old net excluded overdue entirely — a bill two days late vanished from it.
+    func testOverdueMoneyIsCountedAndStillFlows() throws {
         let (store, assetID) = try makeStore()
-        let due = Date().addingTimeInterval(-3 * 86_400)
-        try store.addTransaction(details: "Late bill", amount: 500, date: Date(), kind: .expense,
+        let threeDaysAgo = Date().addingTimeInterval(-3 * 86_400)
+        try store.addTransaction(details: "Late bill", amount: 500, date: threeDaysAgo, kind: .expense,
                                  payeeContactID: nil, notes: "", recurrence: nil,
-                                 due: DueSettings(dueDate: due), toAssetID: assetID)
+                                 due: DueSettings(dueDate: threeDaysAgo), toAssetID: assetID)
 
-        let summary = TimelineDigest.summary(from: TimelineDigest.items(sources: sources(store)))
+        let summary = summary(store)
         XCTAssertEqual(summary.overdueCount, 1)
         XCTAssertEqual(summary.upcomingCount, 0)
-        XCTAssertEqual(summary.netAmount, 0)
+        XCTAssertEqual(summary.recentCashFlow, -500)
+    }
+
+    /// The window has a far edge: a transaction older than `horizonDays` drops out even though
+    /// the record is perfectly live, and it takes its peek row with it.
+    func testTransactionOlderThanTheWindowDoesNotFlow() throws {
+        let (store, assetID) = try makeStore()
+        let longAgo = Date().addingTimeInterval(-45 * 86_400)
+        try store.addTransaction(details: "Old repair", amount: 900, date: longAgo, kind: .expense,
+                                 payeeContactID: nil, notes: "", recurrence: nil,
+                                 due: DueSettings(), toAssetID: assetID)
+
+        XCTAssertEqual(summary(store).recentCashFlow, 0)
+        XCTAssertTrue(TimelineDigest.cashFlowEntries(sources: sources(store)).isEmpty)
+    }
+
+    /// A soft-deleted asset takes its transactions out of the figure with it — `allAssets`
+    /// already filters it, which is why the digest does no liveness checking of its own.
+    func testDeletedAssetsTransactionsStopFlowing() throws {
+        let (store, assetID) = try makeStore()
+        try store.addTransaction(details: "Paint", amount: 300, date: Date(), kind: .expense,
+                                 payeeContactID: nil, notes: "", recurrence: nil,
+                                 due: DueSettings(), toAssetID: assetID)
+        XCTAssertEqual(summary(store).recentCashFlow, -300)
+
+        try store.softDeleteAsset(id: assetID)
+        XCTAssertEqual(summary(store).recentCashFlow, 0)
     }
 
     /// Income and expense net against each other rather than one direction winning — and at
@@ -79,9 +113,9 @@ final class TimelineStoreWiringTests: XCTestCase {
                                  payeeContactID: nil, notes: "", recurrence: nil,
                                  due: DueSettings(dueDate: soon), toAssetID: assetID)
 
-        let summary = TimelineDigest.summary(from: TimelineDigest.items(sources: sources(store)))
+        let summary = summary(store)
         XCTAssertEqual(summary.upcomingCount, 2)
-        XCTAssertEqual(summary.netAmount, 1960)
+        XCTAssertEqual(summary.recentCashFlow, 1960)
     }
 
     /// A freshly seeded install has no events or transactions at all, so every figure is zero —
@@ -93,9 +127,9 @@ final class TimelineStoreWiringTests: XCTestCase {
         store.seedBuiltInAssets()
         store.seedSampleAutomobile()
 
-        let summary = TimelineDigest.summary(from: TimelineDigest.items(sources: sources(store)))
+        let summary = summary(store)
         XCTAssertEqual(summary.overdueCount, 0)
         XCTAssertEqual(summary.upcomingCount, 0)
-        XCTAssertEqual(summary.netAmount, 0)
+        XCTAssertEqual(summary.recentCashFlow, 0)
     }
 }

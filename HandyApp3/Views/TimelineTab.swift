@@ -14,8 +14,8 @@ struct TimelineTab: View {
     @State private var visibleDayCount = HomeActivityDigest.pageSize
     @State private var pushedAsset: PushedAsset?
 
-    /// True while the "Due soon" card is held down — drives the peek overlay.
-    @State private var isPeekingDueSoon = false
+    /// Which stat card is currently held down, if any — drives the peek overlay.
+    @State private var activePeek: PeekKind?
 
     // Quick-log flow
     @State private var quickLogStep: QuickLogStep?
@@ -41,10 +41,13 @@ struct TimelineTab: View {
 
     private var items: [TimelineItem] { TimelineDigest.items(sources: sources) }
     private var groups: [TimelineWindowGroup] { TimelineDigest.groups(from: items) }
-    private var summary: TimelineSummary { TimelineDigest.summary(from: items) }
+    private var summary: TimelineSummary { TimelineDigest.summary(from: items, sources: sources) }
 
     /// The rows behind `summary.upcomingCount`, in the same soonest-first order as `items`.
     private var dueSoonItems: [TimelineItem] { items.filter(\.isDueSoon) }
+
+    /// The transactions behind `summary.recentCashFlow`, newest occurrence first.
+    private var cashFlowEntries: [CashFlowEntry] { TimelineDigest.cashFlowEntries(sources: sources) }
 
     private var days: [HomeDay] {
         HomeActivityDigest.build(from: store.activityLog, dayLimit: visibleDayCount)
@@ -78,7 +81,7 @@ struct TimelineTab: View {
                 }
             }
             .overlay(alignment: .bottom) {
-                if isPeekingDueSoon { dueSoonPeek }
+                if let kind = activePeek { peek(for: kind) }
             }
             .navigationBarTitleDisplayMode(.inline)
             .toolbar(.hidden, for: .navigationBar)
@@ -183,12 +186,11 @@ struct TimelineTab: View {
             statCard("Overdue", value: "\(summary.overdueCount)",
                      color: summary.overdueCount > 0 ? Baron.danger : Baron.text)
             statCard("Due soon", value: "\(summary.upcomingCount)", color: Baron.text)
-                .contentShape(Rectangle())
-                .gesture(dueSoonPeekGesture)
-                .sensoryFeedback(.impact(weight: .light), trigger: isPeekingDueSoon) { _, now in now }
-                .accessibilityHint("Touch and hold to list what is due soon")
-            statCard("Net 30 days", value: Self.money(summary.netAmount),
-                     color: summary.netAmount < 0 ? Baron.danger : Baron.good)
+                .peekable(.dueSoon, active: $activePeek, hint: "Touch and hold to list what is due soon")
+            statCard("Cashflow", value: Self.money(summary.recentCashFlow),
+                     color: summary.recentCashFlow < 0 ? Baron.danger : Baron.good)
+                .peekable(.cashFlow, active: $activePeek,
+                          hint: "Touch and hold to list recent transactions")
         }
     }
 
@@ -214,50 +216,96 @@ struct TimelineTab: View {
     }
 
 
-    // MARK: - Due soon peek
+    // MARK: - Stat card peeks
 
-    /// Hold the "Due soon" card to list what's behind the number. Sequencing a drag after the
-    /// long press is what keeps the overlay up for as long as the finger is down — a bare
+    /// Which stat card's itemization is on screen. Only the two cards whose numbers are worth
+    /// unpacking have one — "Overdue" rows are already listed under their own window heading.
+    enum PeekKind {
+        case dueSoon, cashFlow
+
+        var title: LocalizedStringKey {
+            switch self {
+            case .dueSoon: return "Due soon"
+            case .cashFlow: return "Recent cashflow"
+            }
+        }
+
+        var emptyText: LocalizedStringKey {
+            switch self {
+            case .dueSoon: return "Nothing due soon"
+            case .cashFlow: return "No recent transactions"
+            }
+        }
+    }
+
+    /// One line of a peek, whichever card it came from, so both render identically.
+    struct PeekRow: Identifiable {
+        let id: UUID
+        let title: String
+        let subtitle: String
+        /// Signed; `nil` for an event, which has no amount.
+        let amount: Decimal?
+    }
+
+    private func rows(for kind: PeekKind) -> [PeekRow] {
+        switch kind {
+        case .dueSoon:
+            return dueSoonItems.map {
+                PeekRow(id: $0.id, title: $0.title, subtitle: $0.assetName, amount: $0.signedAmount)
+            }
+        case .cashFlow:
+            return cashFlowEntries.map {
+                PeekRow(id: $0.id, title: $0.details,
+                        // The date isn't the sort key, but it still earns its place: it
+                        // separates two occurrences of the same recurring bill, which are
+                        // adjacent here precisely because their amounts match.
+                        subtitle: "\($0.assetName) · \(Self.dayFormatter.string(from: $0.date))",
+                        amount: $0.signedAmount)
+            }
+        }
+    }
+
+    /// Hold a stat card to list what's behind the number. Sequencing a drag after the long
+    /// press is what keeps the overlay up for as long as the finger is down — a bare
     /// `onLongPressGesture` ends (and would dismiss) the moment it is recognized. Requiring the
     /// long press first also means an ordinary scroll that happens to start on the card still
     /// scrolls, instead of flashing the overlay on touch-down.
-    private var dueSoonPeekGesture: some Gesture {
+    static func peekGesture(_ kind: PeekKind, active: Binding<PeekKind?>) -> some Gesture {
         LongPressGesture(minimumDuration: 0.25)
             .sequenced(before: DragGesture(minimumDistance: 0))
             .onChanged { value in
-                if case .second(true, _) = value, !isPeekingDueSoon {
-                    withAnimation(Self.peekAnimation) { isPeekingDueSoon = true }
+                if case .second(true, _) = value, active.wrappedValue != kind {
+                    withAnimation(peekAnimation) { active.wrappedValue = kind }
                 }
             }
             .onEnded { _ in
-                withAnimation(Self.peekAnimation) { isPeekingDueSoon = false }
+                withAnimation(peekAnimation) { active.wrappedValue = nil }
             }
     }
 
     /// Anchored to the bottom of the screen: the card being held is up in the header, so the
     /// finger is nowhere near this. Non-interactive on purpose — it must never swallow the
     /// touch that is currently holding the gesture open.
-    private var dueSoonPeek: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            Text("Due soon")
+    private func peek(for kind: PeekKind) -> some View {
+        let rows = rows(for: kind)
+        return VStack(alignment: .leading, spacing: 0) {
+            Text(kind.title)
                 .font(Baron.heading(11))
                 .tracking(1.3)
                 .textCase(.uppercase)
                 .foregroundStyle(Baron.neutral600)
                 .padding(.bottom, 10)
 
-            if dueSoonItems.isEmpty {
-                Text("Nothing due soon")
+            if rows.isEmpty {
+                Text(kind.emptyText)
                     .font(Baron.body(13))
                     .foregroundStyle(Baron.neutral600)
             } else {
                 VStack(spacing: 9) {
-                    ForEach(dueSoonItems.prefix(Self.peekRowLimit)) { item in
-                        dueSoonPeekRow(item)
-                    }
+                    ForEach(rows.prefix(Self.peekRowLimit)) { peekRow($0) }
                 }
-                if dueSoonItems.count > Self.peekRowLimit {
-                    Text("+\(dueSoonItems.count - Self.peekRowLimit) more")
+                if rows.count > Self.peekRowLimit {
+                    Text("+\(rows.count - Self.peekRowLimit) more")
                         .font(Baron.body(11, .medium))
                         .foregroundStyle(Baron.neutral500)
                         .padding(.top, 9)
@@ -282,25 +330,25 @@ struct TimelineTab: View {
         .transition(.opacity.combined(with: .move(edge: .bottom)))
     }
 
-    private static let peekAnimation: Animation = .easeOut(duration: 0.16)
+    static let peekAnimation: Animation = .easeOut(duration: 0.16)
 
     /// Shared by the peek's fill and its border, which must not drift apart.
     private static let peekRadius = Baron.Radius.card
 
-    private func dueSoonPeekRow(_ item: TimelineItem) -> some View {
+    private func peekRow(_ row: PeekRow) -> some View {
         HStack(alignment: .firstTextBaseline, spacing: 10) {
             VStack(alignment: .leading, spacing: 2) {
-                Text(item.title)
+                Text(row.title)
                     .font(Baron.body(13, .medium))
                     .foregroundStyle(Baron.text)
                     .lineLimit(1)
-                Text(item.assetName)
+                Text(row.subtitle)
                     .font(Baron.body(11))
                     .foregroundStyle(Baron.neutral600)
                     .lineLimit(1)
             }
             Spacer(minLength: 0)
-            if let amount = item.signedAmount {
+            if let amount = row.amount {
                 Text(Self.money(amount))
                     .font(Baron.body(12, .medium))
                     .monospacedDigit()
@@ -310,8 +358,11 @@ struct TimelineTab: View {
         }
     }
 
-    /// Rows shown before the peek collapses into a "+N more" line — enough to cover a typical
+    /// Rows shown before a peek collapses into a "+N more" line — enough to cover a typical
     /// week without the card growing tall enough to reach the finger.
+    ///
+    /// Cash-flow rows are ordered by absolute amount descending, so what this drops is the
+    /// smallest movements — the right end to lose.
     private static let peekRowLimit = 6
 
     // MARK: - Coming up
@@ -776,4 +827,17 @@ private struct ResolvedTransaction: Identifiable {
     let transaction: Transaction
     let assetID: UUID
     var id: UUID { transaction.id }
+}
+
+private extension View {
+    /// Makes a stat card hold-to-peek: the gesture, the hit area it needs, and the haptic that
+    /// tells you the press registered. `sensoryFeedback` rather than `UIImpactFeedbackGenerator`
+    /// so this file needs no UIKit import.
+    func peekable(_ kind: TimelineTab.PeekKind, active: Binding<TimelineTab.PeekKind?>,
+                  hint: LocalizedStringKey) -> some View {
+        contentShape(Rectangle())
+            .gesture(TimelineTab.peekGesture(kind, active: active))
+            .sensoryFeedback(.impact(weight: .light), trigger: active.wrappedValue == kind) { _, now in now }
+            .accessibilityHint(hint)
+    }
 }

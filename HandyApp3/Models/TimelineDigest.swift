@@ -88,11 +88,27 @@ struct TimelineSummary: Equatable {
     let overdueCount: Int
     /// Watched records inside their own lead-in window — see `TimelineItem.isDueSoon`.
     let upcomingCount: Int
-    /// Signed sum of the money due from today through the 31-day horizon. Deliberately *not*
-    /// keyed to `upcomingCount`'s set: the count answers "what wants my attention now", the
-    /// net answers "what is scheduled this month", and narrowing the net to the lead-in
-    /// window would make it swing as unrelated records enter and leave that window.
-    let netAmount: Decimal
+    /// Signed sum of the money that actually moved in the trailing `horizonDays` — see
+    /// `TimelineDigest.cashFlowEntries`. Unlike the two counts beside it this looks *backward*
+    /// and ignores due dates entirely, so the header reads as "what needs attention" next to
+    /// "what it has been costing".
+    let recentCashFlow: Decimal
+}
+
+/// One line of the cash-flow peek: a single transaction that landed inside the trailing
+/// window, carrying the asset it belongs to. Unlike `TimelineItem` these are never collapsed —
+/// each occurrence of a recurring bill is its own entry, because each is its own payment.
+struct CashFlowEntry: Identifiable {
+    /// The transaction's own id.
+    let id: UUID
+    let assetID: UUID
+    let assetName: String
+    let details: String
+    /// The transaction's occurrence date. Shown on the row, but not what the list is ordered
+    /// by — it only breaks ties between equal amounts.
+    let date: Date
+    /// Negative for an expense, positive for income.
+    let signedAmount: Decimal
 }
 
 /// Buckets watched (due-bearing) events and transactions across every asset into the Timeline's
@@ -114,9 +130,15 @@ struct TimelineSummary: Equatable {
 /// today; the two settings now bound the header's two counts symmetrically, one on each side of
 /// the due date.
 enum TimelineDigest {
-    /// How far ahead the Timeline looks, in days. Records due beyond this appear in neither the
-    /// windows nor the header summary — including one whose `messageDaysBefore` reaches further
-    /// than the horizon, which therefore starts counting as due soon only once it crosses it.
+    /// How far the Timeline looks in days — in *both* directions, so the screen reaches back
+    /// exactly as far as it reaches forward.
+    ///
+    /// Forward it bounds the watched item pool and `TimelineWindow.laterThisMonth`'s upper
+    /// bound: records due beyond it appear in neither the windows nor the header summary,
+    /// including one whose `messageDaysBefore` reaches further than the horizon, which
+    /// therefore starts counting as due soon only once it crosses it. Backward it bounds
+    /// `cashFlowEntries`. Moving it moves both halves of the screen at once — that is the
+    /// point, but it is why the constant is worth changing deliberately rather than in passing.
     static let horizonDays = 31
 
     static func items(sources: [TimelineSource], calendar: Calendar = .current, now: Date = Date()) -> [TimelineItem] {
@@ -170,13 +192,88 @@ enum TimelineDigest {
         }
     }
 
-    static func summary(from items: [TimelineItem]) -> TimelineSummary {
-        let scheduled = items.filter { $0.daysUntilDue >= 0 && $0.daysUntilDue <= horizonDays }
-        return TimelineSummary(
+    /// `sources` is taken alongside `items` rather than re-derived here: the caller already
+    /// holds both, and the cash-flow figure deliberately reads the raw records that `items`
+    /// has thrown away — see `cashFlowEntries`.
+    static func summary(from items: [TimelineItem], sources: [TimelineSource],
+                        calendar: Calendar = .current, now: Date = Date()) -> TimelineSummary {
+        TimelineSummary(
             overdueCount: items.filter(\.isOverdue).count,
             upcomingCount: items.filter(\.isDueSoon).count,
-            netAmount: scheduled.compactMap(\.signedAmount).reduce(0, +)
+            recentCashFlow: recentCashFlow(sources: sources, calendar: calendar, now: now)
         )
+    }
+
+    /// Signed sum of the money that landed in the trailing window — exactly the sum of
+    /// `cashFlowEntries`, so the header figure and the list behind it cannot disagree.
+    static func recentCashFlow(sources: [TimelineSource], calendar: Calendar = .current,
+                               now: Date = Date()) -> Decimal {
+        cashFlowEntries(sources: sources, calendar: calendar, now: now)
+            .reduce(into: Decimal(0)) { $0 += $1.signedAmount }
+    }
+
+    /// Every live transaction whose *occurrence date* falls in the trailing `horizonDays` —
+    /// today plus the `horizonDays` days before it — largest *absolute* amount first, so the
+    /// biggest movements lead whichever direction they went, and a big expense is not buried
+    /// beneath every scrap of income.
+    ///
+    /// Deliberately built from the raw records rather than from `items`, because every filter
+    /// `items` applies is wrong for this question. Due dates don't enter into it: a bill is
+    /// money spent on the day it was paid, whatever day it was owed, and a record with no due
+    /// date at all — invisible everywhere else on this screen — still appears here.
+    /// `SeriesLogic.isSuppressed` doesn't apply either: suppression is a don't-nag display
+    /// rule, and both a logged occurrence and the one that superseded it are real money.
+    /// Series are not collapsed, for the same reason.
+    ///
+    /// Two consequences worth knowing. Future-dated records fall outside the window, so a
+    /// transaction entered today but dated next month doesn't count until it arrives. And
+    /// because "Log Now" stamps the new occurrence with today's date, a monthly series lands
+    /// one or two hits in any one window depending on where its due date sits relative to
+    /// today — the figure is honest about what the dates say, but it is not smooth month to
+    /// month.
+    ///
+    /// Callers pass `liveTransactions` off `AssetStore.allAssets`, which is already free of
+    /// deleted and purged assets, so no further liveness filtering belongs here.
+    static func cashFlowEntries(sources: [TimelineSource], calendar: Calendar = .current,
+                                now: Date = Date()) -> [CashFlowEntry] {
+        let today = calendar.startOfDay(for: now)
+        var result: [(entry: CashFlowEntry, createdAt: TimeInterval)] = []
+
+        for source in sources {
+            for transaction in source.transactions {
+                guard let daysAgo = calendar.dateComponents([.day],
+                                                            from: calendar.startOfDay(for: transaction.date),
+                                                            to: today).day,
+                      daysAgo >= 0, daysAgo <= horizonDays else { continue }
+                let entry = CashFlowEntry(
+                    id: transaction.id,
+                    assetID: source.assetID,
+                    assetName: source.assetName,
+                    details: transaction.details,
+                    date: transaction.date,
+                    signedAmount: transaction.kind == .expense ? -transaction.amount : transaction.amount
+                )
+                result.append((entry, transaction.createdAt.timeIntervalSince1970.rounded(.down)))
+            }
+        }
+
+        // Magnitude descending, direction ignored: the largest movements lead. Ties then break
+        // on the signed amount, so an equal-sized income and expense are ordered income first
+        // rather than arbitrarily; then newest occurrence first — routine for a recurring bill
+        // appearing twice in one window, whose two rows are necessarily adjacent here; then
+        // `createdAt` truncated to whole seconds, then `id`. That tail is
+        // `LedgerDigest.seriesByOccurrenceDate`'s rule, which keeps the order stable across a
+        // persistence round trip (ISO-8601 carries no sub-second precision).
+        return result.sorted { lhs, rhs in
+            let (l, r) = (abs(lhs.entry.signedAmount), abs(rhs.entry.signedAmount))
+            if l != r { return l > r }
+            if lhs.entry.signedAmount != rhs.entry.signedAmount {
+                return lhs.entry.signedAmount > rhs.entry.signedAmount
+            }
+            if lhs.entry.date != rhs.entry.date { return lhs.entry.date > rhs.entry.date }
+            if lhs.createdAt != rhs.createdAt { return lhs.createdAt > rhs.createdAt }
+            return lhs.entry.id.uuidString < rhs.entry.id.uuidString
+        }.map(\.entry)
     }
 
     // MARK: - Series collapsing
