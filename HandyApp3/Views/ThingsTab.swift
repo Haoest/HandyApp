@@ -38,15 +38,9 @@ struct ThingsTab: View {
             .sorted { $0.name.localizedCompare($1.name) == .orderedAscending }
     }
 
-    /// "All" plus every category that currently holds at least one thing.
-    private var filterChips: [(id: UUID?, name: String, count: Int)] {
-        let all: (id: UUID?, name: String, count: Int) = (nil, String(localized: "All"), store.allAssets.count)
-        let byCategory = store.allCategories.compactMap { category -> (id: UUID?, name: String, count: Int)? in
-            let count = store.allAssets.filter { $0.category.id == category.id }.count
-            return count > 0 ? (category.id, category.name, count) : nil
-        }
-        return [all] + byCategory
-    }
+    /// "All" plus every category that currently holds at least one thing — see
+    /// `CategoryFilterChip.chips`, shared with the quick-log thing picker.
+    private var filterChips: [CategoryFilterChip] { CategoryFilterChip.chips(for: store.allAssets) }
 
     private var orderedAssetIDs: [UUID] { matches.map(\.id) }
 
@@ -182,29 +176,7 @@ struct ThingsTab: View {
     }
 
     private var filterRow: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 7) {
-                ForEach(filterChips, id: \.name) { chip in
-                    let selected = chip.id == categoryFilter
-                    Button { categoryFilter = chip.id } label: {
-                        HStack(spacing: 5) {
-                            Text(chip.name)
-                            Text("\(chip.count)").opacity(0.55)
-                        }
-                        .font(Baron.body(12.5, .medium))
-                        .foregroundStyle(selected ? Color.white : Baron.text)
-                        .padding(.horizontal, 13)
-                        .padding(.vertical, 8)
-                        .background(selected ? Baron.fill : Baron.surface,
-                                    in: Capsule())
-                        .overlay(Capsule().strokeBorder(selected ? Color.clear : Baron.neutral300, lineWidth: 1))
-                    }
-                    .buttonStyle(.plain)
-                }
-            }
-            .padding(.bottom, 4)
-        }
-        .scrollClipDisabled()
+        CategoryFilterChips(chips: filterChips, selection: $categoryFilter)
     }
 
     // MARK: - Rows

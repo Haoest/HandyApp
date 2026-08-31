@@ -29,12 +29,18 @@ struct QuickLogSheet: View {
 
     @Environment(\.dismiss) private var dismiss
     @State private var query = ""
+    @State private var categoryFilter: UUID?
 
     private var matches: [Asset] {
         let trimmed = query.trimmingCharacters(in: .whitespaces).lowercased()
-        guard !trimmed.isEmpty else { return assets }
-        return assets.filter { $0.name.lowercased().contains(trimmed) }
+        return assets.filter { asset in
+            guard categoryFilter == nil || asset.category.id == categoryFilter else { return false }
+            return trimmed.isEmpty || asset.name.lowercased().contains(trimmed)
+        }
     }
+
+    /// Built from every asset, not from `matches`, so the counts don't shrink as you type.
+    private var chips: [CategoryFilterChip] { CategoryFilterChip.chips(for: assets) }
 
     var body: some View {
         NavigationStack {
@@ -73,6 +79,17 @@ struct QuickLogSheet: View {
                     .padding(.horizontal, 15)
                     .padding(.vertical, 12)
                     .baronCard(radius: Baron.Radius.field, elevation: .low)
+                // Only worth showing once there is more than one category to choose between:
+                // a single-category library would render "All" beside its one twin.
+                if chips.count > 2 {
+                    CategoryFilterChips(chips: chips, selection: $categoryFilter)
+                }
+                if matches.isEmpty {
+                    Text("No things match. Clear the search or pick another category.")
+                        .font(Baron.body(13))
+                        .foregroundStyle(Baron.neutral600)
+                        .padding(.top, 4)
+                }
                 VStack(spacing: 9) {
                     ForEach(matches) { asset in
                         Button { onPickThing(asset.id) } label: {
