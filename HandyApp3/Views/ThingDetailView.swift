@@ -282,7 +282,7 @@ private struct ThingDetailContent: View {
                     .baronShadow(.medium)
                 VStack(alignment: .leading, spacing: 8) {
                     HStack(spacing: 7) {
-                        Text(asset.category.name)
+                        Text(BuiltInTypes.localizedSeedName(id: asset.category.id, currentName: asset.category.name))
                             .font(Baron.body(10.5, .medium))
                             .tracking(0.55)
                             .foregroundStyle(Baron.accent800)
@@ -1077,7 +1077,7 @@ private struct ThingDetailSheets: ViewModifier {
                 Button("Cancel", role: .cancel) {}
             } message: {
                 if childCount > 0 {
-                    Text("^[\(childCount) item](inflect: true) inside will be deleted too.")
+                    Text("^[\(childCount) thing](inflect: true) inside will be deleted too.")
                 }
             }
     }

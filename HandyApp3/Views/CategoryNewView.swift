@@ -140,7 +140,7 @@ struct CategoryNewView: View {
         HStack(spacing: 10) {
             Button { propertyToEdit = prop } label: {
                 VStack(alignment: .leading, spacing: 3) {
-                    Text(prop.definition.name)
+                    Text(BuiltInTypes.localizedSeedName(id: prop.definition.id, currentName: prop.definition.name))
                         .font(Baron.body(14.5, .medium))
                         .foregroundStyle(Baron.text)
                         .lineLimit(1)

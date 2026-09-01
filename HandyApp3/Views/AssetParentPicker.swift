@@ -206,7 +206,7 @@ struct AssetParentPickerSheet: View {
                         .font(Baron.body(14.5, .medium))
                         .foregroundStyle(Baron.text)
                         .lineLimit(1)
-                    Text(candidate.category.name)
+                    Text(BuiltInTypes.localizedSeedName(id: candidate.category.id, currentName: candidate.category.name))
                         .font(Baron.body(11.5))
                         .foregroundStyle(Baron.neutral600)
                 }

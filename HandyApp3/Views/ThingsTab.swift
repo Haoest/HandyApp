@@ -285,7 +285,7 @@ private struct ThingRow: View {
                 VStack(spacing: 3) {
                     Image(systemName: asset.category.iconName)
                         .font(.system(size: 21, weight: .light))
-                    Text(asset.category.name)
+                    Text(BuiltInTypes.localizedSeedName(id: asset.category.id, currentName: asset.category.name))
                         .font(Baron.heading(8.5))
                         .tracking(0.8)
                         .textCase(.uppercase)

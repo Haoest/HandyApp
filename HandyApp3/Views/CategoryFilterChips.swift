@@ -18,7 +18,7 @@ struct CategoryFilterChip: Identifiable {
         var countByID: [UUID: (name: String, count: Int)] = [:]
         for asset in assets {
             let category = asset.category
-            countByID[category.id, default: (category.name, 0)].count += 1
+            countByID[category.id, default: (BuiltInTypes.localizedSeedName(id: category.id, currentName: category.name), 0)].count += 1
         }
         let all = CategoryFilterChip(id: nil, name: String(localized: "All", locale: .appPreferred), count: assets.count)
         let byCategory = countByID

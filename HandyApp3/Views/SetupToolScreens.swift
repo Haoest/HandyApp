@@ -200,7 +200,7 @@ struct BulkCommunicationView: View {
                 built.append(ContactRow(
                     id: UUID(),
                     asset: asset,
-                    propertyName: prop.definition.name,
+                    propertyName: BuiltInTypes.localizedSeedName(id: prop.definition.id, currentName: prop.definition.name),
                     identifier: identifier,
                     contact: contact,
                     availableMethods: contact.map(availableMethods) ?? []

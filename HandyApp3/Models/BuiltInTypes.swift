@@ -180,9 +180,9 @@ extension AssetStore {
     func seedBuiltInCategories() -> [AssetCategory] {
         var seeded: [AssetCategory] = []
         for (key, defs) in BuiltInTypes.categoryTemplates {
-            guard !categories.values.contains(where: { $0.name == key.rawValue }) else { continue }
-            let icon = BuiltInTypes.categoryIcons[key] ?? "square.grid.2x2"
             let categoryID = BuiltInTypes.deterministicID("category.\(key.rawValue)")
+            guard categories[categoryID] == nil else { continue }
+            let icon = BuiltInTypes.categoryIcons[key] ?? "square.grid.2x2"
             // AssetProperty.id mirrors its definition's id — the two are 1:1 for a
             // freshly-seeded template, and the reconciler's template merge keys on
             // AssetProperty.id, so this keeps a rename or field edit converging as
@@ -261,7 +261,7 @@ extension AssetStore {
         ]
         var seeded: [CompositeTypeDefinition] = []
         for template in templates {
-            guard !compositeTypes.values.contains(where: { $0.name == template.name }) else { continue }
+            guard compositeTypes[template.id] == nil else { continue }
             let registered = createCompositeType(
                 id: template.id,
                 name: template.name,

@@ -72,9 +72,9 @@ struct ThingSpecRow: View {
 
     private var label: String {
         if case .composite(let definition) = property.definition.type {
-            return definition.decoratedLabel(property.definition.name)
+            return definition.decoratedLabel(BuiltInTypes.localizedSeedName(id: property.definition.id, currentName: property.definition.name))
         }
-        return property.definition.name
+        return BuiltInTypes.localizedSeedName(id: property.definition.id, currentName: property.definition.name)
     }
 
     private var display: String {
@@ -472,7 +472,7 @@ private struct SpecCompositeEditor: View {
                 HStack(alignment: .top, spacing: 9) {
                     ForEach(inlineFields) { field in
                         VStack(alignment: .leading, spacing: 5) {
-                            Text(field.name)
+                            Text(BuiltInTypes.localizedSeedName(id: field.id, currentName: field.name))
                                 .font(Baron.body(9.5, .medium))
                                 .tracking(0.85)
                                 .textCase(.uppercase)

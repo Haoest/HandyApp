@@ -349,7 +349,7 @@ private struct CategoryFieldRow: View {
             HStack(spacing: 10) {
                 Button(action: onToggle) {
                     VStack(alignment: .leading, spacing: 3) {
-                        Text(property.definition.name)
+                        Text(BuiltInTypes.localizedSeedName(id: property.definition.id, currentName: property.definition.name))
                             .font(Baron.body(14.5, .medium))
                             .foregroundStyle(Baron.text)
                             .lineLimit(1)

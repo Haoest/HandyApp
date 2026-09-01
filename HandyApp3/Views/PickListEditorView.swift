@@ -72,7 +72,7 @@ struct PickListEditorView: View {
     private var valuesSection: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(alignment: .firstTextBaseline) {
-                Text("Values")
+                Text("Options")
                     .font(Baron.body(10.5, .medium))
                     .tracking(0.9)
                     .textCase(.uppercase)
@@ -99,7 +99,7 @@ struct PickListEditorView: View {
                 addRow
             }
             if !list.systemOptions.isEmpty {
-                Text("Built-in values can't be renamed or removed — they're what the app seeded the list with.")
+                Text("Built-in options can't be renamed or removed — they're what the app seeded the list with.")
                     .font(Baron.body(12))
                     .foregroundStyle(Baron.neutral500)
                     .fixedSize(horizontal: false, vertical: true)
@@ -128,7 +128,7 @@ struct PickListEditorView: View {
 
     private var addRow: some View {
         HStack(spacing: 9) {
-            TextField("Add a value", text: $newOption)
+            TextField("Add an option", text: $newOption)
                 .font(Baron.body(14, .medium))
                 .foregroundStyle(Baron.text)
                 .focused($newOptionFocused)
@@ -172,8 +172,8 @@ struct PickListEditorView: View {
                         .font(Baron.body(14.5, .medium))
                         .foregroundStyle(Baron.text)
                     Text(list.isUserExtensible
-                         ? "Typing a new value adds it to this list."
-                         : "Only the values above can be chosen. Anything already stored is left as it is.")
+                         ? "Typing a new option adds it to this list."
+                         : "Only the options above can be chosen. Anything already stored is left as it is.")
                         .font(Baron.body(11.5))
                         .foregroundStyle(Baron.neutral600)
                         .fixedSize(horizontal: false, vertical: true)
@@ -317,7 +317,7 @@ private struct PickListValueRow: View {
                 .font(Baron.body(11, .medium))
                 .foregroundStyle(Baron.neutral400)
                 .frame(minWidth: 14, alignment: .trailing)
-            TextField("Value", text: $draft)
+            TextField("Option", text: $draft)
                 .font(Baron.body(14, .medium))
                 .foregroundStyle(Baron.text)
                 .focused($isFocused)
@@ -417,7 +417,7 @@ struct ComboListNewView: View {
     private var valuesSection: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(alignment: .firstTextBaseline) {
-                RecordFieldLabel(text: "Values")
+                RecordFieldLabel(text: "Options")
                 Spacer(minLength: 0)
                 Text("\(options.count)")
                     .font(Baron.body(11.5, .medium))
@@ -438,7 +438,7 @@ struct ComboListNewView: View {
                 .font(Baron.body(11, .medium))
                 .foregroundStyle(Baron.neutral400)
                 .frame(minWidth: 14, alignment: .trailing)
-            TextField("Value", text: Binding(
+            TextField("Option", text: Binding(
                 get: { options.indices.contains(index) ? options[index] : "" },
                 set: { if options.indices.contains(index) { options[index] = $0 } }
             ))
@@ -462,7 +462,7 @@ struct ComboListNewView: View {
 
     private var addRow: some View {
         HStack(spacing: 9) {
-            TextField("Add a value", text: $newOption)
+            TextField("Add an option", text: $newOption)
                 .font(Baron.body(14, .medium))
                 .foregroundStyle(Baron.text)
                 .onSubmit { commitNewOption() }
@@ -494,8 +494,8 @@ struct ComboListNewView: View {
                         .font(Baron.body(14.5, .medium))
                         .foregroundStyle(Baron.text)
                     Text(isUserExtensible
-                         ? "Typing a new value adds it to this list."
-                         : "Only the values above can be chosen.")
+                         ? "Typing a new option adds it to this list."
+                         : "Only the options above can be chosen.")
                         .font(Baron.body(11.5))
                         .foregroundStyle(Baron.neutral600)
                         .fixedSize(horizontal: false, vertical: true)

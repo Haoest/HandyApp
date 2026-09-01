@@ -205,7 +205,7 @@ struct SetupTab: View {
 
     private var appGroup: some View {
         SetupGroup("App") {
-            SetupRow(name: "Appearance", sub: appearanceLabel, value: "") {
+            SetupRow(name: "Appearance", sub: LocalizedStringKey(appearanceLabel), value: "") {
                 path.append(SetupDestination.appearance)
             }
             SetupRow(name: "Ask Siri", sub: "What you can say out loud",
@@ -306,14 +306,14 @@ struct SetupGroup<Content: View>: View {
 
 struct SetupRow: View {
     let name: LocalizedStringKey
-    let sub: String
+    let sub: LocalizedStringKey
     let value: String
     var caret: String = "›"
     var tint: Color = Baron.text
     var isLast: Bool = false
     let action: () -> Void
 
-    init(name: LocalizedStringKey, sub: String, value: String, caret: String = "›",
+    init(name: LocalizedStringKey, sub: LocalizedStringKey, value: String, caret: String = "›",
          tint: Color = Baron.text, isLast: Bool = false, action: @escaping () -> Void) {
         self.name = name
         self.sub = sub

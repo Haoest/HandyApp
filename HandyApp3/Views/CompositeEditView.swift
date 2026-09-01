@@ -31,7 +31,7 @@ struct CompositeEditView: View {
         SetupScreenBody {
             SetupScreenHeader(breadcrumb: "Field")
             VStack(alignment: .leading, spacing: 8) {
-                Text(definition.name)
+                Text(BuiltInTypes.localizedSeedName(id: definition.id, currentName: definition.name))
                     .font(Baron.heading(28))
                     .foregroundStyle(Baron.text)
                 Text(summary.isEmpty ? String(localized: "Nothing filled in yet.", locale: .appPreferred) : summary)
@@ -86,7 +86,7 @@ private struct CompositePartRow: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 9) {
             HStack(spacing: 8) {
-                Text(field.name)
+                Text(BuiltInTypes.localizedSeedName(id: field.id, currentName: field.name))
                     .font(Baron.body(10.5, .medium))
                     .tracking(0.85)
                     .textCase(.uppercase)

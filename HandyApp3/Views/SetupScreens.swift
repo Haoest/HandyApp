@@ -141,7 +141,7 @@ struct CategoriesListView: View {
                                     .frame(width: 46, height: 46)
                                     .background(Baron.accent100, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
                                 VStack(alignment: .leading, spacing: 3) {
-                                    Text(category.name)
+                                    Text(BuiltInTypes.localizedSeedName(id: category.id, currentName: category.name))
                                         .font(Baron.heading(17))
                                         .foregroundStyle(Baron.text)
                                         .lineLimit(1)
@@ -233,7 +233,7 @@ struct PickListsView: View {
                         Button { openListID = list.id } label: {
                             VStack(alignment: .leading, spacing: 11) {
                                 HStack(spacing: 10) {
-                                    Text(list.name)
+                                    Text(BuiltInTypes.localizedSeedName(id: list.id, currentName: list.name))
                                         .font(Baron.heading(17))
                                         .foregroundStyle(Baron.text)
                                         .lineLimit(1)

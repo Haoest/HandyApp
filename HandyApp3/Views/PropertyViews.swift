@@ -235,7 +235,7 @@ struct PropertyEditView: View {
                 if !sortedComposites.isEmpty {
                     typeCluster(title: "Structured") {
                         ForEach(sortedComposites) { ct in
-                            typeChip(ct.name, choice: .composite(ct.id))
+                            typeChip(BuiltInTypes.localizedSeedName(id: ct.id, currentName: ct.name), choice: .composite(ct.id))
                         }
                     }
                 }
@@ -247,7 +247,7 @@ struct PropertyEditView: View {
                 } else {
                     typeCluster(title: "Pick lists") {
                         ForEach(comboListChoices) { list in
-                            typeChip(list.name, choice: .comboList(list.id))
+                            typeChip(BuiltInTypes.localizedSeedName(id: list.id, currentName: list.name), choice: .comboList(list.id))
                         }
                     }
                 }

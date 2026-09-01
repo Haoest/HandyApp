@@ -86,7 +86,7 @@ struct AssetCreateView: View {
             dismissesOnSave: false,
             cancelLabel: "Back"
         ) {
-            Text("Step 2 of 2 — \(category.name)")
+            Text("Step 2 of 2 — \(BuiltInTypes.localizedSeedName(id: category.id, currentName: category.name))")
                 .font(Baron.body(12.5))
                 .foregroundStyle(Baron.neutral600)
 
@@ -114,7 +114,7 @@ struct AssetCreateView: View {
                             .padding(.horizontal, 13)
                             .padding(.vertical, 10)
                             .baronCard(radius: Baron.Radius.field, elevation: .low)
-                            Text("Not on the list? Type it in — it'll be added to \(typeList.name).")
+                            Text("Not on the list? Type it in — it'll be added to \(BuiltInTypes.localizedSeedName(id: typeList.id, currentName: typeList.name)).")
                                 .font(Baron.body(11.5))
                                 .foregroundStyle(Baron.neutral600)
                         }
@@ -145,7 +145,7 @@ struct AssetCreateView: View {
             AssetParentSelectionRow(parentID: $parentID)
 
             if fieldCount > 0 {
-                RecordNote(text: String(localized: "^[\(fieldCount) field](inflect: true) from \(category.name) will be copied in, ready to fill.", locale: .appPreferred))
+                RecordNote(text: String(localized: "^[\(fieldCount) field](inflect: true) from \(BuiltInTypes.localizedSeedName(id: category.id, currentName: category.name)) will be copied in, ready to fill.", locale: .appPreferred))
             }
         }
         .onChange(of: typeValue) { _, newValue in applyTypeSelection(newValue) }
@@ -297,7 +297,7 @@ struct NewAssetSheet: View {
                                 .frame(width: 38, height: 38)
                                 .background(Baron.accent100, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
                             VStack(alignment: .leading, spacing: 3) {
-                                Text(category.name)
+                                Text(BuiltInTypes.localizedSeedName(id: category.id, currentName: category.name))
                                     .font(Baron.heading(16))
                                     .foregroundStyle(Baron.text)
                                     .lineLimit(1)

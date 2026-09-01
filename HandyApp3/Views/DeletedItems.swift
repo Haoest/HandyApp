@@ -191,7 +191,7 @@ struct DeletedCategoriesView: View {
     private func row(_ category: AssetCategory) -> some View {
         let count = store.associatedAssetCount(categoryID: category.id)
         return DeletedRow(
-            title: category.name,
+            title: BuiltInTypes.localizedSeedName(id: category.id, currentName: category.name),
             iconName: category.iconName,
             subtitle: subtitle(category, count: count),
             protected: count == 0 && category.isProtectedFromAutoPurge
@@ -238,7 +238,7 @@ struct DeletedComboListsView: View {
                         // things and categories) — removing it outright resurrects on the next
                         // sync and silently drops any field still typed on it. Restore only.
                         DeletedRow(
-                            title: list.name,
+                            title: BuiltInTypes.localizedSeedName(id: list.id, currentName: list.name),
                             subtitle: "Kept until you restore it · ^[\(list.allOptions.count) value](inflect: true)"
                         ) {
                             DeletedAction(title: "Restore") {
