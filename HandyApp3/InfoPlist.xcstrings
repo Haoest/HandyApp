@@ -1,0 +1,66 @@
+{
+  "sourceLanguage" : "en",
+  "strings" : {
+    "NSCameraUsageDescription" : {
+      "comment" : "Camera permission prompt. Shown once, the first time the user attaches a photo to a thing.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Baron Book uses the camera to attach photos to your things."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Baron Book usa la cámara para adjuntar fotos a tus artículos."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Baron Book utilise l'appareil photo pour joindre des photos à vos biens."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Baron Book 使用相机为您的物品添加照片。"
+          }
+        }
+      }
+    },
+    "NSContactsUsageDescription" : {
+      "comment" : "Contacts permission prompt. Shown once, the first time the user links a contact to a thing.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Baron Book uses Contacts to link people to your things."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Baron Book usa Contactos para vincular personas con tus artículos."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Baron Book utilise Contacts pour associer des personnes à vos biens."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Baron Book 使用通讯录将联系人与您的物品关联。"
+          }
+        }
+      }
+    }
+  },
+  "version" : "1.1"
+}

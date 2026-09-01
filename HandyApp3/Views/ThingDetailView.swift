@@ -643,6 +643,7 @@ private struct ThingDetailContent: View {
 
     static let dayFormatter: DateFormatter = {
         let formatter = DateFormatter()
+        formatter.locale = .appPreferred
         formatter.setLocalizedDateFormatFromTemplate("MMMd")
         return formatter
     }()
@@ -734,11 +735,11 @@ private struct ThingLogRowView: View {
         var parts: [String] = []
         if row.recurs {
             let next = row.dueDate ?? row.date
-            parts.append(String(localized: "Next \(ThingDetailContent.dayFormatter.string(from: next))"))
+            parts.append(String(localized: "Next \(ThingDetailContent.dayFormatter.string(from: next))", locale: .appPreferred))
         } else {
-            parts.append(String(localized: "One-off · \(ThingDetailContent.dayFormatter.string(from: row.date))"))
+            parts.append(String(localized: "One-off · \(ThingDetailContent.dayFormatter.string(from: row.date))", locale: .appPreferred))
         }
-        if row.isWatched { parts.append(String(localized: "watched")) }
+        if row.isWatched { parts.append(String(localized: "watched", locale: .appPreferred)) }
         return parts.joined(separator: " · ")
     }
 

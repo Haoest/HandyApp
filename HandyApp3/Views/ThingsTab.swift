@@ -274,6 +274,7 @@ private struct ThingRow: View {
 
     private static let dueFormatter: DateFormatter = {
         let formatter = DateFormatter()
+        formatter.locale = .appPreferred
         formatter.setLocalizedDateFormatFromTemplate("MMMd")
         return formatter
     }()

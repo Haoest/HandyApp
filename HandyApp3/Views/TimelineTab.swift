@@ -591,10 +591,10 @@ struct TimelineTab: View {
 
     static func windowLabel(_ window: TimelineWindow) -> String {
         switch window {
-        case .overdue: return String(localized: "Overdue")
-        case .thisWeek: return String(localized: "This week")
-        case .nextTwoWeeks: return String(localized: "Next two weeks")
-        case .laterThisMonth: return String(localized: "Later this month")
+        case .overdue: return String(localized: "Overdue", locale: .appPreferred)
+        case .thisWeek: return String(localized: "This week", locale: .appPreferred)
+        case .nextTwoWeeks: return String(localized: "Next two weeks", locale: .appPreferred)
+        case .laterThisMonth: return String(localized: "Later this month", locale: .appPreferred)
         }
     }
 
@@ -618,12 +618,14 @@ struct TimelineTab: View {
 
     private static let datelineFormatter: DateFormatter = {
         let formatter = DateFormatter()
+        formatter.locale = .appPreferred
         formatter.setLocalizedDateFormatFromTemplate("EEEEdMMMM")
         return formatter
     }()
 
     private static let dayFormatter: DateFormatter = {
         let formatter = DateFormatter()
+        formatter.locale = .appPreferred
         formatter.dateStyle = .medium
         formatter.timeStyle = .none
         formatter.doesRelativeDateFormatting = true
@@ -648,7 +650,7 @@ private struct ComingUpRow: View {
     private var whenText: String {
         switch item.daysUntilDue {
         case ..<0: return "\(abs(item.daysUntilDue))d late"
-        case 0: return String(localized: "today")
+        case 0: return String(localized: "today", locale: .appPreferred)
         default: return "in \(item.daysUntilDue)d"
         }
     }

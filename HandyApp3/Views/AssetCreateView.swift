@@ -145,7 +145,7 @@ struct AssetCreateView: View {
             AssetParentSelectionRow(parentID: $parentID)
 
             if fieldCount > 0 {
-                RecordNote(text: String(localized: "^[\(fieldCount) field](inflect: true) from \(category.name) will be copied in, ready to fill."))
+                RecordNote(text: String(localized: "^[\(fieldCount) field](inflect: true) from \(category.name) will be copied in, ready to fill.", locale: .appPreferred))
             }
         }
         .onChange(of: typeValue) { _, newValue in applyTypeSelection(newValue) }

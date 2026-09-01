@@ -36,6 +36,19 @@ enum AppPreference {
     ]
 }
 
+extension Locale {
+    /// The locale the in-app language override (`AppPreference.languageKey`) resolves to.
+    ///
+    /// `.environment(\.locale, …)` (set once at the app root) only affects `LocalizedStringKey`
+    /// lookups inside SwiftUI view bodies. `String(localized:)` resolves against the system
+    /// locale unless a `locale:` argument is passed explicitly, so any call site outside the
+    /// view-rendering pass — computed properties, model-layer digests — must pass this.
+    static var appPreferred: Locale {
+        let code = UserDefaults.standard.string(forKey: AppPreference.languageKey) ?? ""
+        return code.isEmpty ? .autoupdatingCurrent : Locale(identifier: code)
+    }
+}
+
 /// Whether the app follows the device's light/dark setting or pins one of them.
 ///
 /// The raw values are what `@AppStorage` persists, and `system` is deliberately the empty

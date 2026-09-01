@@ -23,18 +23,18 @@ enum SetupDigest {
                      assetLimit: Int, recordLimit: Int) -> PlanSummary {
         guard !isFullVersion else {
             return PlanSummary(
-                kicker: String(localized: "Your plan"),
-                title: String(localized: "Full version"),
-                body: String(localized: "Unlimited things and records. Thanks for buying."),
-                callToAction: String(localized: "Restore purchase"),
+                kicker: String(localized: "Your plan", locale: .appPreferred),
+                title: String(localized: "Full version", locale: .appPreferred),
+                body: String(localized: "Unlimited things and records. Thanks for buying.", locale: .appPreferred),
+                callToAction: String(localized: "Restore purchase", locale: .appPreferred),
                 offersUpgrade: false
             )
         }
         return PlanSummary(
-            kicker: String(localized: "Free tier"),
-            title: String(localized: "\(assetCount) of \(assetLimit) things used"),
-            body: String(localized: "One payment lifts every limit. The free tier holds \(assetLimit) things, and \(recordLimit) events and money records on each."),
-            callToAction: String(localized: "See the full version"),
+            kicker: String(localized: "Free tier", locale: .appPreferred),
+            title: String(localized: "\(assetCount) of \(assetLimit) things used", locale: .appPreferred),
+            body: String(localized: "One payment lifts every limit. The free tier holds \(assetLimit) things, and \(recordLimit) events and money records on each.", locale: .appPreferred),
+            callToAction: String(localized: "See the full version", locale: .appPreferred),
             offersUpgrade: true
         )
     }

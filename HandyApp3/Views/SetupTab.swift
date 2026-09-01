@@ -61,16 +61,17 @@ struct SetupTab: View {
 
     /// Coarse, read-only sync status — no live probing, just what the store already knows.
     private var iCloudStatusText: String {
-        guard AssetStore.iCloudSyncEnabled else { return String(localized: "Not enabled") }
+        guard AssetStore.iCloudSyncEnabled else { return String(localized: "Not enabled", locale: .appPreferred) }
         guard FileManager.default.url(forUbiquityContainerIdentifier: nil) != nil else {
-            return String(localized: "iCloud unavailable")
+            return String(localized: "iCloud unavailable", locale: .appPreferred)
         }
-        if store.storeRequiresNewerApp { return String(localized: "App update required") }
-        if store.savesSuspended { return String(localized: "Waiting for iCloud…") }
-        guard let lastSync = store.lastSyncDate else { return String(localized: "On") }
+        if store.storeRequiresNewerApp { return String(localized: "App update required", locale: .appPreferred) }
+        if store.savesSuspended { return String(localized: "Waiting for iCloud…", locale: .appPreferred) }
+        guard let lastSync = store.lastSyncDate else { return String(localized: "On", locale: .appPreferred) }
         let formatter = RelativeDateTimeFormatter()
         formatter.unitsStyle = .abbreviated
-        return String(localized: "Synced \(formatter.localizedString(for: lastSync, relativeTo: Date()))")
+        formatter.locale = .appPreferred
+        return String(localized: "Synced \(formatter.localizedString(for: lastSync, relativeTo: Date()))", locale: .appPreferred)
     }
 
     private var languageLabel: String {
@@ -81,9 +82,9 @@ struct SetupTab: View {
     /// Theme · language, so the row says what both settings behind it are currently on.
     private var appearanceLabel: String {
         let theme = switch AppearanceMode(rawValue: appearance) ?? .system {
-        case .system: String(localized: "Match device")
-        case .light: String(localized: "Light")
-        case .dark: String(localized: "Dark")
+        case .system: String(localized: "Match device", locale: .appPreferred)
+        case .light: String(localized: "Light", locale: .appPreferred)
+        case .dark: String(localized: "Dark", locale: .appPreferred)
         }
         return "\(theme) · \(languageLabel)"
     }
@@ -244,7 +245,7 @@ struct SetupTab: View {
     }
 
     private var versionLine: some View {
-        Text("Baron Book \(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "") · \(purchases.isFullVersion ? String(localized: "Full version") : String(localized: "Free tier"))")
+        Text("Baron Book \(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "") · \(purchases.isFullVersion ? String(localized: "Full version", locale: .appPreferred) : String(localized: "Free tier", locale: .appPreferred))")
             .font(Baron.body(11))
             .foregroundStyle(Baron.neutral500)
             .frame(maxWidth: .infinity)
@@ -265,8 +266,8 @@ struct SetupTab: View {
             await purchases.restore()
             isRestoringPurchases = false
             restoreResultMessage = purchases.isFullVersion
-                ? String(localized: "Full Version restored.")
-                : String(localized: "No previous purchase was found for this Apple ID.")
+                ? String(localized: "Full Version restored.", locale: .appPreferred)
+                : String(localized: "No previous purchase was found for this Apple ID.", locale: .appPreferred)
         }
     }
 }

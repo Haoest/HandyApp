@@ -207,6 +207,9 @@
 			knownRegions = (
 				en,
 				Base,
+				es,
+				fr,
+				"zh-Hans",
 			);
 			mainGroup = 3F26E1C92FA680BC00D97241;
 			minimizedProjectReferenceProxies = 1;
@@ -418,8 +421,8 @@
 				INFOPLIST_FILE = Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = "Baron Book";
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
-				INFOPLIST_KEY_NSCameraUsageDescription = "Baron Book uses the camera to attach photos to your assets.";
-				INFOPLIST_KEY_NSContactsUsageDescription = "Baron Book uses Contacts to link people to your assets.";
+				INFOPLIST_KEY_NSCameraUsageDescription = "Baron Book uses the camera to attach photos to your things.";
+				INFOPLIST_KEY_NSContactsUsageDescription = "Baron Book uses Contacts to link people to your things.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -453,8 +456,8 @@
 				INFOPLIST_FILE = Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = "Baron Book";
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
-				INFOPLIST_KEY_NSCameraUsageDescription = "Baron Book uses the camera to attach photos to your assets.";
-				INFOPLIST_KEY_NSContactsUsageDescription = "Baron Book uses Contacts to link people to your assets.";
+				INFOPLIST_KEY_NSCameraUsageDescription = "Baron Book uses the camera to attach photos to your things.";
+				INFOPLIST_KEY_NSContactsUsageDescription = "Baron Book uses Contacts to link people to your things.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;

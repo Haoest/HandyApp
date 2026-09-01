@@ -249,8 +249,8 @@ struct TransactionEditView: View {
         RecordToggleCard(
             title: "Repeats",
             hint: isRecurring
-                ? String(localized: "Logging one occurrence offers the next.")
-                : String(localized: "A one-off. Turn this on for anything on a cycle."),
+                ? String(localized: "Logging one occurrence offers the next.", locale: .appPreferred)
+                : String(localized: "A one-off. Turn this on for anything on a cycle.", locale: .appPreferred),
             isOn: isRecurring,
             onToggle: { isRecurring.toggle() }
         ) {
@@ -263,8 +263,8 @@ struct TransactionEditView: View {
         RecordToggleCard(
             title: "Watch it on the timeline",
             hint: hasDueDate
-                ? String(localized: "Counts toward the Timeline's net figure, and toward Overdue once the date passes.")
-                : String(localized: "Off means this is history only — it never appears on the Timeline."),
+                ? String(localized: "Counts toward the Timeline's net figure, and toward Overdue once the date passes.", locale: .appPreferred)
+                : String(localized: "Off means this is history only — it never appears on the Timeline.", locale: .appPreferred),
             isOn: hasDueDate,
             onToggle: { hasDueDate.toggle() }
         ) {
@@ -328,7 +328,7 @@ struct TransactionEditView: View {
         RecordField(label: "Who it was with") {
             HStack(spacing: 9) {
                 if payeeContactID != nil {
-                    Text(payeeName.isEmpty ? String(localized: "(not found)") : payeeName)
+                    Text(payeeName.isEmpty ? String(localized: "(not found)", locale: .appPreferred) : payeeName)
                         .font(Baron.body(14, .medium))
                         .foregroundStyle(payeeName.isEmpty ? Baron.neutral500 : Baron.text)
                         .frame(maxWidth: .infinity, alignment: .leading)

@@ -34,7 +34,7 @@ struct CompositeEditView: View {
                 Text(definition.name)
                     .font(Baron.heading(28))
                     .foregroundStyle(Baron.text)
-                Text(summary.isEmpty ? String(localized: "Nothing filled in yet.") : summary)
+                Text(summary.isEmpty ? String(localized: "Nothing filled in yet.", locale: .appPreferred) : summary)
                     .font(Baron.body(13))
                     .foregroundStyle(Baron.neutral600)
             }
@@ -230,7 +230,7 @@ private struct PartContactEditor: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 9) {
             if let identifier {
-                Text(name ?? String(localized: "(not found)"))
+                Text(name ?? String(localized: "(not found)", locale: .appPreferred))
                     .font(Baron.body(14, .medium))
                     .foregroundStyle(name == nil ? Baron.neutral500 : Baron.text)
                     .id(identifier)

@@ -84,7 +84,7 @@ struct ThingSpecRow: View {
             return value.compositeSummary(for: definition)
         case .basic(.contact):
             guard case .contact(let identifier) = value else { return "" }
-            return ContactResolver.shared.displayName(for: identifier) ?? String(localized: "(not found)")
+            return ContactResolver.shared.displayName(for: identifier) ?? String(localized: "(not found)", locale: .appPreferred)
         default:
             return value.shortDisplay
         }

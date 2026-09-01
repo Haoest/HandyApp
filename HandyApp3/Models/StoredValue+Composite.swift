@@ -51,6 +51,7 @@ extension StoredValue {
 
     private static let numberFormatter: NumberFormatter = {
         let f = NumberFormatter()
+        f.locale = .appPreferred
         f.numberStyle = .decimal
         f.maximumFractionDigits = 4
         return f
@@ -58,12 +59,14 @@ extension StoredValue {
 
     private static let currencyFormatter: NumberFormatter = {
         let f = NumberFormatter()
+        f.locale = .appPreferred
         f.numberStyle = .currency
         return f
     }()
 
     private static let dateFormatter: DateFormatter = {
         let f = DateFormatter()
+        f.locale = .appPreferred
         f.dateStyle = .medium
         f.timeStyle = .none
         return f
