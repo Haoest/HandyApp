@@ -598,12 +598,14 @@ struct TimelineTab: View {
         }
     }
 
-    private static func summaryAddedTitle(_ kind: LoggedRecordKind, count: Int) -> String {
+    // See the note on `whenText`: kept as `LocalizedStringKey` so the `inflect: true` markup
+    // actually expands instead of reaching `Text` as already-resolved plain text.
+    private static func summaryAddedTitle(_ kind: LoggedRecordKind, count: Int) -> LocalizedStringKey {
         switch kind {
-        case .photo: return String(localized: "^[\(count) photo](inflect: true) added", locale: .appPreferred)
-        case .event: return String(localized: "^[\(count) event](inflect: true) added", locale: .appPreferred)
-        case .transaction: return String(localized: "^[\(count) transaction](inflect: true) added", locale: .appPreferred)
-        case .asset: return String(localized: "^[\(count) thing](inflect: true) added", locale: .appPreferred)
+        case .photo: return "^[\(count) photo](inflect: true) added"
+        case .event: return "^[\(count) event](inflect: true) added"
+        case .transaction: return "^[\(count) transaction](inflect: true) added"
+        case .asset: return "^[\(count) thing](inflect: true) added"
         }
     }
 
@@ -647,11 +649,15 @@ private struct ComingUpRow: View {
         return Baron.accent500
     }
 
-    private var whenText: String {
+    // Automatic Grammar Agreement (`inflect: true`) only resolves when a `^[...]` string reaches
+    // `Text` as a `LocalizedStringKey` — routing it through `String(localized:)` first (which
+    // returns a plain `String`) leaves the markup unexpanded, so this stays a `LocalizedStringKey`
+    // all the way to `Text(whenText)` instead of pre-resolving to a `String`.
+    private var whenText: LocalizedStringKey {
         switch item.daysUntilDue {
-        case ..<0: return String(localized: "^[\(abs(item.daysUntilDue)) day](inflect: true) late", locale: .appPreferred)
-        case 0: return String(localized: "today", locale: .appPreferred)
-        default: return String(localized: "in ^[\(item.daysUntilDue) day](inflect: true)", locale: .appPreferred)
+        case ..<0: return "^[\(abs(item.daysUntilDue)) day](inflect: true) late"
+        case 0: return "today"
+        default: return "in ^[\(item.daysUntilDue) day](inflect: true)"
         }
     }
 
@@ -751,7 +757,9 @@ private struct ComingUpRow: View {
 
 private struct HistoryDisplay: Identifiable {
     let id: String
-    let title: String
+    // `LocalizedStringKey`, not `String`: `summaryAddedTitle` needs its `inflect: true` markup
+    // to reach `Text` unresolved — see the note there.
+    let title: LocalizedStringKey
     let subtitle: String
     let amount: Decimal?
     let isMoney: Bool

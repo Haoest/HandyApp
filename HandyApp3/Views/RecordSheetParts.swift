@@ -242,7 +242,9 @@ struct RecordDaySlider: View {
 
 /// The accent-tinted explanatory box the design uses to preview an effect.
 struct RecordNote: View {
-    let text: String
+    // `LocalizedStringKey`, not `String`: a caller building `inflect: true` markup needs it to
+    // reach `Text` unresolved for the markup to expand (see the note on `TimelineTab.whenText`).
+    let text: LocalizedStringKey
 
     var body: some View {
         Text(text)

@@ -161,7 +161,7 @@ struct PropertyEditView: View {
             if hasEditableValue {
                 RecordField(label: existing == nil ? "Starting value" : "Value") { valueField }
             } else if case .composite = currentType {
-                RecordNote(text: String(localized: "A structured field is filled in on the thing itself, one part at a time.", locale: .appPreferred))
+                RecordNote(text: "A structured field is filled in on the thing itself, one part at a time.")
             }
         }
         .onAppear { prepopulate() }
