@@ -20,7 +20,7 @@ struct PlanSummary: Equatable {
 enum SetupDigest {
 
     static func plan(isFullVersion: Bool, assetCount: Int,
-                     assetLimit: Int, eventLimit: Int, transactionLimit: Int) -> PlanSummary {
+                     assetLimit: Int, recordLimit: Int) -> PlanSummary {
         guard !isFullVersion else {
             return PlanSummary(
                 kicker: String(localized: "Your plan"),
@@ -33,7 +33,7 @@ enum SetupDigest {
         return PlanSummary(
             kicker: String(localized: "Free tier"),
             title: String(localized: "\(assetCount) of \(assetLimit) things used"),
-            body: String(localized: "One payment lifts every limit. The free tier holds \(assetLimit) things, and \(eventLimit) events plus \(transactionLimit) money records on each."),
+            body: String(localized: "One payment lifts every limit. The free tier holds \(assetLimit) things, and \(recordLimit) events and money records on each."),
             callToAction: String(localized: "See the full version"),
             offersUpgrade: true
         )

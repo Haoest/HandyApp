@@ -3353,12 +3353,12 @@
     "on the day" : {
 
     },
-    "One payment lifts every limit. The free tier holds %lld things, and %lld events plus %lld money records on each." : {
+    "One payment lifts every limit. The free tier holds %lld things, and %lld events and money records on each." : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "new",
-            "value" : "One payment lifts every limit. The free tier holds %1$lld things, and %2$lld events plus %3$lld money records on each."
+            "value" : "One payment lifts every limit. The free tier holds %1$lld things, and %2$lld events and money records on each."
           }
         }
       }
@@ -4674,7 +4674,7 @@
     "Typing a new value adds it to this list." : {
 
     },
-    "Unlimited events and money records on every thing, instead of ^[%lld each](inflect: true)." : {
+    "Unlimited events and money records on every thing, instead of ^[%lld record](inflect: true) between them." : {
 
     },
     "Unlimited things — the free tier stops at ^[%lld thing](inflect: true)." : {
@@ -4856,10 +4856,7 @@
     "Write once, then pick who hears it. Each message opens in its own app so you can read it before it goes." : {
 
     },
-    "You're at the free tier's limit of %lld events on this thing." : {
-
-    },
-    "You're at the free tier's limit of %lld money records on this thing." : {
+    "You're at the free tier's limit of %lld events and money records on this thing." : {
 
     },
     "You're at the free tier's limit of %lld things." : {

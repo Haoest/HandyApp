@@ -93,10 +93,10 @@ final class DuplicateSeriesTests: XCTestCase {
     }
 
     func testDuplicateEventThrowsAtCapacityLimit() throws {
-        store.eventCreationLimit = 1
+        store.recordCreationLimit = 1
         let source = try store.addEvent(title: "Rent", date: Date(), recurrence: .monthly, toAssetID: asset.id)
         XCTAssertThrowsError(try store.duplicateEvent(id: source.id, onAssetID: asset.id)) { error in
-            guard case AssetStoreError.freeEventLimitReached = error else { return XCTFail("Expected freeEventLimitReached") }
+            guard case AssetStoreError.freeRecordLimitReached = error else { return XCTFail("Expected freeRecordLimitReached") }
         }
     }
 
@@ -137,10 +137,10 @@ final class DuplicateSeriesTests: XCTestCase {
     }
 
     func testDuplicateTransactionThrowsAtCapacityLimit() throws {
-        store.transactionCreationLimit = 1
+        store.recordCreationLimit = 1
         let source = try store.addTransaction(details: "Insurance", amount: 100, date: Date(), kind: .expense, recurrence: .quarterly, toAssetID: asset.id)
         XCTAssertThrowsError(try store.duplicateTransaction(id: source.id, onAssetID: asset.id)) { error in
-            guard case AssetStoreError.freeTransactionLimitReached = error else { return XCTFail("Expected freeTransactionLimitReached") }
+            guard case AssetStoreError.freeRecordLimitReached = error else { return XCTFail("Expected freeRecordLimitReached") }
         }
     }
 }

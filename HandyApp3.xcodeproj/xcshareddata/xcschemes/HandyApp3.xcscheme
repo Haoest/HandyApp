@@ -77,11 +77,11 @@
       <CommandLineArguments>
          <CommandLineArgument
             argument = "-ForceFullVersion"
-            isEnabled = "YES">
+            isEnabled = "NO">
          </CommandLineArgument>
          <CommandLineArgument
             argument = "-ForceTrial"
-            isEnabled = "NO">
+            isEnabled = "YES">
          </CommandLineArgument>
          <CommandLineArgument
             argument = "-ClearForcedVersion"

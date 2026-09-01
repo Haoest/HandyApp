@@ -34,10 +34,9 @@ enum AssetStoreError: Error, Equatable {
     case transactionNotFound(UUID)
     /// Creating or restoring an asset would exceed the free-tier asset limit.
     case freeLimitReached(limit: Int)
-    /// Adding an event would exceed the free-tier per-asset event limit.
-    case freeEventLimitReached(limit: Int)
-    /// Adding a transaction would exceed the free-tier per-asset transaction limit.
-    case freeTransactionLimitReached(limit: Int)
+    /// Adding an event or transaction would exceed the free-tier per-asset record limit,
+    /// which events and transactions share.
+    case freeRecordLimitReached(limit: Int)
 }
 
 // MARK: - AssetStore
@@ -65,15 +64,12 @@ final class AssetStore {
     /// Runtime-only — driven by purchase state, never persisted.
     var assetCreationLimit: Int?
 
-    /// Max events per individual asset `addEvent` allows; nil = unlimited.
-    /// Per-asset (compares one asset's own `events.count`), unlike the global asset limit.
+    /// Max events *plus* transactions per individual asset that `addEvent`/`addTransaction`
+    /// allow; nil = unlimited. The two kinds draw on one shared allowance, so an asset may
+    /// hold any mix of them up to this count. Per-asset (compares one asset's own
+    /// `liveRecordCount`), unlike the global asset limit.
     /// Runtime-only — driven by purchase state, never persisted.
-    var eventCreationLimit: Int?
-
-    /// Max transactions per individual asset `addTransaction` allows; nil = unlimited.
-    /// Per-asset (compares one asset's own `transactions.count`), unlike the global asset limit.
-    /// Runtime-only — driven by purchase state, never persisted.
-    var transactionCreationLimit: Int?
+    var recordCreationLimit: Int?
 
     /// Per-device cosmetic preference — deliberately NOT synced through the store. A field
     /// like this living inside a synced file would never converge: each device would keep
@@ -177,14 +173,11 @@ final class AssetStore {
         assetCreationLimit.map { allAssets.count + n <= $0 } ?? true
     }
 
-    /// Whether adding another event to `asset` is currently allowed under `eventCreationLimit`.
-    func hasEventCapacity(for asset: Asset) -> Bool {
-        eventCreationLimit.map { asset.liveEvents.count < $0 } ?? true
-    }
-
-    /// Whether adding another transaction to `asset` is currently allowed under `transactionCreationLimit`.
-    func hasTransactionCapacity(for asset: Asset) -> Bool {
-        transactionCreationLimit.map { asset.liveTransactions.count < $0 } ?? true
+    /// Whether adding another event or transaction to `asset` is currently allowed under
+    /// `recordCreationLimit`. Both kinds draw on the same allowance, so an asset already at
+    /// the limit on events has no room for a transaction either.
+    func hasRecordCapacity(for asset: Asset) -> Bool {
+        recordCreationLimit.map { asset.liveRecordCount < $0 } ?? true
     }
 
     // MARK: - AssetCategory CRUD
@@ -1084,8 +1077,8 @@ final class AssetStore {
     @discardableResult
     func addEvent(title: String, date: Date, notes: String = "", recurrence: RecurrenceInterval? = nil, due: DueSettings = DueSettings(), toAssetID assetID: UUID) throws -> Event {
         guard let asset = assets[assetID] else { throw AssetStoreError.assetNotFound(assetID) }
-        if let limit = eventCreationLimit, asset.liveEvents.count >= limit {
-            throw AssetStoreError.freeEventLimitReached(limit: limit)
+        if let limit = recordCreationLimit, asset.liveRecordCount >= limit {
+            throw AssetStoreError.freeRecordLimitReached(limit: limit)
         }
         let event = Event(title: TextLimits.clamp(title, to: TextLimits.eventTitle), date: date,
                           notes: TextLimits.clamp(notes, to: TextLimits.eventNotes), recurrence: recurrence,
@@ -1205,8 +1198,8 @@ final class AssetStore {
     }
 
     private func duplicateEventCore(source: Event, asset: Asset, title: String, date: Date, notes: String, recurrence: RecurrenceInterval?, due: DueSettings) throws -> Event {
-        if let limit = eventCreationLimit, asset.liveEvents.count >= limit {
-            throw AssetStoreError.freeEventLimitReached(limit: limit)
+        if let limit = recordCreationLimit, asset.liveRecordCount >= limit {
+            throw AssetStoreError.freeRecordLimitReached(limit: limit)
         }
         let title = TextLimits.clamp(title, to: TextLimits.eventTitle)
         let notes = TextLimits.clamp(notes, to: TextLimits.eventNotes)
@@ -1239,8 +1232,8 @@ final class AssetStore {
     @discardableResult
     func addTransaction(details: String, amount: Decimal, date: Date, kind: TransactionKind, payeeContactID: String? = nil, notes: String = "", recurrence: RecurrenceInterval? = nil, due: DueSettings = DueSettings(), toAssetID assetID: UUID) throws -> Transaction {
         guard let asset = assets[assetID] else { throw AssetStoreError.assetNotFound(assetID) }
-        if let limit = transactionCreationLimit, asset.liveTransactions.count >= limit {
-            throw AssetStoreError.freeTransactionLimitReached(limit: limit)
+        if let limit = recordCreationLimit, asset.liveRecordCount >= limit {
+            throw AssetStoreError.freeRecordLimitReached(limit: limit)
         }
         let txn = Transaction(details: TextLimits.clamp(details, to: TextLimits.transactionDetails), amount: amount, date: date, kind: kind, payeeContactID: payeeContactID, notes: TextLimits.clamp(notes, to: TextLimits.transactionNotes), recurrence: recurrence,
                               dueDate: due.dueDate, messageDaysBefore: due.messageDaysBefore,
@@ -1325,8 +1318,8 @@ final class AssetStore {
     }
 
     private func duplicateTransactionCore(source: Transaction, asset: Asset, details: String, amount: Decimal, date: Date, kind: TransactionKind, payeeContactID: String?, notes: String, recurrence: RecurrenceInterval?, due: DueSettings) throws -> Transaction {
-        if let limit = transactionCreationLimit, asset.liveTransactions.count >= limit {
-            throw AssetStoreError.freeTransactionLimitReached(limit: limit)
+        if let limit = recordCreationLimit, asset.liveRecordCount >= limit {
+            throw AssetStoreError.freeRecordLimitReached(limit: limit)
         }
         let details = TextLimits.clamp(details, to: TextLimits.transactionDetails)
         let notes = TextLimits.clamp(notes, to: TextLimits.transactionNotes)

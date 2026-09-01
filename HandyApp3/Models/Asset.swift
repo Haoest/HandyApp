@@ -143,6 +143,10 @@ final class Asset: Identifiable, Equatable {
     var liveBaseProperties: [AssetProperty] { baseProperties.filter { !$0.isDeleted } }
     var liveCustomProperties: [AssetProperty] { customProperties.filter { !$0.isDeleted } }
 
+    /// Events and transactions together — the single quantity the per-asset free-tier
+    /// allowance is measured against. See `AssetStore.recordCreationLimit`.
+    var liveRecordCount: Int { liveEvents.count + liveTransactions.count }
+
     // MARK: - Hierarchy traversal
 
     /// Ordered chain from the root ancestor down to (but not including) this asset.

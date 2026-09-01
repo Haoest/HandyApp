@@ -650,13 +650,13 @@ private struct ThingDetailContent: View {
     // MARK: - Actions
 
     private func startEvent() {
-        if store.hasEventCapacity(for: asset) { addEventPresented = true }
-        else { present(.events) }
+        if store.hasRecordCapacity(for: asset) { addEventPresented = true }
+        else { present(.records) }
     }
 
     private func startTransaction() {
-        if store.hasTransactionCapacity(for: asset) { addTransactionPresented = true }
-        else { present(.transactions) }
+        if store.hasRecordCapacity(for: asset) { addTransactionPresented = true }
+        else { present(.records) }
     }
 
     private func startChild() {
@@ -681,23 +681,21 @@ private struct ThingDetailContent: View {
 
     /// Instant duplicate, no sheet — the same "Log Now" the old row context menus offered.
     private func logNow(_ row: ThingLogRow) {
+        guard store.hasRecordCapacity(for: asset) else { return present(.records) }
         if row.isEvent {
-            guard store.hasEventCapacity(for: asset) else { return present(.events) }
             try? store.duplicateEvent(id: row.id, onAssetID: asset.id)
         } else {
-            guard store.hasTransactionCapacity(for: asset) else { return present(.transactions) }
             try? store.duplicateTransaction(id: row.id, onAssetID: asset.id)
         }
     }
 
     /// Opens a prefilled duplicate for review before saving — the old "Log & Edit".
     private func logAndEdit(_ row: ThingLogRow) {
+        guard store.hasRecordCapacity(for: asset) else { return present(.records) }
         if row.isEvent {
-            guard store.hasEventCapacity(for: asset) else { return present(.events) }
             guard let event = asset.liveEvents.first(where: { $0.id == row.id }) else { return }
             eventSheetMode = .duplicate(event)
         } else {
-            guard store.hasTransactionCapacity(for: asset) else { return present(.transactions) }
             guard let txn = asset.liveTransactions.first(where: { $0.id == row.id }) else { return }
             transactionSheetMode = .duplicate(txn)
         }

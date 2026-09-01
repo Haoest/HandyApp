@@ -35,8 +35,7 @@ struct HandyApp3App: App {
                     store.notificationScheduler?.requestResync(assets: store.allAssets)
                     purchases.start()
                     store.assetCreationLimit = purchases.isFullVersion ? nil : PurchaseManager.freeAssetLimit
-                    store.eventCreationLimit = purchases.isFullVersion ? nil : PurchaseManager.freeEventLimit
-                    store.transactionCreationLimit = purchases.isFullVersion ? nil : PurchaseManager.freeTransactionLimit
+                    store.recordCreationLimit = purchases.isFullVersion ? nil : PurchaseManager.freeRecordLimit
                     HandyAppShortcuts.updateAppShortcutParameters()
                 }
         }
@@ -53,8 +52,7 @@ struct HandyApp3App: App {
         }
         .onChange(of: purchases.isFullVersion) { _, unlocked in
             store.assetCreationLimit = unlocked ? nil : PurchaseManager.freeAssetLimit
-            store.eventCreationLimit = unlocked ? nil : PurchaseManager.freeEventLimit
-            store.transactionCreationLimit = unlocked ? nil : PurchaseManager.freeTransactionLimit
+            store.recordCreationLimit = unlocked ? nil : PurchaseManager.freeRecordLimit
         }
     }
 }

@@ -3,17 +3,16 @@ import SwiftUI
 /// Which free-tier limit triggered the paywall — determines the message shown.
 enum PaywallReason {
     case assets
-    case events
-    case transactions
+    /// Events and money records share one per-asset allowance, so both hit the same wall
+    /// and read the same message.
+    case records
 
     var message: String {
         switch self {
         case .assets:
             return String(localized: "You're at the free tier's limit of \(PurchaseManager.freeAssetLimit) things.")
-        case .events:
-            return String(localized: "You're at the free tier's limit of \(PurchaseManager.freeEventLimit) events on this thing.")
-        case .transactions:
-            return String(localized: "You're at the free tier's limit of \(PurchaseManager.freeTransactionLimit) money records on this thing.")
+        case .records:
+            return String(localized: "You're at the free tier's limit of \(PurchaseManager.freeRecordLimit) events and money records on this thing.")
         }
     }
 }
@@ -109,7 +108,7 @@ struct PaywallView: View {
     private var benefitLines: [LocalizedStringKey] {
         [
             "Unlimited things — the free tier stops at ^[\(PurchaseManager.freeAssetLimit) thing](inflect: true).",
-            "Unlimited events and money records on every thing, instead of ^[\(PurchaseManager.freeEventLimit) each](inflect: true).",
+            "Unlimited events and money records on every thing, instead of ^[\(PurchaseManager.freeRecordLimit) record](inflect: true) between them.",
             "Restore anything from Deleted items, however many things you already have.",
             "One payment. No subscription, and it covers every device on your Apple ID."
         ]

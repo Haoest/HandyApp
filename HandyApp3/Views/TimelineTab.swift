@@ -28,7 +28,7 @@ struct TimelineTab: View {
     @State private var eventToLogEdit: ResolvedEvent?
     @State private var transactionToLogEdit: ResolvedTransaction?
 
-    @State private var paywallReason: PaywallReason = .events
+    @State private var paywallReason: PaywallReason = .records
     @State private var paywallPresented = false
 
     // MARK: - Derived state
@@ -545,34 +545,32 @@ struct TimelineTab: View {
 
     private func startRecord(assetID: UUID, isEvent: Bool) {
         guard let asset = liveAsset(assetID) else { return }
+        guard store.hasRecordCapacity(for: asset) else { return present(.records) }
         if isEvent {
-            guard store.hasEventCapacity(for: asset) else { return present(.events) }
             addEventTarget = AddTarget(assetID: asset.id, assetName: asset.name)
         } else {
-            guard store.hasTransactionCapacity(for: asset) else { return present(.transactions) }
             addTransactionTarget = AddTarget(assetID: asset.id, assetName: asset.name)
         }
     }
 
     private func logNow(_ item: TimelineItem) {
         guard let asset = liveAsset(item.assetID) else { return }
+        guard store.hasRecordCapacity(for: asset) else { return present(.records) }
         if item.isEvent {
-            guard store.hasEventCapacity(for: asset) else { return present(.events) }
             try? store.duplicateEvent(id: item.openRecordID, onAssetID: item.assetID)
         } else {
-            guard store.hasTransactionCapacity(for: asset) else { return present(.transactions) }
             try? store.duplicateTransaction(id: item.openRecordID, onAssetID: item.assetID)
         }
     }
 
     private func logEdit(_ item: TimelineItem) {
         guard let asset = liveAsset(item.assetID) else { return }
+        guard store.hasRecordCapacity(for: asset) else { return present(.records) }
         if item.isEvent {
-            guard store.hasEventCapacity(for: asset) else { return present(.events) }
             guard let event = asset.liveEvents.first(where: { $0.id == item.openRecordID }) else { return }
             eventToLogEdit = ResolvedEvent(event: event, assetID: item.assetID)
         } else {
-            guard store.hasTransactionCapacity(for: asset) else { return present(.transactions) }
+            guard store.hasRecordCapacity(for: asset) else { return present(.records) }
             guard let txn = asset.liveTransactions.first(where: { $0.id == item.openRecordID }) else { return }
             transactionToLogEdit = ResolvedTransaction(transaction: txn, assetID: item.assetID)
         }

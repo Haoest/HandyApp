@@ -49,8 +49,7 @@ struct SetupTab: View {
             isFullVersion: purchases.isFullVersion,
             assetCount: store.allAssets.count,
             assetLimit: PurchaseManager.freeAssetLimit,
-            eventLimit: PurchaseManager.freeEventLimit,
-            transactionLimit: PurchaseManager.freeTransactionLimit
+            recordLimit: PurchaseManager.freeRecordLimit
         )
     }
 

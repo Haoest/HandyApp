@@ -14,8 +14,9 @@ enum PurchaseError: Error {
 final class PurchaseManager {
     static let fullVersionID = "haoest.HandyApp3.fullversion"
     static let freeAssetLimit = 5
-    static let freeEventLimit = 5
-    static let freeTransactionLimit = 5
+    /// Events and money records share one per-asset allowance — an asset may hold any mix of
+    /// the two up to this many live records.
+    static let freeRecordLimit = 12
 
     #if DEBUG
     static let debugForcedVersionKey = "debug.forcedFullVersion"

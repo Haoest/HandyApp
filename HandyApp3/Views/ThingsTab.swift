@@ -232,11 +232,10 @@ struct ThingsTab: View {
 
     private func startRecord(assetID: UUID, isEvent: Bool) {
         guard let asset = store.assets[assetID], !asset.isDeleted, !asset.isPurged else { return }
+        guard store.hasRecordCapacity(for: asset) else { return present(.records) }
         if isEvent {
-            guard store.hasEventCapacity(for: asset) else { return present(.events) }
             addEventTarget = AddTarget(assetID: asset.id, assetName: asset.name)
         } else {
-            guard store.hasTransactionCapacity(for: asset) else { return present(.transactions) }
             addTransactionTarget = AddTarget(assetID: asset.id, assetName: asset.name)
         }
     }

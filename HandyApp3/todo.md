@@ -7,11 +7,12 @@ revisit paywall ensure transaction and event has a limited free count
 
 - revisit siri command
 
-in timeline screen, add log, add quick filter by category
-
-event /transaction description length, make shorter
+- logging
 
 == completed ==
+
+in timeline screen, add log, add quick filter by category
+
 -facelift
 - create transaction / event tab
 - set a hard length on each text form field

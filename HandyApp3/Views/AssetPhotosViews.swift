@@ -119,7 +119,7 @@ struct PhotoViewerSheet: View {
                 }
                 ToolbarItem(placement: .primaryAction) {
                     Button {
-                        if store.hasTransactionCapacity(for: asset) {
+                        if store.hasRecordCapacity(for: asset) {
                             scanReceipt()
                         } else {
                             paywallPresented = true
@@ -147,7 +147,7 @@ struct PhotoViewerSheet: View {
             }
             .alert("Couldn't find a receipt", isPresented: $showNoTotalAlert) {
                 Button("Enter Manually") {
-                    if store.hasTransactionCapacity(for: asset) {
+                    if store.hasRecordCapacity(for: asset) {
                         scannedPrefill = Transaction(details: "", amount: 0, date: Date(), kind: .expense)
                     } else {
                         paywallPresented = true
@@ -176,7 +176,7 @@ struct PhotoViewerSheet: View {
                 }
             }
             .sheet(isPresented: $paywallPresented) {
-                PaywallView(reason: .transactions)
+                PaywallView(reason: .records)
             }
             .task(id: photo.id) {
                 // Photos load lazily from disk; a freshly synced one may not have arrived yet,
