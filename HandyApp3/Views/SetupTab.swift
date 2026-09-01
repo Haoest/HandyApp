@@ -395,11 +395,11 @@ private struct SetupDataActions: ViewModifier {
                 contentType: .json,
                 defaultFilename: exportFilename
             ) { _ in }
-            .alert("Import Data", isPresented: $showingImportConfirm) {
-                Button("Choose File") { showingImporter = true }
+            .alert("Import data", isPresented: $showingImportConfirm) {
+                Button("Choose file") { showingImporter = true }
                 Button("Cancel", role: .cancel) {}
             } message: {
-                Text("Data from the file you choose will be merged into what's already on this device. Nothing is deleted or overwritten — categories, assets, properties, events, transactions and photos that already exist are left as they are, and anything new is added.")
+                Text("Data from the file you choose will be merged into what's already on this device. Nothing is deleted or overwritten — categories, things, fields, events, transactions and photos that already exist are left as they are, and anything new is added.")
             }
             .fileImporter(
                 isPresented: $showingImporter,
@@ -422,12 +422,12 @@ private struct SetupDataActions: ViewModifier {
                     importError = error.localizedDescription
                 }
             }
-            .alert("Import Complete", isPresented: $showingImportDone) {
+            .alert("Import complete", isPresented: $showingImportDone) {
                 Button("OK", role: .cancel) {}
             } message: {
                 Text("The imported file has been merged into your data. Existing records were left unchanged; anything new was added.")
             }
-            .alert("Import Failed", isPresented: Binding(
+            .alert("Import failed", isPresented: Binding(
                 get: { importError != nil },
                 set: { if !$0 { importError = nil } }
             )) {
@@ -435,7 +435,7 @@ private struct SetupDataActions: ViewModifier {
             } message: {
                 Text(importError ?? "")
             }
-            .alert("Factory Reset", isPresented: $showingResetAlert) {
+            .alert("Factory reset", isPresented: $showingResetAlert) {
                 TextField("Type \"reset\" to confirm", text: $resetConfirmText)
                     .autocorrectionDisabled()
                     .textInputAutocapitalization(.never)
@@ -449,12 +449,12 @@ private struct SetupDataActions: ViewModifier {
             } message: {
                 Text("This will permanently delete all data on this device and in iCloud. Consider exporting your data first. Type \"reset\" to confirm.")
             }
-            .alert("Reset Complete", isPresented: $showingResetDone) {
+            .alert("Reset complete", isPresented: $showingResetDone) {
                 Button("OK", role: .cancel) {}
             } message: {
                 Text("All data has been cleared and the app has been restored to its initial state.")
             }
-            .alert("Restore Purchases", isPresented: Binding(
+            .alert("Restore purchases", isPresented: Binding(
                 get: { restoreResultMessage != nil },
                 set: { if !$0 { restoreResultMessage = nil } }
             )) {

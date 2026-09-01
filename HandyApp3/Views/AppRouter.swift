@@ -58,7 +58,7 @@ enum DetailAnchor: String, CaseIterable {
     case events = "Events"
     case transactions = "Transactions"
     case relationship = "Relationship"
-    case contents = "What's Inside"
+    case contents = "What's inside"
 }
 
 extension DetailAnchor {

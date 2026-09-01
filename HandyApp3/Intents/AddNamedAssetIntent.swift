@@ -1,12 +1,12 @@
 import AppIntents
 
 struct AddNamedAssetIntent: AppIntent {
-    static let title: LocalizedStringResource = "Add Named Asset"
+    static let title: LocalizedStringResource = "Add Named Thing"
     static let openAppWhenRun = true
 
     @Parameter(
         title: "Name",
-        requestValueDialog: IntentDialog("What would you like to name the new asset?")
+        requestValueDialog: IntentDialog("What would you like to name the new thing?")
     )
     var name: String
 

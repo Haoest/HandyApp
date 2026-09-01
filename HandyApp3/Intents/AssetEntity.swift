@@ -1,7 +1,7 @@
 import AppIntents
 
 struct AssetEntity: AppEntity {
-    static let typeDisplayRepresentation: TypeDisplayRepresentation = "Asset"
+    static let typeDisplayRepresentation: TypeDisplayRepresentation = "Thing"
     static let defaultQuery = AssetEntityQuery()
 
     let id: UUID

@@ -34,14 +34,14 @@ struct ReceiptBlockSelectionView: View {
                 .padding(.horizontal)
             }
             .padding(.vertical)
-            .navigationTitle("Select Items")
+            .navigationTitle("Select items")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") { dismiss() }
                 }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("Use Selection") {
+                    Button("Use selection") {
                         let tokens = analysis.blocks
                             .filter { selectedBlockIDs.contains($0.id) }
                             .flatMap { $0.tokens }

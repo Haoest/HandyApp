@@ -306,7 +306,7 @@ struct NewAssetSheet: View {
                                     .foregroundStyle(Baron.neutral600)
                             }
                             .frame(maxWidth: .infinity, alignment: .leading)
-                            Text("›")
+                            Text(verbatim: "›")
                                 .font(Baron.body(13, .medium))
                                 .foregroundStyle(Baron.neutral400)
                         }

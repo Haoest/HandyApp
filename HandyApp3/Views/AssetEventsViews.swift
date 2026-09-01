@@ -182,7 +182,7 @@ struct EventEditView: View {
             onToggle: { isRecurring.toggle() }
         ) {
             RecordChipPicker(options: RecurrenceInterval.allCases, selection: interval,
-                             title: { $0.rawValue }) { interval = $0 }
+                             title: { $0.displayName }) { interval = $0 }
         }
     }
 

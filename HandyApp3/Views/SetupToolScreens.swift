@@ -258,44 +258,44 @@ struct QuickStartGuideView: View {
     private let commands: [SiriCommand] = [
         SiriCommand(
             phrases: [
-                "Open asset [name] in Baron Book",
+                "Open [name] in Baron Book",
                 "Show [name] in Baron Book",
-                "Open an asset in Baron Book"
+                "Open a thing in Baron Book"
             ],
             description: "Jump straight to a thing."
         ),
         SiriCommand(
             phrases: [
-                "Add asset in Baron Book",
-                "Create new asset in Baron Book"
+                "Add thing in Baron Book",
+                "Create new thing in Baron Book"
             ],
             description: "Start adding a thing."
         ),
         SiriCommand(
             phrases: [
-                "Add new named asset in Baron Book",
-                "Create new named asset in Baron Book"
+                "Add new named thing in Baron Book",
+                "Create new named thing in Baron Book"
             ],
             description: "Start adding a thing with the name you say."
         ),
         SiriCommand(
             phrases: [
-                "Add transaction to [asset] in Baron Book",
-                "Record transaction to [asset] in Baron Book"
+                "Add transaction to [thing] in Baron Book",
+                "Record transaction to [thing] in Baron Book"
             ],
-            description: "Start a money record on a thing."
+            description: "Start a transaction on a thing."
         ),
         SiriCommand(
             phrases: [
-                "Add expense to [asset] in Baron Book",
-                "Record expense to [asset] in Baron Book"
+                "Add expense to [thing] in Baron Book",
+                "Record expense to [thing] in Baron Book"
             ],
             description: "Start recording money out."
         ),
         SiriCommand(
             phrases: [
-                "Add income to [asset] in Baron Book",
-                "Record income to [asset] in Baron Book"
+                "Add income to [thing] in Baron Book",
+                "Record income to [thing] in Baron Book"
             ],
             description: "Start recording money in."
         )
@@ -314,13 +314,6 @@ struct QuickStartGuideView: View {
                 }
             }
             .padding(.top, 18)
-            // The intents were authored against the old vocabulary and the phrases are what
-            // Siri actually matches, so they stay "asset" even though the app now says "thing".
-            Text("Siri still listens for \"asset\" — that's the wording the shortcuts were built with.")
-                .font(Baron.body(11.5))
-                .foregroundStyle(Baron.neutral500)
-                .fixedSize(horizontal: false, vertical: true)
-                .padding(.top, 16)
         }
     }
 

@@ -68,15 +68,25 @@ enum NotificationPlanner {
     /// DEBUG "send test notification" button, so a test notification reads exactly like a
     /// real one.
     static func eventDueBody(title: String, notes: String, daysBefore: Int) -> String {
-        appendingNotes("Due in \(daysBefore) days: \(title).", notes: notes)
+        let body = String(localized: "Due in \(daysBefore) days: \(title).", locale: .appPreferred)
+        return appendingNotes(body, notes: notes)
     }
 
     /// Body for a transaction's due-date reminder. Also called directly by the edit screen's
     /// DEBUG "send test notification" button, so a test notification reads exactly like a
     /// real one.
     static func transactionDueBody(kind: TransactionKind, amount: Decimal, notes: String, daysBefore: Int) -> String {
-        let amountText = amount.formatted(.currency(code: Locale.current.currency?.identifier ?? "USD"))
-        return appendingNotes("\(kind.rawValue) transaction due in \(daysBefore) days in amount of \(amountText).", notes: notes)
+        let amountText = amount.formatted(
+            .currency(code: Locale.current.currency?.identifier ?? "USD").locale(.appPreferred)
+        )
+        let body: String
+        switch kind {
+        case .expense:
+            body = String(localized: "Expense transaction due in \(daysBefore) days in amount of \(amountText).", locale: .appPreferred)
+        case .income:
+            body = String(localized: "Income transaction due in \(daysBefore) days in amount of \(amountText).", locale: .appPreferred)
+        }
+        return appendingNotes(body, notes: notes)
     }
 
     private static func appendingNotes(_ prefix: String, notes: String) -> String {

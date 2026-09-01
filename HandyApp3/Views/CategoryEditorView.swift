@@ -74,7 +74,7 @@ struct CategoryEditorView: View {
         }
         .confirmationDialog("Delete \"\(category.name)\"?", isPresented: $deleteConfirmationPresented,
                             titleVisibility: .visible) {
-            Button("Delete Category", role: .destructive) {
+            Button("Delete category", role: .destructive) {
                 try? store.softDeleteCategory(id: category.id)
                 dismiss()
             }

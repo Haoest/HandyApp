@@ -5,32 +5,32 @@ struct HandyAppShortcuts: AppShortcutsProvider {
         AppShortcut(
             intent: OpenAssetIntent(),
             phrases: [
-                "Open \(.applicationName) asset \(\.$asset)",
+                "Open \(.applicationName) thing \(\.$asset)",
                 "Open \(\.$asset) in \(.applicationName)",
                 "Show \(\.$asset) in \(.applicationName)",
-                "Open an asset in \(.applicationName)"
+                "Open a thing in \(.applicationName)"
             ],
-            shortTitle: "Open Asset",
+            shortTitle: "Open Thing",
             systemImageName: "shippingbox"
         )
         AppShortcut(
             intent: AddAssetIntent(),
             phrases: [
-                "Add asset in \(.applicationName)",
-                "Add new asset in \(.applicationName)",
-                "Create asset in \(.applicationName)",
-                "Create new asset in \(.applicationName)"
+                "Add thing in \(.applicationName)",
+                "Add new thing in \(.applicationName)",
+                "Create thing in \(.applicationName)",
+                "Create new thing in \(.applicationName)"
             ],
-            shortTitle: "Add Asset",
+            shortTitle: "Add Thing",
             systemImageName: "plus.circle"
         )
         AppShortcut(
             intent: AddNamedAssetIntent(),
             phrases: [
-                "Add new named asset in \(.applicationName)",
-                "Create new named asset in \(.applicationName)"
+                "Add new named thing in \(.applicationName)",
+                "Create new named thing in \(.applicationName)"
             ],
-            shortTitle: "Add Named Asset",
+            shortTitle: "Add Named Thing",
             systemImageName: "plus.circle"
         )
         AppShortcut(

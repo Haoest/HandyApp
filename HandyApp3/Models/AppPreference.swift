@@ -28,7 +28,7 @@ enum AppPreference {
     /// BCP 47 language tag for locale override; empty string = system default.
     static let languageKey = "preferredLanguage"
     static let supportedLanguages: [(code: String, label: String)] = [
-        ("",        "System Default"),
+        ("",        "System default"),
         ("en",      "English"),
         ("es",      "Español"),
         ("fr",      "Français"),

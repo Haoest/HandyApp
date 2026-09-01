@@ -33,7 +33,7 @@ enum SetupDigest {
         return PlanSummary(
             kicker: String(localized: "Free tier", locale: .appPreferred),
             title: String(localized: "\(assetCount) of \(assetLimit) things used", locale: .appPreferred),
-            body: String(localized: "One payment lifts every limit. The free tier holds \(assetLimit) things, and \(recordLimit) events and money records on each.", locale: .appPreferred),
+            body: String(localized: "One payment lifts every limit. The free tier holds \(assetLimit) things, and \(recordLimit) events and transactions on each.", locale: .appPreferred),
             callToAction: String(localized: "See the full version", locale: .appPreferred),
             offersUpgrade: true
         )

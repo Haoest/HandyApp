@@ -19,6 +19,20 @@ enum RecurrenceInterval: String, CaseIterable {
         }
     }
 
+    /// Localized label for the recurrence chip picker. `rawValue` stays English and unlocalized
+    /// on purpose — it's persisted and synced (see `EventDTO.recurrence`/`TransactionDTO.recurrence`
+    /// in `Persistence.swift`), so it can't follow the display language.
+    var displayName: String {
+        switch self {
+        case .weekly: String(localized: "Weekly", locale: .appPreferred)
+        case .monthly: String(localized: "Monthly", locale: .appPreferred)
+        case .quarterly: String(localized: "Quarterly", locale: .appPreferred)
+        case .semiAnnually: String(localized: "Semi-annually", locale: .appPreferred)
+        case .annually: String(localized: "Annually", locale: .appPreferred)
+        case .biAnnually: String(localized: "Bi-annually", locale: .appPreferred)
+        }
+    }
+
     /// Compact schedule-code form for tight display contexts (e.g. the Logs tab's series list).
     /// Not localized — `rawValue` isn't either (see its doc), so this stays consistent with it.
     var abbreviation: String {

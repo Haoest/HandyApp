@@ -4,7 +4,7 @@ struct AddTransactionIntent: AppIntent {
     static let title: LocalizedStringResource = "Add Transaction"
     static let openAppWhenRun = true
 
-    @Parameter(title: "Asset")
+    @Parameter(title: "Thing")
     var asset: AssetEntity
 
     @MainActor
@@ -21,7 +21,7 @@ struct AddExpenseIntent: AppIntent {
     static let title: LocalizedStringResource = "Add Expense"
     static let openAppWhenRun = true
 
-    @Parameter(title: "Asset")
+    @Parameter(title: "Thing")
     var asset: AssetEntity
 
     @MainActor
@@ -38,7 +38,7 @@ struct AddIncomeIntent: AppIntent {
     static let title: LocalizedStringResource = "Add Income"
     static let openAppWhenRun = true
 
-    @Parameter(title: "Asset")
+    @Parameter(title: "Thing")
     var asset: AssetEntity
 
     @MainActor

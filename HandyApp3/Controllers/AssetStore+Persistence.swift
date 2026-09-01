@@ -45,7 +45,7 @@ enum ImportError: LocalizedError {
     case notAnExport
 
     var errorDescription: String? {
-        "This file isn't an exported backup — it looks like the app's own internal store file, not something created by Export. Use Tools > Export Data to create a file that can be imported."
+        String(localized: "This file isn't an exported backup — it looks like the app's own internal store file, not something created by Export. Use Setup > Export to create a file that can be imported.", locale: .appPreferred)
     }
 }
 

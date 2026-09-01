@@ -149,14 +149,14 @@ struct CategoriesListView: View {
                                     // so these lines are composed here rather than in a model.
                                     HStack(spacing: 4) {
                                         Text("^[\(category.liveTemplates.count) field](inflect: true)")
-                                        Text("·")
+                                        Text(verbatim: "·")
                                         Text("^[\(thingCount(category)) thing](inflect: true)")
                                     }
                                     .font(Baron.body(12.5))
                                     .foregroundStyle(Baron.neutral600)
                                 }
                                 .frame(maxWidth: .infinity, alignment: .leading)
-                                Text("›")
+                                Text(verbatim: "›")
                                     .font(Baron.body(13, .medium))
                                     .foregroundStyle(Baron.neutral400)
                             }
@@ -187,7 +187,7 @@ struct CategoriesListView: View {
             if let category = store.categories[id], !category.isDeleted {
                 CategoryEditorView(category: category)
             } else {
-                ContentUnavailableView("Category Not Found", systemImage: "folder",
+                ContentUnavailableView("Category not found", systemImage: "folder",
                                        description: Text("This category no longer exists."))
             }
         }
@@ -247,7 +247,7 @@ struct PickListsView: View {
                                     }
                                     .font(Baron.body(11.5))
                                     .foregroundStyle(Baron.neutral600)
-                                    Text("›")
+                                    Text(verbatim: "›")
                                         .font(Baron.body(13, .medium))
                                         .foregroundStyle(Baron.neutral400)
                                 }
@@ -285,7 +285,7 @@ struct PickListsView: View {
             if let list = store.comboListDefinitions[id], !list.isDeleted {
                 PickListEditorView(list: list)
             } else {
-                ContentUnavailableView("Pick List Not Found", systemImage: "list.bullet.rectangle",
+                ContentUnavailableView("Pick list not found", systemImage: "list.bullet.rectangle",
                                        description: Text("This pick list no longer exists."))
             }
         }

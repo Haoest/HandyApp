@@ -1,7 +1,7 @@
 import AppIntents
 
 struct AddAssetIntent: AppIntent {
-    static let title: LocalizedStringResource = "Add Asset"
+    static let title: LocalizedStringResource = "Add Thing"
     static let openAppWhenRun = true
 
     @MainActor

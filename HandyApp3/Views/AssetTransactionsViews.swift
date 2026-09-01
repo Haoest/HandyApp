@@ -146,7 +146,7 @@ struct TransactionEditView: View {
 
     var body: some View {
         RecordSheetScaffold(
-            title: existing == nil ? "New money record" : "Edit money record",
+            title: existing == nil ? "New transaction" : "Edit transaction",
             saveLabel: "Save",
             canSave: !details.trimmingCharacters(in: .whitespaces).isEmpty && parsedAmount != nil,
             onSave: save
@@ -206,10 +206,10 @@ struct TransactionEditView: View {
         let tint = kind == .expense ? Baron.danger : Baron.good
         return VStack(spacing: 13) {
             HStack(spacing: 9) {
-                Text(kind == .expense ? "−" : "+")
+                Text(verbatim: kind == .expense ? "−" : "+")
                     .font(Baron.heading(29))
                     .foregroundStyle(tint)
-                TextField("0.00", text: $amountText)
+                TextField(String("0.00"), text: $amountText)
                     .keyboardType(.decimalPad)
                     .font(Baron.heading(29))
                     .foregroundStyle(tint)
@@ -255,7 +255,7 @@ struct TransactionEditView: View {
             onToggle: { isRecurring.toggle() }
         ) {
             RecordChipPicker(options: RecurrenceInterval.allCases, selection: interval,
-                             title: { $0.rawValue }) { interval = $0 }
+                             title: { $0.displayName }) { interval = $0 }
         }
     }
 
@@ -338,7 +338,7 @@ struct TransactionEditView: View {
                         payeeName = ""
                     }
                 } else {
-                    smallAction("Choose a contact") { contactPickerPresented = true }
+                    smallAction("Choose a contact…") { contactPickerPresented = true }
                 }
             }
             .padding(.horizontal, 13)

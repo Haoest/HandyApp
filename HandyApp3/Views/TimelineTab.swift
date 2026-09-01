@@ -89,8 +89,8 @@ struct TimelineTab: View {
                 if let asset = store.assets[pushed.id], !asset.isDeleted, !asset.isPurged {
                     ThingDetailView(asset: asset, initialAnchor: pushed.section)
                 } else {
-                    ContentUnavailableView("Asset Not Found", systemImage: "shippingbox",
-                                           description: Text("This asset no longer exists."))
+                    ContentUnavailableView("Thing not found", systemImage: "shippingbox",
+                                           description: Text("This thing no longer exists."))
                 }
             }
             .sheet(item: $quickLogStep) { step in
@@ -479,7 +479,7 @@ struct TimelineTab: View {
             guard let asset = liveAsset(assetID) else { return nil }
             return HistoryDisplay(
                 id: "summary-\(kind.rawValue)-\(assetID.uuidString)",
-                title: "\(count) \(Self.noun(kind, count: count)) added",
+                title: Self.summaryAddedTitle(kind, count: count),
                 subtitle: asset.name,
                 amount: nil,
                 isMoney: kind == .transaction,
@@ -598,12 +598,12 @@ struct TimelineTab: View {
         }
     }
 
-    private static func noun(_ kind: LoggedRecordKind, count: Int) -> String {
+    private static func summaryAddedTitle(_ kind: LoggedRecordKind, count: Int) -> String {
         switch kind {
-        case .photo: return count == 1 ? "photo" : "photos"
-        case .event: return count == 1 ? "event" : "events"
-        case .transaction: return count == 1 ? "transaction" : "transactions"
-        case .asset: return count == 1 ? "thing" : "things"
+        case .photo: return String(localized: "^[\(count) photo](inflect: true) added", locale: .appPreferred)
+        case .event: return String(localized: "^[\(count) event](inflect: true) added", locale: .appPreferred)
+        case .transaction: return String(localized: "^[\(count) transaction](inflect: true) added", locale: .appPreferred)
+        case .asset: return String(localized: "^[\(count) thing](inflect: true) added", locale: .appPreferred)
         }
     }
 
@@ -649,9 +649,9 @@ private struct ComingUpRow: View {
 
     private var whenText: String {
         switch item.daysUntilDue {
-        case ..<0: return "\(abs(item.daysUntilDue))d late"
+        case ..<0: return String(localized: "^[\(abs(item.daysUntilDue)) day](inflect: true) late", locale: .appPreferred)
         case 0: return String(localized: "today", locale: .appPreferred)
-        default: return "in \(item.daysUntilDue)d"
+        default: return String(localized: "in ^[\(item.daysUntilDue) day](inflect: true)", locale: .appPreferred)
         }
     }
 
@@ -664,7 +664,7 @@ private struct ComingUpRow: View {
     var body: some View {
         VStack(spacing: 12) {
             HStack(alignment: .top, spacing: 11) {
-                Text(item.isEvent ? "◷" : "$")
+                Text(verbatim: item.isEvent ? "◷" : "$")
                     .font(Baron.heading(13))
                     .foregroundStyle(item.isOverdue ? Baron.danger : Baron.accent800)
                     .frame(width: 36, height: 36)
@@ -771,7 +771,7 @@ private struct HistoryRowView: View {
     var body: some View {
         Button(action: onTap) {
             HStack(spacing: 11) {
-                Text(display.isMoney ? "$" : "◷")
+                Text(verbatim: display.isMoney ? "$" : "◷")
                     .font(Baron.heading(11))
                     .foregroundStyle(display.isMoney ? Baron.accent800 : Baron.neutral700)
                     .frame(width: 28, height: 28)

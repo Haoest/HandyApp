@@ -146,7 +146,7 @@ struct PhotoViewerSheet: View {
                 }
             }
             .alert("Couldn't find a receipt", isPresented: $showNoTotalAlert) {
-                Button("Enter Manually") {
+                Button("Enter manually") {
                     if store.hasRecordCapacity(for: asset) {
                         scannedPrefill = Transaction(details: "", amount: 0, date: Date(), kind: .expense)
                     } else {

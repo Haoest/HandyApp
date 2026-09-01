@@ -1,10 +1,10 @@
 import AppIntents
 
 struct OpenAssetIntent: AppIntent {
-    static let title: LocalizedStringResource = "Open Asset"
+    static let title: LocalizedStringResource = "Open Thing"
     static let openAppWhenRun = true
 
-    @Parameter(title: "Asset")
+    @Parameter(title: "Thing")
     var asset: AssetEntity
 
     @MainActor

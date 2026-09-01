@@ -77,7 +77,7 @@ struct ThingsTab: View {
                     ThingDetailView(asset: asset, orderedIDs: orderedAssetIDs, initialAnchor: router.pendingAssetAnchor)
                         .onAppear { router.pendingAssetAnchor = nil }
                 } else {
-                    ContentUnavailableView("Thing Not Found", systemImage: "shippingbox",
+                    ContentUnavailableView("Thing not found", systemImage: "shippingbox",
                                            description: Text("This thing no longer exists."))
                 }
             }

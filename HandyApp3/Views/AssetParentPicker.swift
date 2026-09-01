@@ -72,7 +72,7 @@ private struct ParentField: View {
                         .foregroundStyle(parentName == nil ? Baron.neutral500 : Baron.text)
                         .lineLimit(1)
                     Spacer(minLength: 0)
-                    Text("›")
+                    Text(verbatim: "›")
                         .font(Baron.body(13, .medium))
                         .foregroundStyle(Baron.neutral400)
                 }

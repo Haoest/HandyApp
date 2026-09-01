@@ -12,7 +12,7 @@ enum PaywallReason {
         case .assets:
             return String(localized: "You're at the free tier's limit of \(PurchaseManager.freeAssetLimit) things.", locale: .appPreferred)
         case .records:
-            return String(localized: "You're at the free tier's limit of \(PurchaseManager.freeRecordLimit) events and money records on this thing.", locale: .appPreferred)
+            return String(localized: "You're at the free tier's limit of \(PurchaseManager.freeRecordLimit) events and transactions on this thing.", locale: .appPreferred)
         }
     }
 }
@@ -49,7 +49,7 @@ struct PaywallView: View {
                 }
             }
         }
-        .alert("Purchase Failed", isPresented: Binding(
+        .alert("Purchase failed", isPresented: Binding(
             get: { errorMessage != nil },
             set: { if !$0 { errorMessage = nil } }
         )) {
@@ -108,7 +108,7 @@ struct PaywallView: View {
     private var benefitLines: [LocalizedStringKey] {
         [
             "Unlimited things — the free tier stops at ^[\(PurchaseManager.freeAssetLimit) thing](inflect: true).",
-            "Unlimited events and money records on every thing, instead of ^[\(PurchaseManager.freeRecordLimit) record](inflect: true) between them.",
+            "Unlimited events and transactions on every thing, instead of ^[\(PurchaseManager.freeRecordLimit) record](inflect: true) between them.",
             "Restore anything from Deleted items, however many things you already have.",
             "One payment. No subscription, and it covers every device on your Apple ID."
         ]
@@ -119,7 +119,7 @@ struct PaywallView: View {
             ForEach(Array(benefitLines.enumerated()), id: \.offset) { index, line in
                 VStack(spacing: 0) {
                     HStack(alignment: .top, spacing: 11) {
-                        Text("✓")
+                        Text(verbatim: "✓")
                             .font(Baron.heading(13))
                             .foregroundStyle(Baron.accent700)
                         Text(line)

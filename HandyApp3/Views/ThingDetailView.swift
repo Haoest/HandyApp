@@ -85,7 +85,7 @@ struct ThingDetailView: View {
                 .id(currentID)
             } else {
                 ContentUnavailableView(
-                    "Thing Not Found",
+                    "Thing not found",
                     systemImage: "shippingbox",
                     description: Text("This thing no longer exists.")
                 )
@@ -356,7 +356,7 @@ private struct ThingDetailContent: View {
     private var primaryActions: some View {
         HStack(spacing: 8) {
             Button { startTransaction() } label: {
-                actionLabel("+ Money", foreground: .white, background: Baron.fill)
+                actionLabel("+ Transaction", foreground: .white, background: Baron.fill)
             }
             .buttonStyle(.plain)
             Button { startEvent() } label: {
@@ -373,7 +373,7 @@ private struct ThingDetailContent: View {
                     Label("Delete thing", systemImage: "trash")
                 }
             } label: {
-                Text("•••")
+                Text(verbatim: "•••")
                     .font(Baron.heading(12))
                     .foregroundStyle(Baron.neutral700)
                     .padding(.horizontal, 13)
@@ -435,7 +435,7 @@ private struct ThingDetailContent: View {
             if sortedBase.isEmpty && sortedCustom.isEmpty {
                 emptyNote("This thing has no fields yet. Add one below, or give its category a template.")
             }
-            dashedButton("+ Custom field") { addPropertyPresented = true }
+            dashedButton("Custom field") { addPropertyPresented = true }
             Button { deleteConfirmationPresented = true } label: {
                 Text("Delete thing")
                     .font(Baron.heading(11.5))
@@ -472,7 +472,7 @@ private struct ThingDetailContent: View {
     private var logTab: some View {
         VStack(spacing: 10) {
             if logRows.isEmpty {
-                emptyNote("Nothing logged yet. Money and events you record show up here.")
+                emptyNote("Nothing logged yet. Transactions and events you record show up here.")
             } else {
                 ForEach(logRows) { row in
                     ThingLogRowView(
@@ -486,7 +486,7 @@ private struct ThingDetailContent: View {
                 }
             }
             HStack(spacing: 8) {
-                dashedButton("+ Money") { startTransaction() }
+                dashedButton("+ Transaction") { startTransaction() }
                 dashedButton("+ Event") { startEvent() }
             }
         }
@@ -520,7 +520,7 @@ private struct ThingDetailContent: View {
                 }
                 .buttonStyle(.plain)
             }
-            Text("Tap a photo to caption it, or scan a receipt into a money record.")
+            Text("Tap a photo to caption it, or scan a receipt into a transaction.")
                 .font(Baron.body(12))
                 .foregroundStyle(Baron.neutral600)
         }
@@ -747,7 +747,7 @@ private struct ThingLogRowView: View {
         VStack(spacing: 0) {
             Button(action: onOpen) {
                 HStack(spacing: 11) {
-                    Text(row.isEvent ? "◷" : "$")
+                    Text(verbatim: row.isEvent ? "◷" : "$")
                         .font(Baron.heading(12))
                         .foregroundStyle(row.isLate ? Baron.danger : (row.isEvent ? Baron.neutral700 : Baron.accent800))
                         .frame(width: 32, height: 32)
@@ -814,7 +814,7 @@ private struct ThingLogRowView: View {
             Button {
                 onLogAndEdit()
             } label: {
-                Label(row.recurs ? "Log & Edit" : "Duplicate & Edit", systemImage: "square.and.pencil")
+                Label(row.recurs ? "Log & edit" : "Duplicate & edit", systemImage: "square.and.pencil")
             }
             Button(role: .destructive, action: onDelete) {
                 Label("Delete", systemImage: "trash")
@@ -950,8 +950,8 @@ private struct ThingDetailSheets: ViewModifier {
 
     func body(content: Content) -> some View {
         content
-            .confirmationDialog("Add Photo", isPresented: $photoSourceDialogPresented) {
-                Button("Photo Library") { photoLibraryPresented = true }
+            .confirmationDialog("Add photo", isPresented: $photoSourceDialogPresented) {
+                Button("Photo library") { photoLibraryPresented = true }
                 if UIImagePickerController.isSourceTypeAvailable(.camera) {
                     Button("Camera") { cameraPresented = true }
                 }
@@ -1068,7 +1068,7 @@ private struct ThingDetailSheets: ViewModifier {
                 if let child = store.assets[id], !child.isDeleted, !child.isPurged {
                     ThingDetailView(asset: child, orderedIDs: siblingIDs)
                 } else {
-                    ContentUnavailableView("Thing Not Found", systemImage: "shippingbox",
+                    ContentUnavailableView("Thing not found", systemImage: "shippingbox",
                                            description: Text("This thing no longer exists."))
                 }
             }
