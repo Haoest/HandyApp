@@ -148,7 +148,19 @@ struct TimelineTab: View {
                 }
             }
             .sheet(isPresented: $paywallPresented) { PaywallView(reason: paywallReason) }
+            .onAppear { consumePendingQuickLog() }
+            .onChange(of: router.pendingQuickLog) { _, pending in
+                if pending { consumePendingQuickLog() }
+            }
         }
+    }
+
+    /// `LogIntent` (the Spotlight "Log" tile) routes here rather than carrying a thing of
+    /// its own — the picker is the disambiguator. Same flow as the "+ Log" button.
+    private func consumePendingQuickLog() {
+        guard router.pendingQuickLog else { return }
+        router.pendingQuickLog = false
+        quickLogStep = .pickThing
     }
 
     // MARK: - Header

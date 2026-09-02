@@ -124,7 +124,6 @@ private struct ThingDetailContent: View {
     // immediately. Carried over from the old detail form, where the same trap was documented.
     @State private var addEventPresented = false
     @State private var addTransactionPresented = false
-    @State private var initialTransactionKind: TransactionKind?
     @State private var eventSheetMode: EventSheetMode?
     @State private var transactionSheetMode: TransactionSheetMode?
     @State private var seriesHistory: SeriesHistoryRequest?
@@ -219,7 +218,6 @@ private struct ThingDetailContent: View {
             renamePresented: $renamePresented,
             addEventPresented: $addEventPresented,
             addTransactionPresented: $addTransactionPresented,
-            initialTransactionKind: $initialTransactionKind,
             eventSheetMode: $eventSheetMode,
             transactionSheetMode: $transactionSheetMode,
             seriesHistory: $seriesHistory,
@@ -241,10 +239,6 @@ private struct ThingDetailContent: View {
                 dismiss()
             }
         ))
-        .onAppear { consumePendingTransactionKind() }
-        .onChange(of: router.pendingTransactionKind) { _, kind in
-            if kind != nil { consumePendingTransactionKind() }
-        }
     }
 
     // MARK: - Header
@@ -712,13 +706,6 @@ private struct ThingDetailContent: View {
         }
     }
 
-    private func consumePendingTransactionKind() {
-        guard let kind = router.pendingTransactionKind else { return }
-        router.pendingTransactionKind = nil
-        initialTransactionKind = kind
-        subTab = .log
-        startTransaction()
-    }
 }
 
 // MARK: - Log row
@@ -929,7 +916,6 @@ private struct ThingDetailSheets: ViewModifier {
     @Binding var renamePresented: Bool
     @Binding var addEventPresented: Bool
     @Binding var addTransactionPresented: Bool
-    @Binding var initialTransactionKind: TransactionKind?
     @Binding var eventSheetMode: EventSheetMode?
     @Binding var transactionSheetMode: TransactionSheetMode?
     @Binding var seriesHistory: SeriesHistoryRequest?
@@ -982,8 +968,8 @@ private struct ThingDetailSheets: ViewModifier {
                     try? store.addEvent(title: title, date: date, notes: notes, recurrence: recurrence, due: due, toAssetID: asset.id)
                 }
             }
-            .sheet(isPresented: $addTransactionPresented, onDismiss: { initialTransactionKind = nil }) {
-                TransactionEditView(initialKind: initialTransactionKind, assetName: asset.name, assetID: asset.id) { details, amount, date, kind, payeeID, notes, recurrence, due in
+            .sheet(isPresented: $addTransactionPresented) {
+                TransactionEditView(assetName: asset.name, assetID: asset.id) { details, amount, date, kind, payeeID, notes, recurrence, due in
                     try? store.addTransaction(details: details, amount: amount, date: date, kind: kind, payeeContactID: payeeID, notes: notes, recurrence: recurrence, due: due, toAssetID: asset.id)
                 }
             }

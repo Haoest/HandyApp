@@ -16,7 +16,6 @@ struct ThingsTab: View {
     @State private var newAssetPresented = false
     @State private var paywallPresented = false
     @State private var paywallReason: PaywallReason = .assets
-    @State private var pendingAssetName: String?
     @State private var createdAssetID: UUID?
 
     @State private var quickLogStep: QuickLogStep?
@@ -82,7 +81,6 @@ struct ThingsTab: View {
                 }
             }
             .sheet(isPresented: $newAssetPresented, onDismiss: {
-                pendingAssetName = nil
                 // Push after the sheet has finished dismissing — pushing onto the
                 // NavigationStack mid-animation can be dropped by SwiftUI.
                 if let id = createdAssetID {
@@ -90,7 +88,7 @@ struct ThingsTab: View {
                     router.pendingAssetID = id
                 }
             }) {
-                NewAssetSheet(initialName: pendingAssetName) { asset in
+                NewAssetSheet { asset in
                     createdAssetID = asset.id
                     newAssetPresented = false
                 }
@@ -257,8 +255,6 @@ struct ThingsTab: View {
     private func consumePendingNewAsset() {
         guard router.pendingNewAsset else { return }
         router.pendingNewAsset = false
-        pendingAssetName = router.pendingNewAssetName
-        router.pendingNewAssetName = nil
         if store.hasAssetCapacity { newAssetPresented = true } else { present(.assets) }
     }
 }

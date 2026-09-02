@@ -318,7 +318,7 @@ extension AssetStore {
         // Purged/reseeded assets carry no events or transactions, so this resync clears every
         // pending (not-yet-fired) notification this app scheduled and schedules nothing new.
         // Delivered notifications already in Notification Center are left untouched.
-        notificationScheduler?.requestResync(assets: allAssets)
+        requestDerivedResync()
         DispatchQueue.global(qos: .userInitiated).sync { self.save() }
     }
 
@@ -499,6 +499,10 @@ extension AssetStore {
                     self.applySnapshot(disk)
                     self.savesSuspended = false
                     self.lastSyncDate = Date()
+                    // Wholesale rebuild — without this a device that cold-started into
+                    // .seedSuspended keeps notifications and a Spotlight index built from
+                    // the sample assets the real data just replaced.
+                    self.requestDerivedResync()
                     return
                 }
 
@@ -819,7 +823,7 @@ extension AssetStore {
 
         // 8. Commit. backgroundTheme is UserDefaults-backed, not part of this commit at all.
         _applyLoaded(compositeTypes: ctMap, comboLists: clMap, categories: catMap, assets: assetMap, activityLog: log)
-        notificationScheduler?.requestResync(assets: allAssets)
+        requestDerivedResync()
 
         return photoIDsToMaterialize
     }
@@ -1485,7 +1489,7 @@ extension AssetStore {
         }
         _upsertActivityLog(mergedLog)
 
-        notificationScheduler?.requestResync(assets: allAssets)
+        requestDerivedResync()
     }
 
     private func upsertAssetProperties(

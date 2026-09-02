@@ -42,6 +42,7 @@ final class AppDependencies {
             // Do NOT save — cloud may have real data; savesSuspended lifts when cloud answers.
         }
         s.notificationScheduler = NotificationScheduler()
+        s.spotlightIndexer = SpotlightIndexer()
         return s
     }
 }

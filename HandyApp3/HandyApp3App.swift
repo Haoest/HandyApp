@@ -1,3 +1,4 @@
+import CoreSpotlight
 import SwiftUI
 
 @main
@@ -32,11 +33,21 @@ struct HandyApp3App: App {
                     }
                     try? await ContactResolver.shared.requestAccess()
                     store.startCloudMonitor()
-                    store.notificationScheduler?.requestResync(assets: store.allAssets)
+                    store.requestDerivedResync()
                     purchases.start()
                     store.assetCreationLimit = purchases.isFullVersion ? nil : PurchaseManager.freeAssetLimit
                     store.recordCreationLimit = purchases.isFullVersion ? nil : PurchaseManager.freeRecordLimit
                     HandyAppShortcuts.updateAppShortcutParameters()
+                }
+                // Tapping a thing in Spotlight. The identifier is the asset's UUID string
+                // (see SpotlightIndexer), and pendingAssetID is the same deep-link path the
+                // notification tap and OpenAssetIntent use — a stale id degrades to the
+                // "Thing not found" view rather than doing nothing.
+                .onContinueUserActivity(CSSearchableItemActionType) { activity in
+                    guard let raw = activity.userInfo?[CSSearchableItemActivityIdentifier] as? String,
+                          let id = UUID(uuidString: raw) else { return }
+                    router.selectedTab = .assets
+                    router.pendingAssetID = id
                 }
         }
         .onChange(of: scenePhase) { _, phase in
@@ -46,7 +57,7 @@ struct HandyApp3App: App {
             if phase == .background { HandyAppShortcuts.updateAppShortcutParameters() }
             if phase == .active {
                 store.purgeHardDeleted(olderThan: TimeInterval(AppPreference.DaysToRetainDeletedItems) * 86_400)
-                store.notificationScheduler?.requestResync(assets: store.allAssets)
+                store.requestDerivedResync()
                 DispatchQueue.global(qos: .background).async { store.save() }
             }
         }

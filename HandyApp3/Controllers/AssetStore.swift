@@ -60,6 +60,17 @@ final class AssetStore {
     /// notification resync. Nil in tests keeps the store notification-free.
     var notificationScheduler: NotificationScheduler?
 
+    /// When set, changes to the live asset set republish the Spotlight index.
+    /// Nil in tests (and in the `swift test` package, which excludes CoreSpotlight).
+    var spotlightIndexer: SpotlightIndexer?
+
+    /// Single fan-out for everything derived from the live asset set. Both consumers take a
+    /// full snapshot and coalesce internally, so calling this on every mutation is cheap.
+    func requestDerivedResync() {
+        notificationScheduler?.requestResync(assets: allAssets)
+        spotlightIndexer?.reindex(allAssets)
+    }
+
     /// Max live assets `createAsset`/`restoreAsset` allow; nil = unlimited.
     /// Runtime-only — driven by purchase state, never persisted.
     var assetCreationLimit: Int?
@@ -384,6 +395,8 @@ final class AssetStore {
         assets[asset.id] = asset
         logCreation(of: asset.id, kind: .asset)
         markDirty()
+        // A brand-new asset has no events to schedule, but it does need to reach Spotlight.
+        requestDerivedResync()
         return asset
     }
 
@@ -393,7 +406,7 @@ final class AssetStore {
         asset.name = TextLimits.clamp(name, to: TextLimits.assetName)
         asset.modifiedDate = now
         asset.headModifyDate = now
-        notificationScheduler?.requestResync(assets: allAssets)
+        requestDerivedResync()
         markDirty()
     }
 
@@ -411,7 +424,7 @@ final class AssetStore {
         }
         for photo in asset.photos { PhotoStorage.delete(id: photo.id) }
         assets.removeValue(forKey: id)
-        notificationScheduler?.requestResync(assets: allAssets)
+        requestDerivedResync()
         markDirty()
     }
 
@@ -431,7 +444,7 @@ final class AssetStore {
             current.modifiedDate = now
             current.headModifyDate = now
         }
-        notificationScheduler?.requestResync(assets: allAssets)
+        requestDerivedResync()
         markDirty()
     }
 
@@ -454,7 +467,7 @@ final class AssetStore {
             node.modifiedDate = now
             node.headModifyDate = now
         }
-        notificationScheduler?.requestResync(assets: allAssets)
+        requestDerivedResync()
         markDirty()
     }
 
@@ -469,7 +482,7 @@ final class AssetStore {
         if !asset.isDeleted { try softDeleteAsset(id: id) }
         let subtree = [asset] + asset.descendants
         for node in subtree { purgeInPlace(node) }
-        notificationScheduler?.requestResync(assets: allAssets)
+        requestDerivedResync()
         markDirty()
     }
 
@@ -1089,7 +1102,7 @@ final class AssetStore {
         asset.events.append(event)
         asset.modifiedDate = Date()
         logCreation(of: event.id, kind: .event, owningAssetID: assetID)
-        notificationScheduler?.requestResync(assets: allAssets)
+        requestDerivedResync()
         markDirty()
         return event
     }
@@ -1109,7 +1122,7 @@ final class AssetStore {
         event.deviceNotificationDaysBefore = due.deviceNotificationDaysBefore
         event.touch(now)
         asset.modifiedDate = now
-        notificationScheduler?.requestResync(assets: allAssets)
+        requestDerivedResync()
         markDirty()
     }
 
@@ -1121,7 +1134,7 @@ final class AssetStore {
         event.deletedAt = now
         event.touch(now)
         asset.modifiedDate = now
-        notificationScheduler?.requestResync(assets: allAssets)
+        requestDerivedResync()
         markDirty()
     }
 
@@ -1224,7 +1237,7 @@ final class AssetStore {
         asset.events.append(event)
         asset.modifiedDate = now
         logCreation(of: event.id, kind: .event, owningAssetID: asset.id)
-        notificationScheduler?.requestResync(assets: allAssets)
+        requestDerivedResync()
         markDirty()
         return event
     }
@@ -1243,7 +1256,7 @@ final class AssetStore {
         asset.transactions.append(txn)
         asset.modifiedDate = Date()
         logCreation(of: txn.id, kind: .transaction, owningAssetID: assetID)
-        notificationScheduler?.requestResync(assets: allAssets)
+        requestDerivedResync()
         markDirty()
         return txn
     }
@@ -1266,7 +1279,7 @@ final class AssetStore {
         txn.deviceNotificationDaysBefore = due.deviceNotificationDaysBefore
         txn.touch(now)
         asset.modifiedDate = now
-        notificationScheduler?.requestResync(assets: allAssets)
+        requestDerivedResync()
         markDirty()
     }
 
@@ -1278,7 +1291,7 @@ final class AssetStore {
         txn.deletedAt = now
         txn.touch(now)
         asset.modifiedDate = now
-        notificationScheduler?.requestResync(assets: allAssets)
+        requestDerivedResync()
         markDirty()
     }
 
@@ -1342,7 +1355,7 @@ final class AssetStore {
         asset.transactions.append(txn)
         asset.modifiedDate = now
         logCreation(of: txn.id, kind: .transaction, owningAssetID: asset.id)
-        notificationScheduler?.requestResync(assets: allAssets)
+        requestDerivedResync()
         markDirty()
         return txn
     }
@@ -1592,7 +1605,7 @@ final class AssetStore {
             let owner = assets[referenced]
             return (owner == nil || owner!.isPurged) && entry.timestamp < cutoff
         }
-        notificationScheduler?.requestResync(assets: allAssets)
+        requestDerivedResync()
     }
 
     /// A tombstone with no `deletedAt` is never expired — the same guard the asset and

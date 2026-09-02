@@ -40,11 +40,9 @@ final class AppRouter {
     /// When true, the Assets tab opens the new-asset creation sheet. Cleared after consumption.
     var pendingNewAsset: Bool = false
 
-    /// Optional name pre-fill for the next new-asset sheet. Consumed alongside `pendingNewAsset`.
-    var pendingNewAssetName: String? = nil
-
-    /// When non-nil, the asset detail screen opens the add-transaction sheet with this kind pre-selected.
-    var pendingTransactionKind: TransactionKind? = nil
+    /// When true, the Timeline tab opens the quick-log picker (`QuickLogStep.pickThing`),
+    /// the same flow as its "+ Log" button. Set by `LogIntent`; cleared after consumption.
+    var pendingQuickLog: Bool = false
 }
 
 /// Where a deep link from the activity log should land inside a thing. Finer-grained than

@@ -1,63 +1,30 @@
 import AppIntents
 
+/// The three actions that surface as tappable tiles when the user searches the app name in
+/// Spotlight.
+///
+/// Every shortcut is parameter-free and carries exactly one phrase. An `AppShortcut` cannot
+/// be declared without a phrase — the phrase is what registers the Spotlight tile, and
+/// there is no API to keep the tile while opting out of voice. Keeping them short and
+/// argument-free is what removes the spoken follow-up questions.
 struct HandyAppShortcuts: AppShortcutsProvider {
     static var appShortcuts: [AppShortcut] {
         AppShortcut(
+            intent: LogIntent(),
+            phrases: ["Log in \(.applicationName)"],
+            shortTitle: "Log",
+            systemImageName: "square.and.pencil"
+        )
+        AppShortcut(
             intent: OpenAssetIntent(),
-            phrases: [
-                "Open \(.applicationName) thing \(\.$asset)",
-                "Open \(\.$asset) in \(.applicationName)",
-                "Show \(\.$asset) in \(.applicationName)",
-                "Open a thing in \(.applicationName)"
-            ],
-            shortTitle: "Open Thing",
+            phrases: ["Open things in \(.applicationName)"],
+            shortTitle: "Open Things",
             systemImageName: "shippingbox"
         )
         AppShortcut(
             intent: AddAssetIntent(),
-            phrases: [
-                "Add thing in \(.applicationName)",
-                "Add new thing in \(.applicationName)",
-                "Create thing in \(.applicationName)",
-                "Create new thing in \(.applicationName)"
-            ],
-            shortTitle: "Add Thing",
-            systemImageName: "plus.circle"
-        )
-        AppShortcut(
-            intent: AddNamedAssetIntent(),
-            phrases: [
-                "Add new named thing in \(.applicationName)",
-                "Create new named thing in \(.applicationName)"
-            ],
-            shortTitle: "Add Named Thing",
-            systemImageName: "plus.circle"
-        )
-        AppShortcut(
-            intent: AddTransactionIntent(),
-            phrases: [
-                "Add transaction to \(\.$asset) in \(.applicationName)",
-                "Record transaction to \(\.$asset) in \(.applicationName)"
-            ],
-            shortTitle: "Add Transaction",
-            systemImageName: "arrow.left.arrow.right.circle"
-        )
-        AppShortcut(
-            intent: AddExpenseIntent(),
-            phrases: [
-                "Add expense to \(\.$asset) in \(.applicationName)",
-                "Record expense to \(\.$asset) in \(.applicationName)"
-            ],
-            shortTitle: "Add Expense",
-            systemImageName: "minus.circle"
-        )
-        AppShortcut(
-            intent: AddIncomeIntent(),
-            phrases: [
-                "Add income to \(\.$asset) in \(.applicationName)",
-                "Record income to \(\.$asset) in \(.applicationName)"
-            ],
-            shortTitle: "Add Income",
+            phrases: ["New thing in \(.applicationName)"],
+            shortTitle: "New Thing",
             systemImageName: "plus.circle"
         )
     }
