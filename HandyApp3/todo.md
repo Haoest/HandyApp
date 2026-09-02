@@ -4,13 +4,10 @@
 
 revisit paywall ensure transaction and event has a limited free count
 
-
-- revisit siri command
-
 - logging
+
 when duplicating transactin/event, the due date should be set to a future cycle
-versioning
-- change setup screen, make paywall smaller, move communication up
+
 == completed ==
 
 --in timeline screen, add log, add quick filter by category

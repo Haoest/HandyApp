@@ -715,26 +715,35 @@ private struct ComingUpRow: View {
             }
 
             HStack(spacing: 8) {
-                Button(action: onLogNow) {
-                    Text(item.isSeriesEligible ? "Log it" : "Duplicate")
-                        .font(Baron.heading(11.5))
-                        .tracking(0.8)
-                        .textCase(.uppercase)
-                        .foregroundStyle(Baron.accent800)
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 8)
-                        .background(Baron.accent100, in: RoundedRectangle(cornerRadius: Baron.Radius.control, style: .continuous))
+                if item.isSeriesEligible {
+                    Button(action: onLogNow) {
+                        Text("Log it")
+                            .font(Baron.heading(11.5))
+                            .tracking(0.8)
+                            .textCase(.uppercase)
+                            .foregroundStyle(Baron.accent800)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 8)
+                            .background(Baron.accent100, in: RoundedRectangle(cornerRadius: Baron.Radius.control, style: .continuous))
+                    }
                 }
                 Button(action: onLogEdit) {
                     Text(item.isSeriesEligible ? "Log & edit" : "Duplicate & edit")
                         .font(Baron.heading(11.5))
                         .tracking(0.8)
                         .textCase(.uppercase)
-                        .foregroundStyle(Baron.neutral700)
+                        .foregroundStyle(item.isSeriesEligible ? Baron.neutral700 : Baron.accent800)
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 8)
-                        .overlay(RoundedRectangle(cornerRadius: Baron.Radius.control, style: .continuous)
-                            .strokeBorder(Baron.neutral300, lineWidth: 1))
+                        .background {
+                            if item.isSeriesEligible {
+                                RoundedRectangle(cornerRadius: Baron.Radius.control, style: .continuous)
+                                    .strokeBorder(Baron.neutral300, lineWidth: 1)
+                            } else {
+                                RoundedRectangle(cornerRadius: Baron.Radius.control, style: .continuous)
+                                    .fill(Baron.accent100)
+                            }
+                        }
                 }
                 Button(action: onOpenThing) {
                     Text(item.assetName.split(separator: " ").first.map(String.init) ?? item.assetName)
