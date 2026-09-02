@@ -210,6 +210,12 @@ extension AssetStore {
     /// edited — same presence-keyed-not-liveness-keyed rule `resolveBuiltInComboList` uses for
     /// combo lists. Categories the user deleted or that were purged are skipped entirely.
     ///
+    /// A field the user has edited (`AssetProperty.isUserEdited`, sticky once set) is also left
+    /// alone here, even if `categoryTemplates` has since changed it — a user rename or Required
+    /// toggle always wins over a canonical update, never the other way around. A shipped template
+    /// change that must still reach an edited install goes through retire-and-re-add instead
+    /// (see the retirement pass below), which lands as a new field the user hasn't touched yet.
+    ///
     /// Retirement is a separate first pass: `BuiltInTypes.retiredFieldIDs` tombstones a field
     /// outright rather than mutating its type in place, so its replacement (a different id in
     /// `categoryTemplates`) comes in clean through the normal "missing canonical field" pass
@@ -232,10 +238,11 @@ extension AssetStore {
             for entry in defs {
                 let def = entry.definition
                 if let existing = cat.propertyTemplates.first(where: { $0.id == def.id }) {
-                    guard !existing.isDeleted, existing.definition != def else { continue }
+                    guard !existing.isDeleted, !existing.isUserEdited, existing.definition != def else { continue }
                     try? updateTemplateProperty(
                         id: def.id, inCategoryID: cat.id,
-                        name: def.name, type: def.type, isRequired: def.isRequired, maxLength: def.maxLength
+                        name: def.name, type: def.type, isRequired: def.isRequired, maxLength: def.maxLength,
+                        userInitiated: false
                     )
                     changed += 1
                 } else {

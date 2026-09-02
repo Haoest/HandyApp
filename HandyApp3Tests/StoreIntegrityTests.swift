@@ -150,7 +150,7 @@ final class StoreIntegrityTests: XCTestCase {
     // MARK: - Bug #3: import must be durable before returning
 
     func testImportIsOnDiskWhenCallReturns() throws {
-        let unique = "Probe-\(UUID().uuidString)"
+        let unique = "Probe-" + UUID().uuidString.prefix(20) // stays under TextLimits.assetName (40)
         let category = try store.createCategory(name: "Garage")
         _ = try store.createAsset(name: unique, categoryID: category.id)
         let export = try XCTUnwrap(store.exportJSON())

@@ -84,7 +84,7 @@ struct ThingSpecRow: View {
             return value.compositeSummary(for: definition)
         case .basic(.contact):
             guard case .contact(let identifier) = value else { return "" }
-            return ContactResolver.shared.displayName(for: identifier) ?? String(localized: "(not found)", locale: .appPreferred)
+            return ContactResolver.shared.displayName(for: identifier) ?? String(localized: "(not found)", bundle: .appPreferred, locale: .appPreferred)
         default:
             return value.shortDisplay
         }
@@ -208,11 +208,11 @@ private struct SpecTextEditor: View {
         case .text:
             newValue = draft.isEmpty ? nil : .text(draft)
         case .number:
-            if let d = Double(draft) { newValue = .number(d) }
+            if let d = NumberParsing.double(draft) { newValue = .number(d) }
             else if draft.isEmpty { newValue = nil }
             else { return }
         case .currency:
-            if let d = Decimal(string: draft) { newValue = .currency(d) }
+            if let d = NumberParsing.decimal(draft) { newValue = .currency(d) }
             else if draft.isEmpty { newValue = nil }
             else { return }
         }
@@ -566,11 +566,11 @@ private struct CompositePartField: View {
         let sub: StoredValue?
         switch field.type {
         case .basic(.number):
-            if let d = Double(draft) { sub = .number(d) }
+            if let d = NumberParsing.double(draft) { sub = .number(d) }
             else if draft.isEmpty { sub = nil }
             else { return }
         case .basic(.currency):
-            if let d = Decimal(string: draft) { sub = .currency(d) }
+            if let d = NumberParsing.decimal(draft) { sub = .currency(d) }
             else if draft.isEmpty { sub = nil }
             else { return }
         default:

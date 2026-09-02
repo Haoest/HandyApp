@@ -23,18 +23,18 @@ enum SetupDigest {
                      assetLimit: Int, recordLimit: Int) -> PlanSummary {
         guard !isFullVersion else {
             return PlanSummary(
-                kicker: String(localized: "Your plan", locale: .appPreferred),
-                title: String(localized: "Full version", locale: .appPreferred),
-                body: String(localized: "Unlimited things and records. Thanks for buying.", locale: .appPreferred),
-                callToAction: String(localized: "Restore purchase", locale: .appPreferred),
+                kicker: String(localized: "Your plan", bundle: .appPreferred, locale: .appPreferred),
+                title: String(localized: "Full version", bundle: .appPreferred, locale: .appPreferred),
+                body: String(localized: "Unlimited things and records. Thanks for buying.", bundle: .appPreferred, locale: .appPreferred),
+                callToAction: String(localized: "Restore purchase", bundle: .appPreferred, locale: .appPreferred),
                 offersUpgrade: false
             )
         }
         return PlanSummary(
-            kicker: String(localized: "Free tier", locale: .appPreferred),
-            title: String(localized: "\(assetCount) of \(assetLimit) things used", locale: .appPreferred),
-            body: String(localized: "One payment lifts every limit. The free tier holds \(assetLimit) things, and \(recordLimit) events and transactions on each.", locale: .appPreferred),
-            callToAction: String(localized: "See the full version", locale: .appPreferred),
+            kicker: String(localized: "Free tier", bundle: .appPreferred, locale: .appPreferred),
+            title: String(localized: "\(assetCount) of \(assetLimit) things used", bundle: .appPreferred, locale: .appPreferred),
+            body: String(localized: "One payment lifts every limit. The free tier holds \(assetLimit) things, and \(recordLimit) events and transactions on each.", bundle: .appPreferred, locale: .appPreferred),
+            callToAction: String(localized: "See the full version", bundle: .appPreferred, locale: .appPreferred),
             offersUpgrade: true
         )
     }

@@ -722,11 +722,11 @@ private struct ThingLogRowView: View {
         var parts: [String] = []
         if row.recurs {
             let next = row.dueDate ?? row.date
-            parts.append(String(localized: "Next \(ThingDetailContent.dayFormatter.string(from: next))", locale: .appPreferred))
+            parts.append(String(localized: "Next \(ThingDetailContent.dayFormatter.string(from: next))", bundle: .appPreferred, locale: .appPreferred))
         } else {
-            parts.append(String(localized: "One-off · \(ThingDetailContent.dayFormatter.string(from: row.date))", locale: .appPreferred))
+            parts.append(String(localized: "One-off · \(ThingDetailContent.dayFormatter.string(from: row.date))", bundle: .appPreferred, locale: .appPreferred))
         }
-        if row.isWatched { parts.append(String(localized: "watched", locale: .appPreferred)) }
+        if row.isWatched { parts.append(String(localized: "watched", bundle: .appPreferred, locale: .appPreferred)) }
         return parts.joined(separator: " · ")
     }
 

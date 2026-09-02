@@ -65,5 +65,12 @@ struct HandyApp3App: App {
             store.assetCreationLimit = unlocked ? nil : PurchaseManager.freeAssetLimit
             store.recordCreationLimit = unlocked ? nil : PurchaseManager.freeRecordLimit
         }
+        .onChange(of: languageCode) { _, _ in
+            // Notification bodies and the Spotlight home-screen shortcut title are resolved and
+            // baked in at schedule time, not read fresh at delivery — a language switch alone
+            // never touches them, so both need an explicit refresh here.
+            store.requestDerivedResync()
+            HandyAppShortcuts.updateAppShortcutParameters()
+        }
     }
 }

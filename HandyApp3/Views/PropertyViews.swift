@@ -110,9 +110,9 @@ struct PropertyEditView: View {
         case .basic(.contact):
             return valueContactID.isEmpty ? nil : .contact(valueContactID)
         case .basic(.number):
-            return Double(valueText).map { .number($0) }
+            return NumberParsing.double(valueText).map { .number($0) }
         case .basic(.currency):
-            return Decimal(string: valueText).map { .currency($0) }
+            return NumberParsing.decimal(valueText).map { .currency($0) }
         case .basic(.date):
             return valueDateEnabled ? .date(valueDate) : nil
         case .comboList:

@@ -61,17 +61,17 @@ struct SetupTab: View {
 
     /// Coarse, read-only sync status — no live probing, just what the store already knows.
     private var iCloudStatusText: String {
-        guard AssetStore.iCloudSyncEnabled else { return String(localized: "Not enabled", locale: .appPreferred) }
+        guard AssetStore.iCloudSyncEnabled else { return String(localized: "Not enabled", bundle: .appPreferred, locale: .appPreferred) }
         guard FileManager.default.url(forUbiquityContainerIdentifier: nil) != nil else {
-            return String(localized: "iCloud unavailable", locale: .appPreferred)
+            return String(localized: "iCloud unavailable", bundle: .appPreferred, locale: .appPreferred)
         }
-        if store.storeRequiresNewerApp { return String(localized: "App update required", locale: .appPreferred) }
-        if store.savesSuspended { return String(localized: "Waiting for iCloud…", locale: .appPreferred) }
-        guard let lastSync = store.lastSyncDate else { return String(localized: "On", locale: .appPreferred) }
+        if store.storeRequiresNewerApp { return String(localized: "App update required", bundle: .appPreferred, locale: .appPreferred) }
+        if store.savesSuspended { return String(localized: "Waiting for iCloud…", bundle: .appPreferred, locale: .appPreferred) }
+        guard let lastSync = store.lastSyncDate else { return String(localized: "On", bundle: .appPreferred, locale: .appPreferred) }
         let formatter = RelativeDateTimeFormatter()
         formatter.unitsStyle = .abbreviated
         formatter.locale = .appPreferred
-        return String(localized: "Synced \(formatter.localizedString(for: lastSync, relativeTo: Date()))", locale: .appPreferred)
+        return String(localized: "Synced \(formatter.localizedString(for: lastSync, relativeTo: Date()))", bundle: .appPreferred, locale: .appPreferred)
     }
 
     private var languageLabel: String {
@@ -82,9 +82,9 @@ struct SetupTab: View {
     /// Theme · language, so the row says what both settings behind it are currently on.
     private var appearanceLabel: String {
         let theme = switch AppearanceMode(rawValue: appearance) ?? .system {
-        case .system: String(localized: "Match device", locale: .appPreferred)
-        case .light: String(localized: "Light", locale: .appPreferred)
-        case .dark: String(localized: "Dark", locale: .appPreferred)
+        case .system: String(localized: "Match device", bundle: .appPreferred, locale: .appPreferred)
+        case .light: String(localized: "Light", bundle: .appPreferred, locale: .appPreferred)
+        case .dark: String(localized: "Dark", bundle: .appPreferred, locale: .appPreferred)
         }
         return "\(theme) · \(languageLabel)"
     }
@@ -245,7 +245,7 @@ struct SetupTab: View {
     }
 
     private var versionLine: some View {
-        Text("Baron Book \(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "") · \(purchases.isFullVersion ? String(localized: "Full version", locale: .appPreferred) : String(localized: "Free tier", locale: .appPreferred))")
+        Text("Baron Book \(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "") · \(purchases.isFullVersion ? String(localized: "Full version", bundle: .appPreferred, locale: .appPreferred) : String(localized: "Free tier", bundle: .appPreferred, locale: .appPreferred))")
             .font(Baron.body(11))
             .foregroundStyle(Baron.neutral500)
             .frame(maxWidth: .infinity)
@@ -266,8 +266,8 @@ struct SetupTab: View {
             await purchases.restore()
             isRestoringPurchases = false
             restoreResultMessage = purchases.isFullVersion
-                ? String(localized: "Full Version restored.", locale: .appPreferred)
-                : String(localized: "No previous purchase was found for this Apple ID.", locale: .appPreferred)
+                ? String(localized: "Full Version restored.", bundle: .appPreferred, locale: .appPreferred)
+                : String(localized: "No previous purchase was found for this Apple ID.", bundle: .appPreferred, locale: .appPreferred)
         }
     }
 }

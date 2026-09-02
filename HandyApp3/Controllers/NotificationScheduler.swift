@@ -68,7 +68,7 @@ enum NotificationPlanner {
     /// DEBUG "send test notification" button, so a test notification reads exactly like a
     /// real one.
     static func eventDueBody(title: String, notes: String, daysBefore: Int) -> String {
-        let body = String(localized: "Due in \(daysBefore) days: \(title).", locale: .appPreferred)
+        let body = String(localized: "Due in \(daysBefore) days: \(title).", bundle: .appPreferred, locale: .appPreferred)
         return appendingNotes(body, notes: notes)
     }
 
@@ -82,9 +82,9 @@ enum NotificationPlanner {
         let body: String
         switch kind {
         case .expense:
-            body = String(localized: "Expense transaction due in \(daysBefore) days in amount of \(amountText).", locale: .appPreferred)
+            body = String(localized: "Expense transaction due in \(daysBefore) days in amount of \(amountText).", bundle: .appPreferred, locale: .appPreferred)
         case .income:
-            body = String(localized: "Income transaction due in \(daysBefore) days in amount of \(amountText).", locale: .appPreferred)
+            body = String(localized: "Income transaction due in \(daysBefore) days in amount of \(amountText).", bundle: .appPreferred, locale: .appPreferred)
         }
         return appendingNotes(body, notes: notes)
     }

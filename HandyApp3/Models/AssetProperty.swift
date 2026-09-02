@@ -17,6 +17,13 @@ final class AssetProperty: Identifiable, Equatable {
     var isDeleted: Bool = false
     var deletedAt: Date? = nil
 
+    /// Set once the user edits this property's *definition* (not its value) — a rename, a
+    /// Required toggle, a type change, a maxLength change. `BuiltInTypes.upgradeBuiltInCategories`
+    /// skips a field that carries it, so a user's edit to a built-in template field is never
+    /// reverted to canonical on a later launch. Sticky: only ever set true, never cleared back —
+    /// `SnapshotReconciler.joinAssetProperty` ORs it across peers for the same reason.
+    var isUserEdited: Bool = false
+
     static let sortOrderIncrement: Double = 10
 
     init(
@@ -24,13 +31,15 @@ final class AssetProperty: Identifiable, Equatable {
         definition: PropertyDefinition,
         value: StoredValue? = nil,
         sortOrder: Double = 0,
-        modifyDate: Date = Date()
+        modifyDate: Date = Date(),
+        isUserEdited: Bool = false
     ) {
         self.id = id
         self.definition = definition
         self.value = value
         self.sortOrder = sortOrder
         self.modifyDate = modifyDate
+        self.isUserEdited = isUserEdited
     }
 
     /// Stamps the property as edited now. Called from AssetStore after any definition or value write.

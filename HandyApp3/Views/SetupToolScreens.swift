@@ -121,7 +121,7 @@ struct BulkCommunicationView: View {
         let chosen = selectedMethods[row.id]
         return VStack(alignment: .leading, spacing: 10) {
             VStack(alignment: .leading, spacing: 3) {
-                Text(name ?? String(localized: "(not in your contacts)", locale: .appPreferred))
+                Text(name ?? String(localized: "(not in your contacts)", bundle: .appPreferred, locale: .appPreferred))
                     .font(Baron.body(15, .medium))
                     .foregroundStyle(name == nil ? Baron.neutral500 : Baron.text)
                 Text(row.propertyName)

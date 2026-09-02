@@ -103,7 +103,7 @@ struct TransactionEditView: View {
         _dueDateAutoManaged = State(initialValue: existing == nil && prefill?.recurrence != nil && due.dueDate != nil)
     }
 
-    private var parsedAmount: Decimal? { Decimal(string: amountText) }
+    private var parsedAmount: Decimal? { NumberParsing.decimal(amountText) }
 
     /// Whether the due date is currently being kept in step with the transaction date. Toggling
     /// recurrence off stops the projection without discarding the flag, so turning it back on
@@ -249,8 +249,8 @@ struct TransactionEditView: View {
         RecordToggleCard(
             title: "Repeats",
             hint: isRecurring
-                ? String(localized: "Logging one occurrence offers the next.", locale: .appPreferred)
-                : String(localized: "A one-off. Turn this on for anything on a cycle.", locale: .appPreferred),
+                ? String(localized: "Logging one occurrence offers the next.", bundle: .appPreferred, locale: .appPreferred)
+                : String(localized: "A one-off. Turn this on for anything on a cycle.", bundle: .appPreferred, locale: .appPreferred),
             isOn: isRecurring,
             onToggle: { isRecurring.toggle() }
         ) {
@@ -263,8 +263,8 @@ struct TransactionEditView: View {
         RecordToggleCard(
             title: "Watch it on the timeline",
             hint: hasDueDate
-                ? String(localized: "Counts toward the Timeline's net figure, and toward Overdue once the date passes.", locale: .appPreferred)
-                : String(localized: "Off means this is history only — it never appears on the Timeline.", locale: .appPreferred),
+                ? String(localized: "Counts toward the Timeline's net figure, and toward Overdue once the date passes.", bundle: .appPreferred, locale: .appPreferred)
+                : String(localized: "Off means this is history only — it never appears on the Timeline.", bundle: .appPreferred, locale: .appPreferred),
             isOn: hasDueDate,
             onToggle: { hasDueDate.toggle() }
         ) {
@@ -328,7 +328,7 @@ struct TransactionEditView: View {
         RecordField(label: "Who it was with") {
             HStack(spacing: 9) {
                 if payeeContactID != nil {
-                    Text(payeeName.isEmpty ? String(localized: "(not found)", locale: .appPreferred) : payeeName)
+                    Text(payeeName.isEmpty ? String(localized: "(not found)", bundle: .appPreferred, locale: .appPreferred) : payeeName)
                         .font(Baron.body(14, .medium))
                         .foregroundStyle(payeeName.isEmpty ? Baron.neutral500 : Baron.text)
                         .frame(maxWidth: .infinity, alignment: .leading)

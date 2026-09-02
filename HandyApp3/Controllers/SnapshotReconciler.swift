@@ -122,8 +122,18 @@ enum SnapshotReconciler {
 
     // MARK: - Per-record joins
 
+    /// Whole-record LWW on `modifyDate`, except `isUserEdited`: that flag ORs across both sides
+    /// rather than following the winner, so a peer that hasn't seen the user's definition edit
+    /// yet can never clear it back to false on the next sync. Only ever forced to `true`, never
+    /// to `false` — leaving the winner's own value (which may be `nil`, from a file written
+    /// before this flag existed) alone otherwise keeps this join byte-identical to `pick` on its
+    /// own, so `join(a, a)` still equals `a`'s own canonical encoding.
     static func joinAssetProperty(_ a: AssetPropertyDTO, _ b: AssetPropertyDTO) -> AssetPropertyDTO {
-        pick(a, b, stamp: { $0.modifyDate ?? .distantPast })
+        var winner = pick(a, b, stamp: { $0.modifyDate ?? .distantPast })
+        if (a.isUserEdited ?? false) || (b.isUserEdited ?? false) {
+            winner.isUserEdited = true
+        }
+        return winner
     }
 
     static func joinPhoto(_ a: PhotoDTO, _ b: PhotoDTO) -> PhotoDTO {

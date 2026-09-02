@@ -207,8 +207,8 @@ struct PickListEditorView: View {
                                     .font(Baron.body(14, .medium))
                                     .foregroundStyle(Baron.text)
                                 Text(reference.isTemplate
-                                     ? String(localized: "Template field on \(reference.ownerName)", locale: .appPreferred)
-                                     : String(localized: "Custom field on \(reference.ownerName)", locale: .appPreferred))
+                                     ? String(localized: "Template field on \(reference.ownerName)", bundle: .appPreferred, locale: .appPreferred)
+                                     : String(localized: "Custom field on \(reference.ownerName)", bundle: .appPreferred, locale: .appPreferred))
                                     .font(Baron.body(11.5))
                                     .foregroundStyle(Baron.neutral600)
                             }

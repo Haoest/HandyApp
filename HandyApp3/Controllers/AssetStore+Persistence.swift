@@ -45,7 +45,7 @@ enum ImportError: LocalizedError {
     case notAnExport
 
     var errorDescription: String? {
-        String(localized: "This file isn't an exported backup — it looks like the app's own internal store file, not something created by Export. Use Setup > Export to create a file that can be imported.", locale: .appPreferred)
+        String(localized: "This file isn't an exported backup — it looks like the app's own internal store file, not something created by Export. Use Setup > Export to create a file that can be imported.", bundle: .appPreferred, locale: .appPreferred)
     }
 }
 
@@ -1142,7 +1142,8 @@ extension AssetStore {
         let prop = AssetProperty(id: dto.id, definition: def,
                                  value: dto.value.map { storedValue(from: $0) },
                                  sortOrder: dto.sortOrder,
-                                 modifyDate: dto.modifyDate ?? fallbackModifyDate)
+                                 modifyDate: dto.modifyDate ?? fallbackModifyDate,
+                                 isUserEdited: dto.isUserEdited ?? false)
         prop.isDeleted = dto.isDeleted ?? false
         prop.deletedAt = dto.deletedAt
         return prop
@@ -1226,7 +1227,8 @@ extension AssetStore {
     private func assetPropertyDTO(_ prop: AssetProperty) -> AssetPropertyDTO {
         AssetPropertyDTO(id: prop.id, definition: propertyDefinitionDTO(prop.definition),
                          value: prop.value.map { storedValueDTO($0) }, sortOrder: prop.sortOrder,
-                         modifyDate: prop.modifyDate, isDeleted: prop.isDeleted, deletedAt: prop.deletedAt)
+                         modifyDate: prop.modifyDate, isDeleted: prop.isDeleted, deletedAt: prop.deletedAt,
+                         isUserEdited: prop.isUserEdited)
     }
 
     private func eventDTO(_ e: Event) -> EventDTO {
@@ -1507,6 +1509,7 @@ extension AssetStore {
                 existing.modifyDate = dto.modifyDate ?? fallbackModifyDate
                 existing.isDeleted = dto.isDeleted ?? false
                 existing.deletedAt = dto.deletedAt
+                existing.isUserEdited = dto.isUserEdited ?? false
             } else if let created = assetProperty(from: dto, ctMap: ctMap, clMap: clMap, fallbackModifyDate: fallbackModifyDate) {
                 target.append(created)
                 byID[created.id] = created

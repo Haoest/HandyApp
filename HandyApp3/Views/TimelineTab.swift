@@ -603,10 +603,10 @@ struct TimelineTab: View {
 
     static func windowLabel(_ window: TimelineWindow) -> String {
         switch window {
-        case .overdue: return String(localized: "Overdue", locale: .appPreferred)
-        case .thisWeek: return String(localized: "This week", locale: .appPreferred)
-        case .nextTwoWeeks: return String(localized: "Next two weeks", locale: .appPreferred)
-        case .laterThisMonth: return String(localized: "Later this month", locale: .appPreferred)
+        case .overdue: return String(localized: "Overdue", bundle: .appPreferred, locale: .appPreferred)
+        case .thisWeek: return String(localized: "This week", bundle: .appPreferred, locale: .appPreferred)
+        case .nextTwoWeeks: return String(localized: "Next two weeks", bundle: .appPreferred, locale: .appPreferred)
+        case .laterThisMonth: return String(localized: "Later this month", bundle: .appPreferred, locale: .appPreferred)
         }
     }
 
@@ -675,7 +675,7 @@ private struct ComingUpRow: View {
 
     private var meta: String {
         var parts = [item.assetName]
-        if let interval = item.interval { parts.append(interval.rawValue) }
+        if let interval = item.interval { parts.append(interval.displayName) }
         return parts.joined(separator: " · ")
     }
 

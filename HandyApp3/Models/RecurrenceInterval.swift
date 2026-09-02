@@ -24,12 +24,12 @@ enum RecurrenceInterval: String, CaseIterable {
     /// in `Persistence.swift`), so it can't follow the display language.
     var displayName: String {
         switch self {
-        case .weekly: String(localized: "Weekly", locale: .appPreferred)
-        case .monthly: String(localized: "Monthly", locale: .appPreferred)
-        case .quarterly: String(localized: "Quarterly", locale: .appPreferred)
-        case .semiAnnually: String(localized: "Semi-annually", locale: .appPreferred)
-        case .annually: String(localized: "Annually", locale: .appPreferred)
-        case .biAnnually: String(localized: "Bi-annually", locale: .appPreferred)
+        case .weekly: String(localized: "Weekly", bundle: .appPreferred, locale: .appPreferred)
+        case .monthly: String(localized: "Monthly", bundle: .appPreferred, locale: .appPreferred)
+        case .quarterly: String(localized: "Quarterly", bundle: .appPreferred, locale: .appPreferred)
+        case .semiAnnually: String(localized: "Semi-annually", bundle: .appPreferred, locale: .appPreferred)
+        case .annually: String(localized: "Annually", bundle: .appPreferred, locale: .appPreferred)
+        case .biAnnually: String(localized: "Bi-annually", bundle: .appPreferred, locale: .appPreferred)
         }
     }
 

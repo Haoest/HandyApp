@@ -90,6 +90,6 @@ extension BuiltInTypes {
     /// was shipped — a user rename always wins over the localized label.
     static func localizedSeedName(id: UUID, currentName: String) -> String {
         guard let entry = seedLabelKeys[id], entry.english == currentName else { return currentName }
-        return String(localized: String.LocalizationValue(entry.catalogKey), locale: .appPreferred)
+        return String(localized: String.LocalizationValue(entry.catalogKey), bundle: .appPreferred, locale: .appPreferred)
     }
 }

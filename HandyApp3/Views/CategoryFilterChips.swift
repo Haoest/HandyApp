@@ -20,7 +20,7 @@ struct CategoryFilterChip: Identifiable {
             let category = asset.category
             countByID[category.id, default: (BuiltInTypes.localizedSeedName(id: category.id, currentName: category.name), 0)].count += 1
         }
-        let all = CategoryFilterChip(id: nil, name: String(localized: "All", locale: .appPreferred), count: assets.count)
+        let all = CategoryFilterChip(id: nil, name: String(localized: "All", bundle: .appPreferred, locale: .appPreferred), count: assets.count)
         let byCategory = countByID
             .map { CategoryFilterChip(id: $0.key, name: $0.value.name, count: $0.value.count) }
             .sorted { $0.name.localizedCompare($1.name) == .orderedAscending }

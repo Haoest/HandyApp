@@ -34,7 +34,7 @@ struct CompositeEditView: View {
                 Text(BuiltInTypes.localizedSeedName(id: definition.id, currentName: definition.name))
                     .font(Baron.heading(28))
                     .foregroundStyle(Baron.text)
-                Text(summary.isEmpty ? String(localized: "Nothing filled in yet.", locale: .appPreferred) : summary)
+                Text(summary.isEmpty ? String(localized: "Nothing filled in yet.", bundle: .appPreferred, locale: .appPreferred) : summary)
                     .font(Baron.body(13))
                     .foregroundStyle(Baron.neutral600)
             }
@@ -183,8 +183,8 @@ private struct PartTextEditor: View {
         guard !trimmed.isEmpty else { value = nil; return }
         switch kind {
         case .text: value = .text(trimmed)
-        case .number: if let d = Double(trimmed) { value = .number(d) }
-        case .currency: if let d = Decimal(string: trimmed) { value = .currency(d) }
+        case .number: if let d = NumberParsing.double(trimmed) { value = .number(d) }
+        case .currency: if let d = NumberParsing.decimal(trimmed) { value = .currency(d) }
         }
     }
 }
@@ -230,7 +230,7 @@ private struct PartContactEditor: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 9) {
             if let identifier {
-                Text(name ?? String(localized: "(not found)", locale: .appPreferred))
+                Text(name ?? String(localized: "(not found)", bundle: .appPreferred, locale: .appPreferred))
                     .font(Baron.body(14, .medium))
                     .foregroundStyle(name == nil ? Baron.neutral500 : Baron.text)
                     .id(identifier)

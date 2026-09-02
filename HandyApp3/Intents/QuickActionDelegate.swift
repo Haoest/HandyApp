@@ -10,7 +10,7 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
         application.shortcutItems = [
             UIApplicationShortcutItem(
                 type: exportShortcutType,
-                localizedTitle: String(localized: "Export My Data", locale: .appPreferred),
+                localizedTitle: String(localized: "Export My Data", bundle: .appPreferred, locale: .appPreferred),
                 localizedSubtitle: nil,
                 icon: UIApplicationShortcutIcon(systemImageName: "square.and.arrow.up"),
                 userInfo: nil

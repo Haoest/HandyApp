@@ -176,8 +176,8 @@ struct EventEditView: View {
         RecordToggleCard(
             title: "Repeats",
             hint: isRecurring
-                ? String(localized: "Logging one occurrence offers the next.", locale: .appPreferred)
-                : String(localized: "A one-off. Turn this on for anything on a cycle.", locale: .appPreferred),
+                ? String(localized: "Logging one occurrence offers the next.", bundle: .appPreferred, locale: .appPreferred)
+                : String(localized: "A one-off. Turn this on for anything on a cycle.", bundle: .appPreferred, locale: .appPreferred),
             isOn: isRecurring,
             onToggle: { isRecurring.toggle() }
         ) {
@@ -190,8 +190,8 @@ struct EventEditView: View {
         RecordToggleCard(
             title: "Watch it on the timeline",
             hint: hasDueDate
-                ? String(localized: "Shows up under Coming up, and counts toward Overdue once the date passes.", locale: .appPreferred)
-                : String(localized: "Off means this is history only — it never appears on the Timeline.", locale: .appPreferred),
+                ? String(localized: "Shows up under Coming up, and counts toward Overdue once the date passes.", bundle: .appPreferred, locale: .appPreferred)
+                : String(localized: "Off means this is history only — it never appears on the Timeline.", bundle: .appPreferred, locale: .appPreferred),
             isOn: hasDueDate,
             onToggle: { hasDueDate.toggle() }
         ) {

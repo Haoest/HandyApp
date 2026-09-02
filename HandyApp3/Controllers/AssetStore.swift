@@ -342,24 +342,39 @@ final class AssetStore {
         name: String? = nil,
         type: PropertyType? = nil,
         isRequired: Bool? = nil,
-        maxLength: Int? = nil
+        maxLength: Int? = nil,
+        userInitiated: Bool = true
     ) throws {
         guard let cat = categories[categoryID] else { throw AssetStoreError.categoryNotFound(categoryID) }
         guard let prop = cat.propertyTemplates.first(where: { $0.id == propID }) else {
             throw AssetStoreError.propertyNotFound(propID)
         }
-        if let name { prop.definition.name = TextLimits.clamp(name, to: TextLimits.propertyName) }
+        var changed = false
+        if let name {
+            let clamped = TextLimits.clamp(name, to: TextLimits.propertyName)
+            if clamped != prop.definition.name { changed = true }
+            prop.definition.name = clamped
+        }
         if let type, type != prop.definition.type {
             prop.definition.type = type
             prop.value = nil
+            changed = true
         }
-        if let isRequired { prop.definition.isRequired = isRequired }
+        if let isRequired, isRequired != prop.definition.isRequired {
+            prop.definition.isRequired = isRequired
+            changed = true
+        }
         if let maxLength {
-            prop.definition.maxLength = Self.clampedMaxLength(maxLength)
+            let clamped = Self.clampedMaxLength(maxLength)
+            if clamped != prop.definition.maxLength { changed = true }
+            prop.definition.maxLength = clamped
             if let value = prop.value {
                 prop.value = Self.clampedTextValue(value, for: prop.definition)
             }
         }
+        // Sticky and one-directional: a caller that isn't user-initiated (the built-in template
+        // upgrade pass) never clears a flag a prior user edit set.
+        if userInitiated, changed { prop.isUserEdited = true }
         prop.touch()
         markDirty()
     }

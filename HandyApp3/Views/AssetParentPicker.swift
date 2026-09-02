@@ -67,7 +67,7 @@ private struct ParentField: View {
         RecordField(label: "Belongs to") {
             Button(action: onTap) {
                 HStack(spacing: 9) {
-                    Text(parentName ?? String(localized: "None · top level", locale: .appPreferred))
+                    Text(parentName ?? String(localized: "None · top level", bundle: .appPreferred, locale: .appPreferred))
                         .font(Baron.body(15, .medium))
                         .foregroundStyle(parentName == nil ? Baron.neutral500 : Baron.text)
                         .lineLimit(1)

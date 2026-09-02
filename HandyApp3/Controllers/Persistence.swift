@@ -97,6 +97,9 @@ struct AssetPropertyDTO: Codable {
     /// Optional: absent in files written before custom properties carried tombstones.
     var isDeleted: Bool?
     var deletedAt: Date?
+    /// Optional: absent in files written before built-in template edits were tracked; decodes
+    /// as `false`, same as a file that genuinely predates any user edit.
+    var isUserEdited: Bool?
 }
 
 // MARK: - CompositeTypeDTO

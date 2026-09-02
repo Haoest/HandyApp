@@ -63,8 +63,8 @@ struct QuickLogSheet: View {
 
     private var stepTitle: String {
         switch step {
-        case .pickThing: return String(localized: "Log something", locale: .appPreferred)
-        case .pickKind: return String(localized: "What kind?", locale: .appPreferred)
+        case .pickThing: return String(localized: "Log something", bundle: .appPreferred, locale: .appPreferred)
+        case .pickKind: return String(localized: "What kind?", bundle: .appPreferred, locale: .appPreferred)
         }
     }
 

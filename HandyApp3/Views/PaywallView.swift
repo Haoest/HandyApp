@@ -10,9 +10,9 @@ enum PaywallReason {
     var message: String {
         switch self {
         case .assets:
-            return String(localized: "You're at the free tier's limit of \(PurchaseManager.freeAssetLimit) things.", locale: .appPreferred)
+            return String(localized: "You're at the free tier's limit of \(PurchaseManager.freeAssetLimit) things.", bundle: .appPreferred, locale: .appPreferred)
         case .records:
-            return String(localized: "You're at the free tier's limit of \(PurchaseManager.freeRecordLimit) events and transactions on this thing.", locale: .appPreferred)
+            return String(localized: "You're at the free tier's limit of \(PurchaseManager.freeRecordLimit) events and transactions on this thing.", bundle: .appPreferred, locale: .appPreferred)
         }
     }
 }
@@ -181,9 +181,9 @@ struct PaywallView: View {
 
     private var purchaseButtonTitle: String {
         if let price = purchases.product?.displayPrice {
-            return String(localized: "\(price) once · unlock", locale: .appPreferred)
+            return String(localized: "\(price) once · unlock", bundle: .appPreferred, locale: .appPreferred)
         }
-        return String(localized: "Unlock the full version", locale: .appPreferred)
+        return String(localized: "Unlock the full version", bundle: .appPreferred, locale: .appPreferred)
     }
 
     private func purchase() {
