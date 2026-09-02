@@ -20,7 +20,9 @@ struct ContentView: View {
                     .tabItem { Label("Setup", systemImage: "slider.horizontal.3") }
                     .tag(AppTab.setup)
             }
-            if store.storeRequiresNewerApp {
+            if store.storeIsDamaged {
+                DamagedStoreBanner()
+            } else if store.storeRequiresNewerApp {
                 UpdateRequiredBanner()
             } else if store.savesSuspended {
                 SyncSuspendedBanner()
@@ -28,6 +30,23 @@ struct ContentView: View {
         }
         .animation(.default, value: store.savesSuspended)
         .animation(.default, value: store.storeRequiresNewerApp)
+        .animation(.default, value: store.storeIsDamaged)
+    }
+}
+
+/// Shown when cold launch found a structural shard that exists but couldn't be read — see
+/// `AssetStore.storeIsDamaged`. Takes priority over the other two banners: unlike them, this
+/// one means today's data plainly isn't what's on screen, not just that saves are paused.
+private struct DamagedStoreBanner: View {
+    var body: some View {
+        Label("Your data couldn't be read — nothing is being saved", systemImage: "exclamationmark.triangle")
+            .font(.footnote)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 6)
+            .background(.thinMaterial, in: Capsule())
+            .shadow(radius: 2)
+            .padding(.top, 4)
+            .transition(.move(edge: .top).combined(with: .opacity))
     }
 }
 

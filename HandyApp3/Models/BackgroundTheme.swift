@@ -11,12 +11,4 @@ enum BackgroundTheme: String, CaseIterable, Identifiable {
     case mist, sand, facets
 
     var id: String { rawValue }
-
-    var displayName: String {
-        switch self {
-        case .mist: return "Mist"
-        case .sand: return "Sand"
-        case .facets: return "Facets"
-        }
-    }
 }

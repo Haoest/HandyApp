@@ -23,23 +23,35 @@ final class AppDependencies {
         s.upgradeBuiltInCategories()
         s.seedBuiltInTypes()
         s.backfillMissingMaxLengths()
-        switch AssetStore.coldStartAction(
-            loaded: wasLoaded,
-            iCloudActive: AssetStore.iCloudSyncEnabled
-                && FileManager.default.url(forUbiquityContainerIdentifier: nil) != nil
-        ) {
-        case .useLoaded:
-            s.purgeHardDeleted(olderThan: TimeInterval(AppPreference.DaysToRetainDeletedItems) * 86_400)
-            DispatchQueue.global(qos: .background).async { s.save() }
-        case .seedAndPersist:
-            s.seedBuiltInAssets()
-            s.seedSampleAutomobile()
-            DispatchQueue.global(qos: .background).async { s.save() }
-        case .seedSuspended:
-            s.seedBuiltInAssets()
-            s.seedSampleAutomobile()
+        if !wasLoaded, s.fileLayout.diagnoseAbsence(baseDir: AssetStore.baseDir) == .damaged {
+            // A structural shard exists but couldn't be read — e.g. Definitions/ deleted or
+            // corrupted out from under a populated Assets/ tree. Never seed samples over that;
+            // see AssetStore.storeIsDamaged.
+            s.storeIsDamaged = true
             s.savesSuspended = true
-            // Do NOT save — cloud may have real data; savesSuspended lifts when cloud answers.
+        } else {
+            switch AssetStore.coldStartAction(
+                loaded: wasLoaded,
+                iCloudActive: AssetStore.iCloudSyncEnabled
+                    && FileManager.default.url(forUbiquityContainerIdentifier: nil) != nil
+            ) {
+            case .useLoaded:
+                // Only meaningful when iCloud is active and this device still has a pre-1.1
+                // local store sitting unmerged — mergeLegacyLocalStoreIfNeeded no-ops (and
+                // still latches its one-time flag) otherwise. See its doc comment.
+                s.mergeLegacyLocalStoreIfNeeded()
+                s.purgeHardDeleted(olderThan: TimeInterval(AppPreference.DaysToRetainDeletedItems) * 86_400)
+                DispatchQueue.global(qos: .background).async { s.save() }
+            case .seedAndPersist:
+                s.seedBuiltInAssets()
+                s.seedSampleAutomobile()
+                DispatchQueue.global(qos: .background).async { s.save() }
+            case .seedSuspended:
+                s.seedBuiltInAssets()
+                s.seedSampleAutomobile()
+                s.savesSuspended = true
+                // Do NOT save — cloud may have real data; savesSuspended lifts when cloud answers.
+            }
         }
         s.notificationScheduler = NotificationScheduler()
         s.spotlightIndexer = SpotlightIndexer()

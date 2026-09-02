@@ -1230,4 +1230,69 @@ final class ImportMergeTests: XCTestCase {
         XCTAssertFalse(mergedProp.isDeleted)
         XCTAssertNil(mergedProp.deletedAt)
     }
+
+    // MARK: - mergeLegacyLocalStore (pre-1.1 upgrade)
+
+    /// Standing in for a device's pre-1.1 local Documents store: a private temp directory
+    /// this test writes to directly by swapping `baseDirOverride` in, mirroring how
+    /// `makeSecondStore()` stands in for a second device. Callers restore `baseDirOverride`
+    /// to `tempDir` (the suite's `store`) themselves — this only builds the fixture.
+    private func makeLegacyStore() -> (store: AssetStore, dir: URL) {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        AssetStore.baseDirOverride = dir
+        let legacy = AssetStore()
+        addTeardownBlock {
+            try? FileManager.default.removeItem(at: dir)
+        }
+        return (legacy, dir)
+    }
+
+    // The gap migrateLocalStoreIfNeeded's plain copy leaves: this device's iCloud container
+    // (here, `store`/`tempDir`) already has content of its own, so the pre-1.1 local store
+    // (here, `legacy`/`legacyDir`) never got copied in — it must still get merged in, additively,
+    // including its photo files, rather than being silently left behind.
+    func testMergeLegacyLocalStoreFoldsInWhatCurrentStoreDoesNotHave() throws {
+        let (legacy, legacyDir) = makeLegacyStore()
+        let legacyCat = try legacy.createCategory(name: "Legacy Category")
+        let legacyAsset = try legacy.createAsset(name: "Legacy Asset", categoryID: legacyCat.id)
+        let legacyPhoto = try legacy.addPhoto(imageData: Data([1, 2, 3]), thumbnailData: Data([4, 5]), toAssetID: legacyAsset.id)
+        legacy.save()
+
+        AssetStore.baseDirOverride = tempDir
+        let cloudCat = try store.createCategory(name: "Cloud Category")
+        _ = try store.createAsset(name: "Cloud Asset", categoryID: cloudCat.id)
+
+        let merged = store.mergeLegacyLocalStore(from: legacyDir)
+        XCTAssertTrue(merged)
+
+        XCTAssertNotNil(store.categories[cloudCat.id], "the store's own already-loaded content must survive the merge")
+        let mergedCategory = try XCTUnwrap(store.categories[legacyCat.id], "the legacy category must be folded in")
+        XCTAssertEqual(mergedCategory.name, "Legacy Category")
+        let mergedAsset = try XCTUnwrap(store.assets[legacyAsset.id])
+        XCTAssertEqual(mergedAsset.name, "Legacy Asset")
+
+        XCTAssertTrue(FileManager.default.fileExists(atPath: PhotoStorage.fullURL(id: legacyPhoto.id, root: tempDir).path),
+                     "the legacy photo's full-size file must be copied into the current store's Photos/")
+        XCTAssertTrue(FileManager.default.fileExists(atPath: PhotoStorage.thumbURL(id: legacyPhoto.id, root: tempDir).path))
+
+        let reread = try XCTUnwrap(StoreFileLayout().read(baseDir: tempDir))
+        XCTAssertTrue(reread.snapshot.assets.contains { $0.id == legacyAsset.id },
+                     "the merge must be durably saved, not just applied in memory")
+    }
+
+    // A device with no pre-1.1 history (nothing at the legacy path) must merge in nothing and
+    // report no-op, not fabricate an empty write.
+    func testMergeLegacyLocalStoreNoOpsWhenLegacyDirHasNoStore() {
+        let emptyDir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        addTeardownBlock { try? FileManager.default.removeItem(at: emptyDir) }
+
+        XCTAssertFalse(store.mergeLegacyLocalStore(from: emptyDir))
+    }
+
+    // iCloud inactive this launch means Self.baseDir already IS the legacy local directory —
+    // "merging" it into itself must no-op rather than re-running mergeSnapshot pointlessly.
+    func testMergeLegacyLocalStoreNoOpsWhenLegacyDirIsCurrentBaseDir() throws {
+        _ = try store.createCategory(name: "Only Category")
+        XCTAssertFalse(store.mergeLegacyLocalStore(from: AssetStore.baseDir))
+    }
 }

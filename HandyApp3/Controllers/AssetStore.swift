@@ -95,6 +95,10 @@ final class AssetStore {
 
     static let backgroundThemeDefaultsKey = "backgroundTheme"
 
+    /// Gates `mergeLegacyLocalStoreIfNeeded()` — set once that has run, so a device only ever
+    /// attempts folding its pre-1.1 local Documents store into iCloud once, ever.
+    static let legacyLocalStoreMergeDefaultsKey = "didMergeLegacyLocalStore1_1"
+
     private static func loadBackgroundThemeFromDefaults() -> BackgroundTheme {
         UserDefaults.standard.string(forKey: backgroundThemeDefaultsKey).flatMap(BackgroundTheme.init) ?? .mist
     }
@@ -140,6 +144,17 @@ final class AssetStore {
     /// status line read it directly. Cleared only by `factoryReset` (an explicit, confirmed
     /// destructive act) or by relaunching on a build whose `storeSchemaVersion` has caught up.
     var storeRequiresNewerApp = false
+
+    /// True when cold launch found a structural shard that exists but could not be read —
+    /// see `StoreFileLayout.StoreAbsenceReason.damaged`. Set instead of seeding sample data
+    /// over a store that's merely unreadable right now, e.g. `Definitions/` deleted or
+    /// corrupted out from under a populated `Assets/` tree via the ubiquity container's public
+    /// Files folder. While set, `save()`/`markDirty()` are no-ops — same protection
+    /// `storeRequiresNewerApp` gives a too-new store, just for a broken-rather-than-newer one —
+    /// so a damaged store can never be quietly overwritten by an empty in-memory one. Not
+    /// `@ObservationIgnored`: `ContentView`'s banner reads it directly. Cleared only by
+    /// relaunching after whatever made the shard unreadable is fixed (or by `factoryReset`).
+    var storeIsDamaged = false
 
     /// The whole-store digest (see `StoreFileLayout.storeDigest`) last written to, or read from,
     /// disk by this process — no longer literal bytes now that the store is many files, but the
@@ -1438,7 +1453,7 @@ final class AssetStore {
     /// Schedules a background save ~2 s after the last mutation. Cancels and replaces
     /// any pending save, so rapid mutations collapse into one write.
     func markDirty() {
-        guard !savesSuspended, !storeRequiresNewerApp else { return }
+        guard !savesSuspended, !storeRequiresNewerApp, !storeIsDamaged else { return }
         saveTask?.cancel()
         saveTask = Task.detached(priority: .utility) { [weak self] in
             try? await Task.sleep(for: .seconds(2))

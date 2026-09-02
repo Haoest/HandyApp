@@ -165,6 +165,15 @@ extension AssetStore {
     /// safe to call from the main thread. Returns false if no store exists or a structural
     /// shard (composite types, combo lists, or categories) can't be read — see
     /// `StoreFileLayout`'s failure policy for why those two cases are treated the same.
+    ///
+    /// Never waits on cloud downloads — `triggerCloudDownloads()` fires them and returns
+    /// immediately, so this reads whatever is already on disk right now, which on first launch
+    /// after install may be nothing or only partly downloaded. That is exactly what
+    /// `AppDependencies.makeStore()`'s `.seedSuspended` path (via `StoreFileLayout
+    /// .StoreAbsenceReason.absent`/`.pending`) exists to handle: seed for display without
+    /// persisting, and let `handleCloudMonitorNotification`'s later successful read replace the
+    /// seed once the real data finishes arriving. Blocking here instead would stall cold launch
+    /// on the network for however long a full download takes.
     @discardableResult
     func load() -> Bool {
         var result: StoreFileLayout.ReadResult?
@@ -175,7 +184,7 @@ extension AssetStore {
             // arbitrarily picked as "current" and the app never sees the other side. See
             // resolveConflicts's other two call sites for the same reasoning.
             self.resolveConflicts()
-            Self.primeCloudDownloads(timeout: 10)
+            Self.triggerCloudDownloads()
             result = fileLayout.read(baseDir: Self.baseDir)
         }
         return applyLoadedResult(result, root: Self.baseDir)
@@ -199,9 +208,9 @@ extension AssetStore {
             // save guards storeRequiresNewerApp trips — rather than refusing to load at all.
             storeRequiresNewerApp = true
         }
-        // MigrationBackup is deliberately not wired in here — hd exports manually via
-        // Tools > Export Data before installing a build that bumps storeSchemaVersion, so an
-        // automatic local backup on top of that would just be a second, unused copy.
+        // No willApplyVersionedSteps hook here — hd exports manually via Tools > Export Data
+        // before installing a build that bumps storeSchemaVersion, so an automatic local
+        // backup on top of that would just be a second, unused copy.
         applySnapshot(StoreMigrator.migrate(result.snapshot))
         if result.wasMigratedFromLegacy, !storeRequiresNewerApp {
             persistenceLogger.notice("load: migrated a legacy single-file store to the multi-file layout")
@@ -212,40 +221,20 @@ extension AssetStore {
         return true
     }
 
-    /// If iCloud sync is enabled and the ubiquity container is active, triggers download of
-    /// every `.json`/`.jpg` file under `baseDir` and blocks up to `timeout` seconds for the
-    /// *structural* set — the manifest and every `Definitions/*.json` file, what `read` hard-
-    /// fails without per `StoreFileLayout`'s failure policy — to finish downloading.
-    /// `Assets/*.json` and `Photos/*` are left to arrive opportunistically afterward;
-    /// `ReadResult.isComplete` already tolerates them arriving late.
-    ///
-    /// Checks `URLResourceValues.ubiquitousItemDownloadingStatus`, not `fileExists` — a
-    /// not-yet-downloaded ubiquitous item still reports true for `fileExists` under its real
-    /// name on modern iOS, so `fileExists` alone can never detect "still downloading."
-    private static func primeCloudDownloads(timeout: TimeInterval) {
-        guard let structuralURLs = triggerCloudDownloads() else { return }
-        let deadline = Date().addingTimeInterval(timeout)
-        while Date() < deadline, !structuralURLs.allSatisfy(isDownloaded) {
-            Thread.sleep(forTimeInterval: 0.2)
-        }
-    }
-
     /// Calls `startDownloadingUbiquitousItem` on every `.json`/`.jpg` under `baseDir`, with no
-    /// wait. `NSMetadataQuery` only reports that a file changed in the cloud — it does not fetch
-    /// it — so without an explicit trigger somewhere, a shard or photo that a peer adds *while
-    /// this device's app is already running* has no guaranteed path to actually materialize on
-    /// disk this session; it would only get pulled down at the next cold launch's
-    /// `primeCloudDownloads`. Called from `load()` (via `primeCloudDownloads`, which also
-    /// blocks on the structural set) and from `handleCloudMonitorNotification` (fire-and-forget,
-    /// since a notification means something already changed and blocking the merge on a full
-    /// download would delay every other device's edits from applying). Returns the structural
-    /// URLs (for `primeCloudDownloads`'s wait loop) or nil if cloud sync isn't active.
-    @discardableResult
-    private static func triggerCloudDownloads() -> [URL]? {
+    /// wait — `load()` no longer blocks cold launch on a full cloud download; see its doc
+    /// comment. `NSMetadataQuery` only reports that a file changed in the cloud — it does not
+    /// fetch it — so without an explicit trigger somewhere, a shard or photo that a peer adds
+    /// *while this device's app is already running* has no guaranteed path to actually
+    /// materialize on disk this session; it would only get pulled down at the next cold
+    /// launch's call here. Also called from `handleCloudMonitorNotification`, fire-and-forget
+    /// there too, for the same reason: blocking the merge on a full download would delay every
+    /// other device's edits from applying.
+    private static func triggerCloudDownloads() {
         let fm = FileManager.default
         guard iCloudSyncEnabled,
               baseDirOverride == nil,
-              fm.url(forUbiquityContainerIdentifier: nil) != nil else { return nil }
+              fm.url(forUbiquityContainerIdentifier: nil) != nil else { return }
         let dir = baseDir
         let structuralURLs = [
             "store.json",
@@ -262,16 +251,6 @@ extension AssetStore {
         for url in structuralURLs {
             try? fm.startDownloadingUbiquitousItem(at: url)
         }
-        return structuralURLs
-    }
-
-    /// True if the item is fully downloaded, or if it can't be inspected at all — the latter
-    /// almost always means it doesn't exist yet (e.g. nothing has synced down to this device),
-    /// which is nothing to wait for rather than something stuck downloading.
-    private static func isDownloaded(_ url: URL) -> Bool {
-        guard let status = try? url.resourceValues(forKeys: [.ubiquitousItemDownloadingStatusKey])
-            .ubiquitousItemDownloadingStatus else { return true }
-        return status == .current || status == .downloaded
     }
 
     func factoryReset() {
@@ -389,10 +368,71 @@ extension AssetStore {
         DispatchQueue.global(qos: .userInitiated).sync { self.save() }
     }
 
+    // MARK: - Legacy local store merge (pre-1.1 upgrade)
+
+    /// One-time merge of this device's pre-1.1 local Documents store into an already-populated
+    /// iCloud container — the gap `migrateLocalStoreIfNeeded`'s plain copy leaves. That copy
+    /// only runs while the container is still empty; a device that upgrades *after* a
+    /// different device already wrote real content to the container finds `hasCloudContent`
+    /// true, skips the copy, and its own local data is left on disk but invisible — never
+    /// merged, never shown. Call once per launch, only after `load()` returns `true` with
+    /// iCloud active (`AppDependencies.makeStore()`) — that's exactly the "cloud already had a
+    /// real store" case, and `hasAuthoritativeLocalState` is guaranteed by then. Gated by
+    /// `UserDefaults` so a device only ever attempts this once, ever, including the "nothing
+    /// local to merge" outcome — a device with no pre-1.1 history would otherwise re-read its
+    /// (permanently empty) legacy directory on every future launch for no reason.
+    func mergeLegacyLocalStoreIfNeeded() {
+        let key = Self.legacyLocalStoreMergeDefaultsKey
+        guard !UserDefaults.standard.bool(forKey: key) else { return }
+        defer { UserDefaults.standard.set(true, forKey: key) }
+        let localDocs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+        mergeLegacyLocalStore(from: localDocs)
+    }
+
+    /// Core of `mergeLegacyLocalStoreIfNeeded`, taking the legacy directory explicitly — the
+    /// seam tests use to point at a private temp directory instead of the real `~/Documents`.
+    /// Reads `legacyDocs` as a `StoreSnapshotDTO` and folds it into the live store via the
+    /// same additive `mergeSnapshot` `importJSON` uses: whatever this device already has —
+    /// here, the content it just loaded from iCloud — always wins; the legacy snapshot only
+    /// fills in what that didn't already have. Photo files are copied the same way, id by id,
+    /// never overwriting one that's already there. Returns `false` (no-op) if `legacyDocs` has
+    /// no readable store, or is the same directory as `Self.baseDir` — the case where iCloud
+    /// isn't actually active this launch, so "merge the legacy store" would mean merging a
+    /// snapshot into itself.
+    @discardableResult
+    func mergeLegacyLocalStore(from legacyDocs: URL) -> Bool {
+        guard legacyDocs != Self.baseDir,
+              let result = StoreFileLayout().read(baseDir: legacyDocs) else { return false }
+        let legacySnap = StoreMigrator.migrate(result.snapshot)
+        let photoIDsToMaterialize = mergeSnapshot(legacySnap)
+
+        let fm = FileManager.default
+        for assetDTO in legacySnap.assets {
+            for photoDTO in assetDTO.photos where photoIDsToMaterialize.contains(photoDTO.id) {
+                let srcFull = PhotoStorage.fullURL(id: photoDTO.id, root: legacyDocs)
+                let dstFull = PhotoStorage.fullURL(id: photoDTO.id)
+                if fm.fileExists(atPath: srcFull.path), !fm.fileExists(atPath: dstFull.path) {
+                    try? fm.copyItem(at: srcFull, to: dstFull)
+                }
+                let srcThumb = PhotoStorage.thumbURL(id: photoDTO.id, root: legacyDocs)
+                let dstThumb = PhotoStorage.thumbURL(id: photoDTO.id)
+                if fm.fileExists(atPath: srcThumb.path), !fm.fileExists(atPath: dstThumb.path) {
+                    try? fm.copyItem(at: srcThumb, to: dstThumb)
+                }
+            }
+        }
+
+        // Synchronous, like importJSON: must be durable before this returns, since the legacy
+        // directory is never re-read once mergeLegacyLocalStoreIfNeeded's flag is set — a crash
+        // before this write lands would otherwise lose the merge for good.
+        DispatchQueue.global(qos: .userInitiated).sync { self.save() }
+        return true
+    }
+
     /// Encodes the current store state and writes only the shards that changed.
     /// Must be called on a background thread.
     func save() {
-        guard !savesSuspended, !storeRequiresNewerApp else { return }
+        guard !savesSuspended, !storeRequiresNewerApp, !storeIsDamaged else { return }
         // Fold conflicts before writing, not after — see load()'s call for why folding after
         // the fact means this save's own snapshot (built from what's about to be read back)
         // never reflects a divergence iCloud already flagged.
@@ -529,10 +569,10 @@ extension AssetStore {
     // MARK: - Migration
 
     /// Delegates to `StoreMigrator` (`StoreMigration.swift`/`StoreMigrationV5.swift`). This call
-    /// site never needs the backup hook: `importJSON`'s source file is its own backup, and the
-    /// cloud-monitor path is migrating a peer's snapshot, not this device's own on-disk store.
-    /// `applyLoadedResult` calls `StoreMigrator.migrate` directly instead, with the hook that
-    /// writes a local `MigrationBackup` before this device's on-disk data changes shape.
+    /// site never needs `migrate`'s `willApplyVersionedSteps` hook: `importJSON`'s source file
+    /// is its own backup, and the cloud-monitor path is migrating a peer's snapshot, not this
+    /// device's own on-disk store. `applyLoadedResult` calls `StoreMigrator.migrate` directly
+    /// instead, for the same reason it doesn't pass that hook either — see its call site.
     private func migrate(_ s: StoreSnapshotDTO) -> StoreSnapshotDTO {
         StoreMigrator.migrate(s)
     }

@@ -165,6 +165,35 @@ final class StoreFileLayoutTests: XCTestCase {
                     "a missing structural shard must fail the whole read rather than return an amputated snapshot")
     }
 
+    // MARK: - 4b. diagnoseAbsence distinguishes a fresh install from a damaged store
+
+    // A genuinely empty directory — read() returning nil here means "safe to seed", not
+    // "something's wrong". See AppDependencies.makeStore()'s use of this before seeding.
+    func testDiagnoseAbsenceIsAbsentForFreshInstall() {
+        XCTAssertNil(store.fileLayout.read(baseDir: AssetStore.baseDir))
+        XCTAssertEqual(StoreFileLayout().diagnoseAbsence(baseDir: AssetStore.baseDir), .absent)
+    }
+
+    // Same corruption as testMissingDefinitionsShardFailsReadEntirely (a structural shard
+    // deleted out from under a populated Assets/ tree — what deleting Definitions/ via the
+    // ubiquity container's public Files folder does), but asserting the diagnosis this time:
+    // this must read as .damaged, never .absent, or a cold launch would reseed sample data
+    // over what's still a real, populated store.
+    func testDiagnoseAbsenceIsDamagedWhenTreeExistsButAStructuralShardIsMissing() throws {
+        let catID = UUID()
+        let assetID = UUID()
+        let snap = makeSnapshot(categories: [makeCategoryDTO(id: catID)],
+                                assets: [makeAssetDTO(id: assetID, categoryID: catID)])
+        store.fileLayout.write(snap, baseDir: AssetStore.baseDir)
+
+        try FileManager.default.removeItem(
+            at: AssetStore.baseDir.appendingPathComponent("Definitions/types.json"))
+
+        let freshLayout = StoreFileLayout()
+        XCTAssertNil(freshLayout.read(baseDir: AssetStore.baseDir))
+        XCTAssertEqual(freshLayout.diagnoseAbsence(baseDir: AssetStore.baseDir), .damaged)
+    }
+
     // MARK: - 5. Orphan deletion happy path
 
     func testOrphanDeletionRemovesFileNoLongerInSnapshot() throws {
@@ -391,5 +420,30 @@ final class StoreFileLayoutTests: XCTestCase {
             Set((applianceA?.propertyTemplates ?? []).map(\.definition.id)),
             Set((applianceB?.propertyTemplates ?? []).map(\.definition.id))
         )
+    }
+
+    // MARK: - 9. storeIsDamaged gates writes, like storeRequiresNewerApp
+
+    // Mirrors StoreMigrationTests.testLoadOfNewerSchemaStoreGatesWrites: a damaged store must
+    // never have its (empty, in-memory) state written back over whatever's actually on disk.
+    func testStoreIsDamagedGatesWrites() throws {
+        let catID = UUID()
+        let snap = makeSnapshot(categories: [makeCategoryDTO(id: catID)])
+        store.fileLayout.write(snap, baseDir: AssetStore.baseDir)
+
+        let beforeLayout = StoreFileLayout()
+        let before = try XCTUnwrap(beforeLayout.read(baseDir: AssetStore.baseDir))
+        XCTAssertEqual(before.snapshot.categories.count, 1)
+
+        let freshStore = AssetStore()
+        freshStore.storeIsDamaged = true
+        freshStore.markDirty()
+        freshStore.save()
+
+        let afterLayout = StoreFileLayout()
+        let after = try XCTUnwrap(afterLayout.read(baseDir: AssetStore.baseDir))
+        XCTAssertEqual(after.snapshot.categories.count, 1,
+                       "save() must be a full no-op while storeIsDamaged, or an empty in-memory store would overwrite the real one")
+        XCTAssertEqual(beforeLayout.storeDigest, afterLayout.storeDigest)
     }
 }

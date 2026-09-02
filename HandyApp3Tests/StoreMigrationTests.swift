@@ -1,33 +1,28 @@
 import XCTest
 @testable import HandyApp3
 
-/// Exercises `StoreMigrator` (the versioned-step engine + un-gated `normalize`),
-/// `MigrationBackup` (the pre-migration local backup), and `AssetStore.storeRequiresNewerApp`
-/// (the downgrade write-gate) — the three pieces that sit around the actual v4→v5 transform,
-/// which `MigrationV5Tests.swift` covers on its own. Pure-DTO tests build fixtures by hand,
-/// matching `StoreFileLayoutTests`; the gate tests round-trip through `AssetStore`/
-/// `StoreFileLayout` since the behavior under test is what `load()`/`save()` do.
+/// Exercises `StoreMigrator` (the versioned-step engine + un-gated `normalize`) and
+/// `AssetStore.storeRequiresNewerApp` (the downgrade write-gate) — the two pieces that sit
+/// around the actual v4→v5 transform, which `MigrationV5Tests.swift` covers on its own.
+/// Pure-DTO tests build fixtures by hand, matching `StoreFileLayoutTests`; the gate tests
+/// round-trip through `AssetStore`/`StoreFileLayout` since the behavior under test is what
+/// `load()`/`save()` do.
 final class StoreMigrationTests: XCTestCase {
 
     var store: AssetStore!
     private var tempDir: URL!
-    private var backupDir: URL!
 
     override func setUp() {
         super.setUp()
         tempDir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         AssetStore.baseDirOverride = tempDir
-        backupDir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
-        MigrationBackup.directoryOverride = backupDir
         store = AssetStore()
     }
 
     override func tearDown() {
         super.tearDown()
         AssetStore.baseDirOverride = nil
-        MigrationBackup.directoryOverride = nil
         try? FileManager.default.removeItem(at: tempDir)
-        try? FileManager.default.removeItem(at: backupDir)
     }
 
     // MARK: - DTO builders
@@ -119,42 +114,6 @@ final class StoreMigrationTests: XCTestCase {
 
         XCTAssertEqual(result.categories[0].purgedAt, deletedAt)
         XCTAssertEqual(result.assets[0].purgedAt, deletedAt)
-    }
-
-    // MARK: - MigrationBackup
-
-    // a pre-migration backup is written once per fromVersion, and its content round-trips
-    // to exactly what was passed in
-    func testBackupWrittenOncePerFromVersion() throws {
-        let snap = makeSnapshot(schemaVersion: 4)
-
-        MigrationBackup.writeIfNeeded(snap, fromVersion: 4)
-        MigrationBackup.writeIfNeeded(snap, fromVersion: 4)
-
-        let files = try FileManager.default.contentsOfDirectory(atPath: backupDir.path)
-        let matches = files.filter { $0.hasPrefix("store.v4.") }
-        XCTAssertEqual(matches.count, 1, "a second call for the same fromVersion must not write a duplicate")
-
-        let data = try Data(contentsOf: backupDir.appendingPathComponent(matches[0]))
-        let decoded = try XCTUnwrap(CanonicalCodec.decode(StoreSnapshotDTO.self, from: data))
-        XCTAssertEqual(decoded.schemaVersion, 4)
-    }
-
-    // retention keeps only the newest N backups across all fromVersions combined
-    func testBackupRetentionKeepsNewestThree() throws {
-        let fm = FileManager.default
-        try fm.createDirectory(at: backupDir, withIntermediateDirectories: true)
-        for v in 1...3 {
-            let data = try XCTUnwrap(CanonicalCodec.encode(makeSnapshot(schemaVersion: v)))
-            try data.write(to: backupDir.appendingPathComponent("store.v\(v).2026010\(v)-000000.json"))
-        }
-
-        MigrationBackup.writeIfNeeded(makeSnapshot(schemaVersion: 4), fromVersion: 4, date: Date(timeIntervalSince1970: 2_000_000_000))
-
-        let remaining = try fm.contentsOfDirectory(atPath: backupDir.path).sorted()
-        XCTAssertEqual(remaining.count, MigrationBackup.retentionCount)
-        XCTAssertFalse(remaining.contains { $0.hasPrefix("store.v1.") }, "the oldest backup must be pruned")
-        XCTAssertTrue(remaining.contains { $0.hasPrefix("store.v4.") }, "the newest backup must survive")
     }
 
     // MARK: - Downgrade write-gate

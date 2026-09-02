@@ -65,6 +65,7 @@ struct SetupTab: View {
         guard FileManager.default.url(forUbiquityContainerIdentifier: nil) != nil else {
             return String(localized: "iCloud unavailable", bundle: .appPreferred, locale: .appPreferred)
         }
+        if store.storeIsDamaged { return String(localized: "Couldn't read your data", bundle: .appPreferred, locale: .appPreferred) }
         if store.storeRequiresNewerApp { return String(localized: "App update required", bundle: .appPreferred, locale: .appPreferred) }
         if store.savesSuspended { return String(localized: "Waiting for iCloud…", bundle: .appPreferred, locale: .appPreferred) }
         guard let lastSync = store.lastSyncDate else { return String(localized: "On", bundle: .appPreferred, locale: .appPreferred) }
@@ -122,7 +123,6 @@ struct SetupTab: View {
                 case .pickLists: PickListsView()
                 case .appearance: AppearanceView()
                 case .deletedItems: DeletedItemsView()
-                case .quickStart: QuickStartGuideView()
                 case .bulkMessage: BulkCommunicationView()
                 }
             }
@@ -205,11 +205,9 @@ struct SetupTab: View {
 
     private var appGroup: some View {
         SetupGroup("App") {
-            SetupRow(name: "Appearance", sub: LocalizedStringKey(appearanceLabel), value: "") {
+            SetupRow(name: "Appearance", sub: LocalizedStringKey(appearanceLabel), value: "", isLast: true) {
                 path.append(SetupDestination.appearance)
             }
-            SetupRow(name: "Ask Siri", sub: "What you can say out loud",
-                     value: "", isLast: true) { path.append(SetupDestination.quickStart) }
         }
     }
 
@@ -275,7 +273,7 @@ struct SetupTab: View {
 // MARK: - Destinations
 
 enum SetupDestination: Hashable {
-    case categories, pickLists, appearance, deletedItems, quickStart, bulkMessage
+    case categories, pickLists, appearance, deletedItems, bulkMessage
 }
 
 // MARK: - Group and row

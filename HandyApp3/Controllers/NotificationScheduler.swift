@@ -68,7 +68,8 @@ enum NotificationPlanner {
     /// DEBUG "send test notification" button, so a test notification reads exactly like a
     /// real one.
     static func eventDueBody(title: String, notes: String, daysBefore: Int) -> String {
-        let body = String(localized: "Due in \(daysBefore) days: \(title).", bundle: .appPreferred, locale: .appPreferred)
+        let when = dueWhenPhrase(daysBefore: daysBefore)
+        let body = String(localized: "Due \(when): \(title).", bundle: .appPreferred, locale: .appPreferred)
         return appendingNotes(body, notes: notes)
     }
 
@@ -79,14 +80,27 @@ enum NotificationPlanner {
         let amountText = amount.formatted(
             .currency(code: Locale.current.currency?.identifier ?? "USD").locale(.appPreferred)
         )
+        let when = dueWhenPhrase(daysBefore: daysBefore)
         let body: String
         switch kind {
         case .expense:
-            body = String(localized: "Expense transaction due in \(daysBefore) days in amount of \(amountText).", bundle: .appPreferred, locale: .appPreferred)
+            body = String(localized: "Expense transaction due \(when) in amount of \(amountText).", bundle: .appPreferred, locale: .appPreferred)
         case .income:
-            body = String(localized: "Income transaction due in \(daysBefore) days in amount of \(amountText).", bundle: .appPreferred, locale: .appPreferred)
+            body = String(localized: "Income transaction due \(when) in amount of \(amountText).", bundle: .appPreferred, locale: .appPreferred)
         }
         return appendingNotes(body, notes: notes)
+    }
+
+    /// "today" for a same-day reminder, otherwise a correctly pluralized "in N days" — the
+    /// same due-date vocabulary the Timeline's Coming-up row uses (see `whenText` in
+    /// TimelineTab.swift), reached the plain-`String` way. Automatic Grammar Agreement
+    /// (`^[...](inflect: true)`) only expands when a `LocalizedStringKey` reaches `Text`; a
+    /// notification body is a `String`, so this pulls from its own plural-variant catalog
+    /// key instead of copying that markup, which `String(localized:)` would leave literal.
+    private static func dueWhenPhrase(daysBefore: Int) -> String {
+        daysBefore <= 0
+            ? String(localized: "today", bundle: .appPreferred, locale: .appPreferred)
+            : String(localized: "in \(daysBefore) days", bundle: .appPreferred, locale: .appPreferred)
     }
 
     private static func appendingNotes(_ prefix: String, notes: String) -> String {

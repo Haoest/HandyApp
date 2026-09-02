@@ -1,3 +1,11 @@
 
 # SwiftPM CLI test harness
 .build/
+
+# Stray compiler artifacts from ad hoc `swiftc`/`xcrun` invocations at the repo root
+*.o
+*.d
+*.swiftdeps
+
+# Xcode per-user state — schemes, breakpoints, workspace settings
+xcuserdata/

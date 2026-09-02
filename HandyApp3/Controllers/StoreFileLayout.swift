@@ -51,6 +51,21 @@ final class StoreFileLayout {
         var isComplete: Bool
     }
 
+    /// Only meaningful right after `read(baseDir:)` returns `nil` — distinguishes a genuinely
+    /// fresh install (`.absent`, safe to seed) from a store that exists but currently can't be
+    /// fully read: `.pending` while a structural shard is still downloading (also safe to seed
+    /// for display — the seed is `savesSuspended` until the download completes and a later read
+    /// succeeds), and `.damaged` when a structural shard is present and finished downloading but
+    /// still didn't decode — e.g. `Definitions/` was deleted or corrupted out from under a
+    /// populated `Assets/` tree via the ubiquity container's public Files folder. Seeding over
+    /// `.damaged` is exactly the bug this exists to prevent: the caller must latch
+    /// `savesSuspended` (or equivalent) and never lift it automatically for this case.
+    enum StoreAbsenceReason: Equatable {
+        case absent
+        case pending
+        case damaged
+    }
+
     struct WriteReport {
         var writtenPaths: [String] = []
         var deletedPaths: [String] = []
@@ -276,6 +291,43 @@ final class StoreFileLayout {
             backgroundTheme: manifest?.backgroundTheme ?? BackgroundTheme.mist.rawValue
         )
         return ReadResult(snapshot: snap, wasMigratedFromLegacy: false, isComplete: assetsComplete)
+    }
+
+    /// See `StoreAbsenceReason`. Call only after `read(baseDir:)` has just returned `nil` for
+    /// this `baseDir` — this re-inspects the filesystem rather than reusing `read`'s state, so
+    /// it stays correct even though it doesn't share a queue hop with the read that triggered it.
+    func diagnoseAbsence(baseDir: URL) -> StoreAbsenceReason {
+        let fm = FileManager.default
+        let manifestURL = baseDir.appendingPathComponent(Shard.manifest.relativePath)
+        // Checking the *contents* of Definitions/Assets/Activity, not just whether those
+        // directories themselves exist: `AssetStore.baseDir` creates all three as empty
+        // shells the moment it's first accessed (`createStoreSubdirectories`), on a
+        // genuinely fresh install included — so directory existence alone would make
+        // `.absent` unreachable and misreport every fresh install as `.damaged`.
+        func hasAnyFile(in dir: URL) -> Bool {
+            guard let entries = try? fm.contentsOfDirectory(at: dir, includingPropertiesForKeys: nil) else { return false }
+            return !entries.isEmpty
+        }
+        let treeExists = fm.fileExists(atPath: manifestURL.path)
+            || hasAnyFile(in: baseDir.appendingPathComponent("Definitions", isDirectory: true))
+            || hasAnyFile(in: baseDir.appendingPathComponent("Assets", isDirectory: true))
+            || hasAnyFile(in: baseDir.appendingPathComponent("Activity", isDirectory: true))
+        guard treeExists else { return .absent }
+
+        let structuralURLs = [Shard.types, Shard.comboLists, Shard.categories]
+            .map { baseDir.appendingPathComponent($0.relativePath) }
+        return structuralURLs.contains(where: { !Self.isDownloaded($0) }) ? .pending : .damaged
+    }
+
+    /// True if the item is fully downloaded, or if it can't be inspected at all — the latter
+    /// almost always means it doesn't exist yet, which `diagnoseAbsence` already routes to
+    /// `.absent`/`.damaged` on other grounds, not something to report as still-downloading.
+    /// Mirrors `AssetStore.isDownloaded` (`AssetStore+Persistence.swift`) — kept as its own
+    /// copy here rather than shared, since this type otherwise has no dependency on `AssetStore`.
+    private static func isDownloaded(_ url: URL) -> Bool {
+        guard let status = try? url.resourceValues(forKeys: [.ubiquitousItemDownloadingStatusKey])
+            .ubiquitousItemDownloadingStatus else { return true }
+        return status == .current || status == .downloaded
     }
 
     private func readShard<T: Decodable>(baseDir: URL, shard: Shard, as type: T.Type) -> (value: T, bytes: Data)? {

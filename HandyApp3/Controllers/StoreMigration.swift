@@ -60,8 +60,10 @@ enum StoreMigrator {
     /// .storeRequiresNewerApp`'s job, not this function's.
     ///
     /// `willApplyVersionedSteps`, if given, fires exactly once with the pre-transform snapshot,
-    /// right before the first gated step runs — the hook `applyLoadedResult` uses to write a
-    /// local backup before this device's on-disk data changes shape.
+    /// right before the first gated step runs — a seam for a caller that wants to back up a
+    /// snapshot right before its on-disk shape changes. No call site currently passes one; hd
+    /// exports manually via Tools > Export Data before installing a build that bumps
+    /// `storeSchemaVersion` instead.
     static func migrate(
         _ snapshot: StoreSnapshotDTO,
         steps: [StoreMigration] = migrations,
