@@ -201,6 +201,9 @@ extension AssetStore {
 
     private func applyLoadedResult(_ result: StoreFileLayout.ReadResult?, root: URL) -> Bool {
         guard let result else { return false }
+        // A successful read is proof the store isn't damaged anymore, whatever made it
+        // unreadable before — self-heals without waiting for an explicit factoryReset.
+        storeIsDamaged = false
         lastPersistedData = fileLayout.storeDigest
         if result.snapshot.schemaVersion > storeSchemaVersion {
             // This build is older than whatever last wrote this store (dev builds and the
@@ -259,6 +262,16 @@ extension AssetStore {
         // the one place an older build may legitimately stomp a store a newer build wrote. This
         // is also the only way a user stuck with an old build ever recovers a writable store.
         storeRequiresNewerApp = false
+        // Same escape hatch for a damaged store — otherwise reset silently no-ops (its closing
+        // save() below would hit storeIsDamaged's guard) and the banner never clears. Nothing was
+        // ever loaded from a damaged store, so there's no in-memory copy to purge-in-place the
+        // way live assets are below; the leftover shards are deleted outright instead. Accepted
+        // cost: this can't emit tombstones for records it never read, so a peer holding a still-
+        // live copy will resurrect them on its next sync — reset from a device whose store loads
+        // when iCloud is involved.
+        let wasDamaged = storeIsDamaged
+        storeIsDamaged = false
+        if wasDamaged { fileLayout.removeAllShards(baseDir: Self.baseDir) }
         let photosDir = Self.baseDir.appendingPathComponent("Photos", isDirectory: true)
         if let files = try? FileManager.default.contentsOfDirectory(at: photosDir, includingPropertiesForKeys: nil) {
             for file in files { try? FileManager.default.removeItem(at: file) }
@@ -519,6 +532,9 @@ extension AssetStore {
                 // shard's digest (see StoreFileLayout), so this is the same echo check the
                 // single-file version did, just keyed on the whole tree instead of one file.
                 guard let result, self.fileLayout.storeDigest != self.lastPersistedData else { return }
+                // Same self-heal as applyLoadedResult: a peer re-uploading the missing shards
+                // mid-session must also clear the latch, not just a fresh cold-launch read.
+                self.storeIsDamaged = false
                 self.lastPersistedData = self.fileLayout.storeDigest
                 let disk = self.migrate(result.snapshot)
                 if disk.schemaVersion > storeSchemaVersion {

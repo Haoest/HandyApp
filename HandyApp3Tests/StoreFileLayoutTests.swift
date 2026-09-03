@@ -194,6 +194,37 @@ final class StoreFileLayoutTests: XCTestCase {
         XCTAssertEqual(freshLayout.diagnoseAbsence(baseDir: AssetStore.baseDir), .damaged)
     }
 
+    // A first save killed after Definitions/types.json landed but before combolists.json,
+    // categories.json, or the manifest did. No manifest and no asset files means everything
+    // present is regenerable seed data — must read as .absent (safe to seed over), never
+    // .damaged, or the tree could never finish completing itself with writes latched off.
+    func testDiagnoseAbsenceIsAbsentForTornFirstWriteWithOnlyOneStructuralShard() throws {
+        store.fileLayout.write(makeSnapshot(), baseDir: AssetStore.baseDir)
+        try FileManager.default.removeItem(at: AssetStore.storeURL)
+        try FileManager.default.removeItem(
+            at: AssetStore.baseDir.appendingPathComponent("Definitions/combolists.json"))
+        try FileManager.default.removeItem(
+            at: AssetStore.baseDir.appendingPathComponent("Definitions/categories.json"))
+        try FileManager.default.removeItem(
+            at: AssetStore.baseDir.appendingPathComponent("Activity/log.json"))
+
+        XCTAssertEqual(StoreFileLayout().diagnoseAbsence(baseDir: AssetStore.baseDir), .absent)
+    }
+
+    // Guards the new "no manifest, no assets ⇒ absent" rule against also swallowing rule 3's
+    // case: a populated tree that's only missing its manifest is still a real, damaged store —
+    // asset files being present is what must keep this .damaged.
+    func testDiagnoseAbsenceIsDamagedForPopulatedTreeWithOnlyManifestMissing() throws {
+        let catID = UUID()
+        let assetID = UUID()
+        let snap = makeSnapshot(categories: [makeCategoryDTO(id: catID)],
+                                assets: [makeAssetDTO(id: assetID, categoryID: catID)])
+        store.fileLayout.write(snap, baseDir: AssetStore.baseDir)
+        try FileManager.default.removeItem(at: AssetStore.storeURL)
+
+        XCTAssertEqual(StoreFileLayout().diagnoseAbsence(baseDir: AssetStore.baseDir), .damaged)
+    }
+
     // MARK: - 5. Orphan deletion happy path
 
     func testOrphanDeletionRemovesFileNoLongerInSnapshot() throws {
@@ -445,5 +476,47 @@ final class StoreFileLayoutTests: XCTestCase {
         XCTAssertEqual(after.snapshot.categories.count, 1,
                        "save() must be a full no-op while storeIsDamaged, or an empty in-memory store would overwrite the real one")
         XCTAssertEqual(beforeLayout.storeDigest, afterLayout.storeDigest)
+    }
+
+    // MARK: - 10. storeIsDamaged has a way out
+
+    // A store that becomes damaged mid-session (e.g. Definitions/ deleted from under a
+    // populated Assets/ tree) has an asset file on disk that was never loaded into memory —
+    // factoryReset's usual purge-in-place can't tombstone something it never read, so the
+    // leftover shards must be deleted outright instead.
+    func testFactoryResetOnDamagedStoreRemovesLeftoverShardsAndClearsFlag() throws {
+        let catID = UUID()
+        let assetID = UUID()
+        let snap = makeSnapshot(categories: [makeCategoryDTO(id: catID)],
+                                assets: [makeAssetDTO(id: assetID, categoryID: catID)])
+        store.fileLayout.write(snap, baseDir: AssetStore.baseDir)
+        let leftoverAssetFile = AssetStore.baseDir.appendingPathComponent("Assets/\(assetID.uuidString).json")
+        XCTAssertTrue(FileManager.default.fileExists(atPath: leftoverAssetFile.path))
+
+        store.storeIsDamaged = true
+        store.factoryReset()
+
+        XCTAssertFalse(store.storeIsDamaged,
+                       "factoryReset must clear storeIsDamaged, or its own closing save() would still no-op")
+        XCTAssertFalse(FileManager.default.fileExists(atPath: leftoverAssetFile.path),
+                       "the leftover asset file from before the reset must be removed, not merely never-loaded")
+
+        let reloaded = AssetStore()
+        XCTAssertTrue(reloaded.load())
+        XCTAssertFalse(reloaded.assets.keys.contains(assetID),
+                       "a fresh load after reset must not resurrect an asset the damaged store never read")
+    }
+
+    // Mirrors the self-heal added to applyLoadedResult: whatever made the shard unreadable at
+    // some earlier point, a read that now succeeds is proof the store isn't damaged anymore.
+    func testSuccessfulLoadClearsStoreIsDamaged() throws {
+        let catID = UUID()
+        let snap = makeSnapshot(categories: [makeCategoryDTO(id: catID)])
+        store.fileLayout.write(snap, baseDir: AssetStore.baseDir)
+
+        let freshStore = AssetStore()
+        freshStore.storeIsDamaged = true
+        XCTAssertTrue(freshStore.load(), "a store with real content on disk must load successfully")
+        XCTAssertFalse(freshStore.storeIsDamaged, "a successful read must self-heal the damaged latch")
     }
 }

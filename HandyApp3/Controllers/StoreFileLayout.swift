@@ -308,15 +308,25 @@ final class StoreFileLayout {
             guard let entries = try? fm.contentsOfDirectory(at: dir, includingPropertiesForKeys: nil) else { return false }
             return !entries.isEmpty
         }
-        let treeExists = fm.fileExists(atPath: manifestURL.path)
+        let hasManifest = fm.fileExists(atPath: manifestURL.path)
+        let hasAssetFiles = hasAnyFile(in: baseDir.appendingPathComponent("Assets", isDirectory: true))
+        let treeExists = hasManifest
             || hasAnyFile(in: baseDir.appendingPathComponent("Definitions", isDirectory: true))
-            || hasAnyFile(in: baseDir.appendingPathComponent("Assets", isDirectory: true))
+            || hasAssetFiles
             || hasAnyFile(in: baseDir.appendingPathComponent("Activity", isDirectory: true))
         guard treeExists else { return .absent }
 
         let structuralURLs = [Shard.types, Shard.comboLists, Shard.categories]
             .map { baseDir.appendingPathComponent($0.relativePath) }
-        return structuralURLs.contains(where: { !Self.isDownloaded($0) }) ? .pending : .damaged
+        if structuralURLs.contains(where: { !Self.isDownloaded($0) }) { return .pending }
+
+        // `writeLocked` writes Definitions/ shards, then Assets/, then the manifest last — so a
+        // tree with no manifest and no asset files can only be a first write torn before either
+        // landed, meaning everything present is regenerable built-in seed data. Safe to treat as
+        // a fresh install rather than latching `.damaged` (which would then block writes forever,
+        // since the tree can never finish completing itself with saves disabled).
+        if !hasManifest, !hasAssetFiles { return .absent }
+        return .damaged
     }
 
     /// True if the item is fully downloaded, or if it can't be inspected at all — the latter
@@ -456,6 +466,29 @@ final class StoreFileLayout {
             Self.logger.debug("write: wrote \(report.writtenPaths.count, privacy: .public), deleted \(report.deletedPaths.count, privacy: .public), skipped \(report.skippedCount, privacy: .public)")
         }
         return report
+    }
+
+    /// Deletes every on-disk shard — `Definitions/*.json`, `Assets/*.json`, `Activity/*.json`,
+    /// and the manifest — and forgets the digest cache. Used only by `factoryReset` on a store
+    /// that was `.damaged`: nothing was ever loaded into memory, so there's no in-memory copy
+    /// to overwrite as a tombstone the way a healthy reset purges assets in place; the leftover
+    /// files must be removed outright instead. See that call site for the accepted cost.
+    func removeAllShards(baseDir: URL) {
+        queue.sync {
+            let fm = FileManager.default
+            for sub in ["Definitions", "Assets", "Activity"] {
+                let dir = baseDir.appendingPathComponent(sub, isDirectory: true)
+                guard let entries = try? fm.contentsOfDirectory(at: dir, includingPropertiesForKeys: nil) else { continue }
+                for url in entries where url.pathExtension == "json" {
+                    try? fm.removeItem(at: url)
+                }
+            }
+            try? fm.removeItem(at: baseDir.appendingPathComponent(Shard.manifest.relativePath))
+            digests.removeAll()
+            digestsBaseDir = nil
+            lastReadWasComplete = true
+            storeDigest = nil
+        }
     }
 
     // MARK: - Digest cache

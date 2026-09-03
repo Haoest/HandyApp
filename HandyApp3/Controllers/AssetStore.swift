@@ -152,8 +152,9 @@ final class AssetStore {
     /// Files folder. While set, `save()`/`markDirty()` are no-ops — same protection
     /// `storeRequiresNewerApp` gives a too-new store, just for a broken-rather-than-newer one —
     /// so a damaged store can never be quietly overwritten by an empty in-memory one. Not
-    /// `@ObservationIgnored`: `ContentView`'s banner reads it directly. Cleared only by
-    /// relaunching after whatever made the shard unreadable is fixed (or by `factoryReset`).
+    /// `@ObservationIgnored`: `ContentView`'s banner reads it directly. Cleared by any
+    /// successful read (self-heals once whatever made the shard unreadable is fixed, whether at
+    /// the next cold launch or by a peer's mid-session upload), or explicitly by `factoryReset`.
     var storeIsDamaged = false
 
     /// The whole-store digest (see `StoreFileLayout.storeDigest`) last written to, or read from,
