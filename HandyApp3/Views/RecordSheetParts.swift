@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 /// Shared chrome for the record editors. `EventEditView` and `TransactionEditView` were always
 /// near-identical twins — same date/recurrence/due/notify/notes stack, differing only in the
@@ -236,6 +237,159 @@ struct RecordDaySlider: View {
                 step: 1
             )
             .tint(Baron.accent700)
+        }
+    }
+}
+
+// MARK: - Device notifications
+
+/// Shared permission-aware notification switch for event and transaction editors. An automatic
+/// store resync never prompts; this control is the deliberate user-action boundary.
+struct DeviceNotificationControl<Content: View>: View {
+    @Environment(\.scenePhase) private var scenePhase
+    @Binding var isOn: Bool
+    let scheduler: NotificationScheduler?
+    let onAuthorizationGranted: () -> Void
+    @ViewBuilder let content: Content
+
+    @State private var authorization: NotificationAuthorizationState?
+    @State private var isRequesting = false
+    @State private var attemptedEnable = false
+    @State private var showUnavailableAlert = false
+
+    init(
+        isOn: Binding<Bool>,
+        scheduler: NotificationScheduler?,
+        onAuthorizationGranted: @escaping () -> Void,
+        @ViewBuilder content: () -> Content
+    ) {
+        _isOn = isOn
+        self.scheduler = scheduler
+        self.onAuthorizationGranted = onAuthorizationGranted
+        self.content = content()
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Button(action: toggle) {
+                HStack(spacing: 10) {
+                    Image(systemName: "bell")
+                        .font(.system(size: 14))
+                        .foregroundStyle(isOn ? Baron.accent800 : Baron.neutral600)
+                        .frame(width: 32, height: 32)
+                        .background(isOn ? Baron.accent100 : Baron.inset,
+                                    in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                    Text("Notify me on this device")
+                        .font(Baron.body(14, .medium))
+                        .foregroundStyle(Baron.text)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    if isRequesting {
+                        ProgressView().controlSize(.small)
+                    } else {
+                        ToggleTrack(isOn: isOn)
+                    }
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .disabled(isRequesting)
+
+            if isOn || attemptedEnable {
+                VStack(alignment: .leading, spacing: 14) {
+                    if authorization != .allowed {
+                        accessMessage
+                    }
+                    if isOn {
+                        content
+                    }
+                }
+                .padding(.top, 14)
+            }
+        }
+        .task { await refreshAuthorization() }
+        .onChange(of: scenePhase) { _, phase in
+            guard phase == .active else { return }
+            Task { await refreshAuthorization() }
+        }
+        .alert("Notifications Unavailable", isPresented: $showUnavailableAlert) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text("Baron Book couldn't check notification access. Please try again.")
+        }
+    }
+
+    @ViewBuilder
+    private var accessMessage: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(authorization == .denied
+                 ? "Notifications are disabled for Baron Book in Settings."
+                 : "Notifications aren't enabled on this device.")
+                .font(Baron.body(11.5))
+                .foregroundStyle(Baron.neutral600)
+            if authorization == .denied {
+                Button("Open Settings") {
+                    guard let url = URL(string: UIApplication.openSettingsURLString) else { return }
+                    UIApplication.shared.open(url)
+                }
+                .font(Baron.body(12, .medium))
+                .foregroundStyle(Baron.accent800)
+            } else {
+                Button("Enable notifications") { requestAccess(keepCurrentValue: true) }
+                    .font(Baron.body(12, .medium))
+                    .foregroundStyle(Baron.accent800)
+                    .disabled(isRequesting)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(11)
+        .background(Baron.inset, in: RoundedRectangle(cornerRadius: 11, style: .continuous))
+    }
+
+    private func toggle() {
+        if isOn {
+            isOn = false
+            attemptedEnable = false
+        } else {
+            attemptedEnable = true
+            requestAccess(keepCurrentValue: false)
+        }
+    }
+
+    private func requestAccess(keepCurrentValue: Bool) {
+        guard !isRequesting else { return }
+        isRequesting = true
+        Task {
+            guard let scheduler else {
+                isRequesting = false
+                if !keepCurrentValue { isOn = false }
+                showUnavailableAlert = true
+                return
+            }
+            let result = await scheduler.requestAuthorizationFromUser()
+            authorization = result
+            isRequesting = false
+            switch result {
+            case .allowed:
+                isOn = true
+                attemptedEnable = false
+                onAuthorizationGranted()
+            case .denied:
+                if !keepCurrentValue { isOn = false }
+            case .notDetermined, .unavailable:
+                if !keepCurrentValue { isOn = false }
+                showUnavailableAlert = true
+            }
+        }
+    }
+
+    private func refreshAuthorization() async {
+        authorization = await scheduler?.currentAuthorizationState() ?? .unavailable
+        if authorization == .allowed {
+            if attemptedEnable {
+                isOn = true
+                attemptedEnable = false
+            }
+            if isOn { onAuthorizationGranted() }
         }
     }
 }

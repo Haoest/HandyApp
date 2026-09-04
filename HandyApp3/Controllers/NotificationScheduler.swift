@@ -1,6 +1,31 @@
 import Foundation
 import UserNotifications
 
+enum NotificationAuthorizationState: Equatable {
+    case notDetermined
+    case allowed
+    case denied
+    case unavailable
+}
+
+/// Narrow seam around UNUserNotificationCenter. Keeping authorization status separate from
+/// UNNotificationSettings makes the permission boundary deterministic in unit tests and, more
+/// importantly, makes it impossible for an ordinary resync to request authorization by accident.
+protocol UserNotificationCenterClient: AnyObject {
+    var delegate: UNUserNotificationCenterDelegate? { get set }
+    func currentAuthorizationStatus() async -> UNAuthorizationStatus
+    func requestAuthorization(options: UNAuthorizationOptions) async throws -> Bool
+    func pendingNotificationRequests() async -> [UNNotificationRequest]
+    func removePendingNotificationRequests(withIdentifiers identifiers: [String])
+    func add(_ request: UNNotificationRequest) async throws
+}
+
+extension UNUserNotificationCenter: UserNotificationCenterClient {
+    func currentAuthorizationStatus() async -> UNAuthorizationStatus {
+        await notificationSettings().authorizationStatus
+    }
+}
+
 // MARK: - Pure planning layer
 
 /// Which section of the asset detail screen a tapped notification should jump to.
@@ -144,7 +169,7 @@ enum NotificationPlanner {
 // MARK: - UNUserNotificationCenter glue
 
 final class NotificationScheduler: NSObject, UNUserNotificationCenterDelegate {
-    private let center = UNUserNotificationCenter.current()
+    private let center: UserNotificationCenterClient
     private var resyncTask: Task<Void, Never>?
 
     /// Called on the main actor with the asset ID and record kind when the user taps
@@ -153,9 +178,40 @@ final class NotificationScheduler: NSObject, UNUserNotificationCenterDelegate {
     /// scheduled before this field existed.
     var onOpenAsset: ((UUID, NotificationRecordKind?) -> Void)?
 
-    override init() {
+    override convenience init() {
+        self.init(center: UNUserNotificationCenter.current())
+    }
+
+    init(center: UserNotificationCenterClient) {
+        self.center = center
         super.init()
         center.delegate = self
+    }
+
+    func currentAuthorizationState() async -> NotificationAuthorizationState {
+        Self.authorizationState(for: await center.currentAuthorizationStatus())
+    }
+
+    /// The only production authorization entry point. Call this directly from an explicit
+    /// user action; background resyncs deliberately never invoke it.
+    func requestAuthorizationFromUser() async -> NotificationAuthorizationState {
+        let current = await currentAuthorizationState()
+        guard current == .notDetermined else { return current }
+        do {
+            _ = try await center.requestAuthorization(options: [.alert, .sound, .badge])
+            return await currentAuthorizationState()
+        } catch {
+            return .unavailable
+        }
+    }
+
+    private static func authorizationState(for status: UNAuthorizationStatus) -> NotificationAuthorizationState {
+        switch status {
+        case .notDetermined: return .notDetermined
+        case .denied: return .denied
+        case .authorized, .provisional, .ephemeral: return .allowed
+        @unknown default: return .unavailable
+        }
     }
 
     /// Fires a local notification a few seconds from now, bypassing all planning/dedup
@@ -163,10 +219,7 @@ final class NotificationScheduler: NSObject, UNUserNotificationCenterDelegate {
     /// (banner, sound, permissions, tap routing) without waiting on a real due date to arrive.
     func fireDebugNotification(title: String, body: String, assetID: UUID, kind: NotificationRecordKind) {
         Task {
-            let settings = await center.notificationSettings()
-            if settings.authorizationStatus == .notDetermined {
-                _ = try? await center.requestAuthorization(options: [.alert, .sound, .badge])
-            }
+            guard await requestAuthorizationFromUser() == .allowed else { return }
             let content = UNMutableNotificationContent()
             content.title = title
             content.body = body
@@ -187,12 +240,14 @@ final class NotificationScheduler: NSObject, UNUserNotificationCenterDelegate {
         resyncTask = Task { await self.apply(plan) }
     }
 
+    /// Lets tests await the coalesced task without exposing the scheduling implementation to
+    /// production callers. If a newer resync replaced the old task, this awaits the latest one.
+    func waitForPendingResync() async {
+        await resyncTask?.value
+    }
+
     private func apply(_ plan: [PlannedNotification]) async {
-        var settings = await center.notificationSettings()
-        if settings.authorizationStatus == .notDetermined, !plan.isEmpty {
-            _ = try? await center.requestAuthorization(options: [.alert, .sound, .badge])
-            settings = await center.notificationSettings()
-        }
+        let authorization = await currentAuthorizationState()
         guard !Task.isCancelled else { return }
 
         // Always clear stale recurrence/due notifications, even when not authorized —
@@ -203,7 +258,7 @@ final class NotificationScheduler: NSObject, UNUserNotificationCenterDelegate {
         }
         center.removePendingNotificationRequests(withIdentifiers: stale)
 
-        guard settings.authorizationStatus == .authorized || settings.authorizationStatus == .provisional else { return }
+        guard authorization == .allowed else { return }
 
         for planned in plan {
             guard !Task.isCancelled else { return }

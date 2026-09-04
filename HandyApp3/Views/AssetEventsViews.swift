@@ -219,24 +219,11 @@ struct EventEditView: View {
     @ViewBuilder
     private var notifyBlock: some View {
         Divider().overlay(Baron.line)
-        Button { deviceNotificationOn.toggle() } label: {
-            HStack(spacing: 10) {
-                Image(systemName: "bell")
-                    .font(.system(size: 14))
-                    .foregroundStyle(deviceNotificationOn ? Baron.accent800 : Baron.neutral600)
-                    .frame(width: 32, height: 32)
-                    .background(deviceNotificationOn ? Baron.accent100 : Baron.inset,
-                                in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-                Text("Notify me on this device")
-                    .font(Baron.body(14, .medium))
-                    .foregroundStyle(Baron.text)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                ToggleTrack(isOn: deviceNotificationOn)
-            }
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        if deviceNotificationOn {
+        DeviceNotificationControl(
+            isOn: $deviceNotificationOn,
+            scheduler: store.notificationScheduler,
+            onAuthorizationGranted: { store.requestDerivedResync() }
+        ) {
             RecordDaySlider(label: "Alert lead time", value: $deviceNotificationDaysBefore, zeroLabel: "same day")
             #if DEBUG
             Button("Send a test notification now") {
