@@ -1,6 +1,6 @@
 # Privacy Policy for Baron Book
 
-**Effective date:** July 8, 2026
+**Effective date:** September 4, 2026
 
 Baron Book ("the app") is developed by Hao ("we," "us," "our"). This policy explains what information the app accesses, how it is used, and who it is shared with.
 
@@ -21,7 +21,9 @@ Baron Book lets you link a person from your device's Contacts to an asset you're
 Baron Book uses your device's camera to let you attach photos to your assets (e.g., a photo of an appliance or receipt).
 
 - Photos you capture are saved as image files in the app's local storage / iCloud container.
-- Photos are not uploaded to our servers or any third party, and are not scanned, analyzed, or used for any purpose other than displaying them back to you inside the app.
+- Baron Book does not upload your photos or recognized text to servers operated by us or by a third party.
+- Receipt scanning is optional and starts only when you tap the receipt-scanning action for a photo. Apple Vision then analyzes that photo and recognizes text entirely on your device.
+- Recognized text is held temporarily while you choose what to use. It becomes part of your stored app data only if you save selected information into a transaction.
 
 ### Data you enter directly
 Any text, numbers, categories, or other details you type into the app (asset names, property values, notes, etc.) are stored the same way as photos: locally on your device and, if enabled, in your personal iCloud account.
