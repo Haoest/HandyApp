@@ -2,6 +2,39 @@ import Contacts
 
 // MARK: - ContactResolver
 
+enum ContactAuthorizationState: Equatable {
+    case notDetermined
+    case allowed
+    case denied
+    case restricted
+    case unavailable
+}
+
+/// Pure policy for the Message Everyone screen. Keeping this separate from SwiftUI and
+/// Contacts makes the no-surprise permission boundary straightforward to unit-test.
+enum BulkContactAccessDecision: Equatable {
+    case noLinkedContacts
+    case requestPermission
+    case loadContacts
+    case denied
+    case restricted
+    case unavailable
+
+    static func resolve(
+        hasLinkedContacts: Bool,
+        authorization: ContactAuthorizationState
+    ) -> BulkContactAccessDecision {
+        guard hasLinkedContacts else { return .noLinkedContacts }
+        switch authorization {
+        case .notDetermined: return .requestPermission
+        case .allowed: return .loadContacts
+        case .denied: return .denied
+        case .restricted: return .restricted
+        case .unavailable: return .unavailable
+        }
+    }
+}
+
 /// Resolves a CNContact.identifier (stored in a `.contact` StoredValue)
 /// back to a live CNContact object.
 ///
@@ -43,15 +76,28 @@ final class ContactResolver {
         CNContactStore.authorizationStatus(for: .contacts)
     }
 
+    var authorizationState: ContactAuthorizationState {
+        switch authorizationStatus {
+        case .notDetermined:
+            return .notDetermined
+        case .authorized:
+            return .allowed
+        case .denied:
+            return .denied
+        case .restricted:
+            return .restricted
+        #if os(iOS)
+        case .limited:
+            return .allowed
+        #endif
+        @unknown default:
+            return .unavailable
+        }
+    }
+
     /// Limited access is sufficient: the app only needs to resolve contacts the user chose.
     private var hasAccess: Bool {
-        #if os(iOS)
-        authorizationStatus == .authorized || authorizationStatus == .limited
-        #else
-        // CNAuthorizationStatus.limited is unavailable on macOS. The app itself is iOS-only,
-        // but the Foundation logic target is compiled on macOS by the SwiftPM test harness.
-        authorizationStatus == .authorized
-        #endif
+        authorizationState == .allowed
     }
 
     // MARK: - Fetch

@@ -1,4 +1,3 @@
-import CoreSpotlight
 import SwiftUI
 
 @main
@@ -32,21 +31,12 @@ struct HandyApp3App: App {
                         }
                     }
                     store.startCloudMonitor()
-                    store.requestDerivedResync()
+                    store.requestNotificationResync()
+                    await LegacySpotlightCleanup.shared.runIfNeeded()
                     purchases.start()
                     store.assetCreationLimit = purchases.isFullVersion ? nil : PurchaseManager.freeAssetLimit
                     store.recordCreationLimit = purchases.isFullVersion ? nil : PurchaseManager.freeRecordLimit
                     HandyAppShortcuts.updateAppShortcutParameters()
-                }
-                // Tapping a thing in Spotlight. The identifier is the asset's UUID string
-                // (see SpotlightIndexer), and pendingAssetID is the same deep-link path the
-                // notification tap and OpenAssetIntent use — a stale id degrades to the
-                // "Thing not found" view rather than doing nothing.
-                .onContinueUserActivity(CSSearchableItemActionType) { activity in
-                    guard let raw = activity.userInfo?[CSSearchableItemActivityIdentifier] as? String,
-                          let id = UUID(uuidString: raw) else { return }
-                    router.selectedTab = .assets
-                    router.pendingAssetID = id
                 }
         }
         .onChange(of: scenePhase) { _, phase in
@@ -56,7 +46,7 @@ struct HandyApp3App: App {
             if phase == .background { HandyAppShortcuts.updateAppShortcutParameters() }
             if phase == .active {
                 store.purgeHardDeleted(olderThan: TimeInterval(AppPreference.DaysToRetainDeletedItems) * 86_400)
-                store.requestDerivedResync()
+                store.requestNotificationResync()
                 DispatchQueue.global(qos: .background).async { store.save() }
             }
         }
@@ -65,10 +55,9 @@ struct HandyApp3App: App {
             store.recordCreationLimit = unlocked ? nil : PurchaseManager.freeRecordLimit
         }
         .onChange(of: languageCode) { _, _ in
-            // Notification bodies and the Spotlight home-screen shortcut title are resolved and
-            // baked in at schedule time, not read fresh at delivery — a language switch alone
-            // never touches them, so both need an explicit refresh here.
-            store.requestDerivedResync()
+            // Notification bodies and the home-screen shortcut title are resolved and baked in
+            // at schedule time, not read fresh at delivery, so a language switch refreshes both.
+            store.requestNotificationResync()
             HandyAppShortcuts.updateAppShortcutParameters()
         }
     }

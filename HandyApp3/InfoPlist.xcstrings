@@ -32,31 +32,31 @@
       }
     },
     "NSContactsUsageDescription" : {
-      "comment" : "Contacts permission prompt. Shown once, the first time the user links a contact to a thing.",
+      "comment" : "Contacts permission prompt. Shown after an explicit action when the user links a contact or prepares messages for linked contacts.",
       "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Baron Book uses Contacts to link people to your things."
+            "value" : "Baron Book uses Contacts to link people to your things and prepare messages you choose to send."
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Baron Book usa Contactos para vincular personas con tus artículos."
+            "value" : "Baron Book usa Contactos para vincular personas con tus artículos y preparar los mensajes que elijas enviar."
           }
         },
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Baron Book utilise Contacts pour associer des personnes à vos biens."
+            "value" : "Baron Book utilise Contacts pour associer des personnes à vos biens et préparer les messages que vous choisissez d’envoyer."
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Baron Book 使用通讯录将联系人与您的物品关联。"
+            "value" : "Baron Book 使用通讯录将联系人与您的物品关联，并准备由您选择发送的消息。"
           }
         }
       }

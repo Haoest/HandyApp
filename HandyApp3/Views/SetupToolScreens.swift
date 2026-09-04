@@ -26,10 +26,11 @@ private struct ContactRow: Identifiable {
 /// appear, the second as a card that says why it can't be messaged.
 struct BulkCommunicationView: View {
     @Environment(AssetStore.self) private var store
+    @Environment(\.scenePhase) private var scenePhase
 
     @State private var rows: [ContactRow] = []
     @State private var isLoading = true
-    @State private var contactsAccessDenied = false
+    @State private var accessDecision: BulkContactAccessDecision?
     @State private var messageText = ""
     @State private var selectedMethods: [UUID: ContactMethod] = [:]
     @State private var sendQueue: OutboundMessageQueue?
@@ -65,7 +66,11 @@ struct BulkCommunicationView: View {
                 .padding(.top, 18)
             }
         }
-        .task { await loadContacts() }
+        .task { await prepareContacts() }
+        .onChange(of: scenePhase) { _, phase in
+            guard phase == .active, !isLoading else { return }
+            Task { await prepareContacts() }
+        }
         .alert("Couldn't prepare message", isPresented: Binding(
             get: { preparationError != nil },
             set: { if !$0 { preparationError = nil } }
@@ -91,7 +96,24 @@ struct BulkCommunicationView: View {
             ProgressView()
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 40)
-        } else if contactsAccessDenied {
+        } else if accessDecision == .requestPermission {
+            VStack(spacing: 14) {
+                Text("To prepare messages, Baron Book needs access to the phone numbers and email addresses of contacts already linked to your things. Baron Book never sends messages automatically.")
+                    .font(Baron.body(13))
+                    .foregroundStyle(Baron.neutral600)
+                    .multilineTextAlignment(.center)
+                Button("Continue to Contacts") {
+                    Task { await requestContactsAccess() }
+                }
+                .accessibilityIdentifier("continueToContactsButton")
+                .font(Baron.body(13, .medium))
+                .foregroundStyle(Baron.accent800)
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 36)
+            .padding(.horizontal, 20)
+            .baronCard(radius: 16, elevation: .low)
+        } else if accessDecision == .denied {
             VStack(spacing: 14) {
                 Text("Contacts access is needed to find phone numbers and email addresses.")
                     .font(Baron.body(13))
@@ -108,7 +130,17 @@ struct BulkCommunicationView: View {
             .padding(.vertical, 36)
             .padding(.horizontal, 20)
             .baronCard(radius: 16, elevation: .low)
-        } else if rows.isEmpty {
+        } else if accessDecision == .restricted {
+            accessStatusCard(
+                message: "Contacts access is restricted on this device.",
+                retry: false
+            )
+        } else if accessDecision == .unavailable {
+            accessStatusCard(
+                message: "Baron Book couldn't check Contacts access. Please try again.",
+                retry: true
+            )
+        } else if accessDecision == .noLinkedContacts {
             Text("No contacts yet. Give a thing a contact field — an owner, a plumber, a landlord — and they'll show up here.")
                 .font(Baron.body(13))
                 .foregroundStyle(Baron.neutral600)
@@ -137,6 +169,26 @@ struct BulkCommunicationView: View {
                 }
             }
         }
+    }
+
+    private func accessStatusCard(message: LocalizedStringKey, retry: Bool) -> some View {
+        VStack(spacing: 14) {
+            Text(message)
+                .font(Baron.body(13))
+                .foregroundStyle(Baron.neutral600)
+                .multilineTextAlignment(.center)
+            if retry {
+                Button("Try again") {
+                    Task { await prepareContacts() }
+                }
+                .font(Baron.body(13, .medium))
+                .foregroundStyle(Baron.accent800)
+            }
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 36)
+        .padding(.horizontal, 20)
+        .baronCard(radius: 16, elevation: .low)
     }
 
     private func contactCard(_ row: ContactRow) -> some View {
@@ -284,13 +336,53 @@ struct BulkCommunicationView: View {
         .baronCard(radius: 15, elevation: .low)
     }
 
-    private func loadContacts() async {
-        let granted = (try? await ContactResolver.shared.requestAccess()) ?? false
-        guard granted else {
-            contactsAccessDenied = true
+    private var hasLinkedContacts: Bool {
+        store.allAssets.contains { asset in
+            (asset.liveBaseProperties + asset.liveCustomProperties).contains { property in
+                guard case .basic(.contact) = property.definition.type,
+                      case .contact(let identifier) = property.value else { return false }
+                return !identifier.isEmpty
+            }
+        }
+    }
+
+    private func prepareContacts() async {
+        let decision = BulkContactAccessDecision.resolve(
+            hasLinkedContacts: hasLinkedContacts,
+            authorization: ContactResolver.shared.authorizationState
+        )
+        accessDecision = decision
+        guard decision == .loadContacts else {
+            rows = []
             isLoading = false
             return
         }
+        await loadContacts()
+    }
+
+    private func requestContactsAccess() async {
+        isLoading = true
+        do {
+            let granted = try await ContactResolver.shared.requestAccess()
+            guard granted else {
+                accessDecision = BulkContactAccessDecision.resolve(
+                    hasLinkedContacts: hasLinkedContacts,
+                    authorization: ContactResolver.shared.authorizationState
+                )
+                rows = []
+                isLoading = false
+                return
+            }
+            await loadContacts()
+        } catch {
+            accessDecision = .unavailable
+            rows = []
+            isLoading = false
+        }
+    }
+
+    private func loadContacts() async {
+        isLoading = true
 
         var built: [ContactRow] = []
         // Every live thing, not just the roots — a contact on something filed inside another
@@ -312,6 +404,7 @@ struct BulkCommunicationView: View {
             }
         }
         rows = built
+        accessDecision = .loadContacts
         isLoading = false
     }
 

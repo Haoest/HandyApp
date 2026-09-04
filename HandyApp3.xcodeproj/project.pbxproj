@@ -34,9 +34,23 @@
 		3F454E5E3004924400CF6C20 /* StoreKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = StoreKit.framework; path = System/Library/Frameworks/StoreKit.framework; sourceTree = SDKROOT; };
 /* End PBXFileReference section */
 
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		3F5A00013002000000000001 /* Exceptions for "HandyApp3" folder in "HandyApp3" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Products.storekit,
+				todo.md,
+			);
+			target = 3F26E1D12FA680BC00D97241 /* HandyApp3 */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
+
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		3F26E1D42FA680BC00D97241 /* HandyApp3 */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				3F5A00013002000000000001 /* Exceptions for "HandyApp3" folder in "HandyApp3" target */,
+			);
 			path = HandyApp3;
 			sourceTree = "<group>";
 		};
@@ -422,7 +436,7 @@
 				INFOPLIST_KEY_CFBundleDisplayName = "Baron Book";
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
 				INFOPLIST_KEY_NSCameraUsageDescription = "Baron Book uses the camera to attach photos to your things.";
-				INFOPLIST_KEY_NSContactsUsageDescription = "Baron Book uses Contacts to link people to your things.";
+				INFOPLIST_KEY_NSContactsUsageDescription = "Baron Book uses Contacts to link people to your things and prepare messages you choose to send.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -457,7 +471,7 @@
 				INFOPLIST_KEY_CFBundleDisplayName = "Baron Book";
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
 				INFOPLIST_KEY_NSCameraUsageDescription = "Baron Book uses the camera to attach photos to your things.";
-				INFOPLIST_KEY_NSContactsUsageDescription = "Baron Book uses Contacts to link people to your things.";
+				INFOPLIST_KEY_NSContactsUsageDescription = "Baron Book uses Contacts to link people to your things and prepare messages you choose to send.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;

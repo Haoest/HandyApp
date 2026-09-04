@@ -40,8 +40,8 @@ final class HandyApp3UITests: XCTestCase {
     func testCreateApplianceWithTransactionAndEvent() throws {
         let app = XCUIApplication()
 
-        // Contacts/notifications permission dialogs can appear the first time the app
-        // runs on a device; auto-dismiss them so they don't block the flow below.
+        // Notification permission dialogs can appear the first time the app runs on a device;
+        // auto-dismiss them so they don't block the flow below.
         addUIInterruptionMonitor(withDescription: "System Alert") { alert in
             for label in ["Allow", "Allow While Using App", "OK"] {
                 let button = alert.buttons[label]

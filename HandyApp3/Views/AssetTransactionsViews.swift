@@ -295,7 +295,7 @@ struct TransactionEditView: View {
         DeviceNotificationControl(
             isOn: $deviceNotificationOn,
             scheduler: store.notificationScheduler,
-            onAuthorizationGranted: { store.requestDerivedResync() }
+            onAuthorizationGranted: { store.requestNotificationResync() }
         ) {
             RecordDaySlider(label: "Alert lead time", value: $deviceNotificationDaysBefore, zeroLabel: "same day")
             #if DEBUG

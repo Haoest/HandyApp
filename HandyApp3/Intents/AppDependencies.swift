@@ -54,7 +54,6 @@ final class AppDependencies {
             }
         }
         s.notificationScheduler = NotificationScheduler()
-        s.spotlightIndexer = SpotlightIndexer()
         return s
     }
 }

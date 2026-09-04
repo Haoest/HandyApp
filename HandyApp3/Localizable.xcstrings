@@ -1,6 +1,167 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
+    "Baron Book couldn't check Contacts access. Please try again." : {
+      "comment" : "Message Everyone permission card. Contact authorization could not be checked.",
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Baron Book no pudo comprobar el acceso a Contactos. Inténtalo de nuevo."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Baron Book n’a pas pu vérifier l’accès à Contacts. Réessayez."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Baron Book 无法检查通讯录访问权限。请重试。"
+          }
+        }
+      }
+    },
+    "Contacts access is needed to find phone numbers and email addresses." : {
+      "comment" : "Message Everyone permission card. Contacts access was denied.",
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Se necesita acceso a Contactos para encontrar números de teléfono y direcciones de correo electrónico."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "L’accès à Contacts est nécessaire pour trouver les numéros de téléphone et les adresses e-mail."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "需要通讯录访问权限才能查找电话号码和电子邮件地址。"
+          }
+        }
+      }
+    },
+    "Contacts access is restricted on this device." : {
+      "comment" : "Message Everyone permission card. Device restrictions prevent Contacts access.",
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "El acceso a Contactos está restringido en este dispositivo."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "L’accès à Contacts est restreint sur cet appareil."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此设备上的通讯录访问权限受到限制。"
+          }
+        }
+      }
+    },
+    "Continue to Contacts" : {
+      "comment" : "Message Everyone pre-permission button. The system Contacts prompt follows this action.",
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Continuar a Contactos"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Continuer vers Contacts"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "继续前往通讯录"
+          }
+        }
+      }
+    },
+    "Open Settings" : {
+      "comment" : "Permission recovery button that opens the app's system Settings page.",
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Abrir Ajustes"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ouvrir Réglages"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "打开“设置”"
+          }
+        }
+      }
+    },
+    "To prepare messages, Baron Book needs access to the phone numbers and email addresses of contacts already linked to your things. Baron Book never sends messages automatically." : {
+      "comment" : "Message Everyone pre-permission explanation shown before the system Contacts prompt.",
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Para preparar mensajes, Baron Book necesita acceder a los números de teléfono y las direcciones de correo electrónico de los contactos ya vinculados a tus artículos. Baron Book nunca envía mensajes automáticamente."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pour préparer des messages, Baron Book doit accéder aux numéros de téléphone et aux adresses e-mail des contacts déjà associés à vos biens. Baron Book n’envoie jamais de messages automatiquement."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "为了准备消息，Baron Book 需要访问已关联到您物品的联系人的电话号码和电子邮件地址。Baron Book 绝不会自动发送消息。"
+          }
+        }
+      }
+    },
+    "Try again" : {
+      "comment" : "Retry button after a temporary permission-status error.",
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Intentar de nuevo"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Réessayer"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "重试"
+          }
+        }
+      }
+    },
     "(not found)" : {
       "comment" : "A placeholder text displayed when a contact's name cannot be resolved.",
       "isCommentAutoGenerated" : true,
