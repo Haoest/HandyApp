@@ -14,20 +14,6 @@ private struct ContactRow: Identifiable {
     let availableMethods: [ContactMethod]
 }
 
-private enum ContactMethod: String, CaseIterable, Identifiable {
-    case sms, email, whatsapp
-
-    var id: String { rawValue }
-
-    var label: String {
-        switch self {
-        case .sms: return "SMS"
-        case .email: return "Email"
-        case .whatsapp: return "WhatsApp"
-        }
-    }
-}
-
 /// Writes one message and sends it to the contacts attached to your things — the plumber on the
 /// boiler, the mechanic on the car.
 ///
@@ -46,6 +32,10 @@ struct BulkCommunicationView: View {
     @State private var contactsAccessDenied = false
     @State private var messageText = ""
     @State private var selectedMethods: [UUID: ContactMethod] = [:]
+    @State private var sendQueue: OutboundMessageQueue?
+    @State private var openFailed = false
+    @State private var isOpeningMessage = false
+    @State private var preparationError: String?
 
     private var recipientCount: Int {
         selectedMethods.values.count
@@ -65,10 +55,25 @@ struct BulkCommunicationView: View {
             messageCard.padding(.top, 18)
             content.padding(.top, 20)
             if !rows.isEmpty {
-                sendButton.padding(.top, 18)
+                Group {
+                    if let sendQueue {
+                        queueCard(sendQueue)
+                    } else {
+                        sendButton
+                    }
+                }
+                .padding(.top, 18)
             }
         }
         .task { await loadContacts() }
+        .alert("Couldn't prepare message", isPresented: Binding(
+            get: { preparationError != nil },
+            set: { if !$0 { preparationError = nil } }
+        )) {
+            Button("OK", role: .cancel) { preparationError = nil }
+        } message: {
+            Text(preparationError ?? "")
+        }
     }
 
     private var messageCard: some View {
@@ -182,7 +187,7 @@ struct BulkCommunicationView: View {
 
     private var sendButton: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Button { sendAll() } label: {
+            Button { beginSending() } label: {
                 Text(recipientCount == 0 ? "Send" : "Send to ^[\(recipientCount) contact](inflect: true)")
                     .font(Baron.heading(12))
                     .tracking(0.9)
@@ -195,14 +200,88 @@ struct BulkCommunicationView: View {
             }
             .buttonStyle(.plain)
             .disabled(!canSend)
-            // Worth saying plainly: iOS hands each URL to another app, and only the first one
-            // gets to open. This has always been the behaviour — the old screen just didn't
-            // mention it.
             Text("Your phone opens one message at a time. Come back here after sending each one.")
                 .font(Baron.body(11.5))
                 .foregroundStyle(Baron.neutral500)
                 .fixedSize(horizontal: false, vertical: true)
         }
+    }
+
+    private func queueCard(_ queue: OutboundMessageQueue) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            if let current = queue.current {
+                Text("MESSAGE \(queue.currentIndex + 1) OF \(queue.messages.count)")
+                    .font(Baron.body(10.5, .medium))
+                    .tracking(0.9)
+                    .foregroundStyle(Baron.neutral500)
+                Text(current.recipientName)
+                    .font(Baron.body(16, .medium))
+                    .foregroundStyle(Baron.text)
+                Text(current.method.label)
+                    .font(Baron.body(12))
+                    .foregroundStyle(Baron.neutral600)
+
+                if openFailed {
+                    Text("That message app couldn't be opened. You can retry or skip this recipient.")
+                        .font(Baron.body(11.5))
+                        .foregroundStyle(Baron.danger)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
+                HStack(spacing: 8) {
+                    Button {
+                        openCurrentMessage()
+                    } label: {
+                        if isOpeningMessage {
+                            ProgressView().tint(.white)
+                        } else {
+                            Text(openFailed ? "Retry" : (queue.currentIndex == 0 ? "Open message" : "Open next"))
+                        }
+                    }
+                    .font(Baron.body(12, .medium))
+                    .foregroundStyle(.white)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 10)
+                    .background(Baron.fill, in: RoundedRectangle(cornerRadius: 11, style: .continuous))
+                    .disabled(isOpeningMessage)
+                    if openFailed {
+                        Button("Skip") { advanceQueue() }
+                            .font(Baron.body(12, .medium))
+                            .foregroundStyle(Baron.neutral700)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 10)
+                            .background(Baron.surface, in: RoundedRectangle(cornerRadius: 11, style: .continuous))
+                            .overlay(RoundedRectangle(cornerRadius: 11, style: .continuous)
+                                .strokeBorder(Baron.neutral300, lineWidth: 1))
+                    }
+                }
+                Button("Cancel remaining messages") {
+                    sendQueue = nil
+                    openFailed = false
+                    isOpeningMessage = false
+                }
+                .font(Baron.body(11.5, .medium))
+                .foregroundStyle(Baron.neutral600)
+            } else {
+                Text("All messages opened")
+                    .font(Baron.body(16, .medium))
+                    .foregroundStyle(Baron.text)
+                Text("Each message was handed to its app for your review. Baron Book never sends on your behalf.")
+                    .font(Baron.body(11.5))
+                    .foregroundStyle(Baron.neutral600)
+                    .fixedSize(horizontal: false, vertical: true)
+                Button("Done") {
+                    sendQueue = nil
+                    openFailed = false
+                    isOpeningMessage = false
+                }
+                .font(Baron.body(12, .medium))
+                .foregroundStyle(Baron.accent800)
+            }
+        }
+        .padding(14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .baronCard(radius: 15, elevation: .low)
     }
 
     private func loadContacts() async {
@@ -247,27 +326,55 @@ struct BulkCommunicationView: View {
         return methods
     }
 
-    private func sendAll() {
-        let encoded = messageText.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
+    private func beginSending() {
+        var messages: [OutboundMessage] = []
         for row in rows {
             guard let method = selectedMethods[row.id], let contact = row.contact else { continue }
-            let urlString: String
+            let destination: String
             switch method {
-            case .sms:
-                let phone = contact.phoneNumbers.first?.value.stringValue ?? ""
-                let clean = phone.filter { $0.isNumber || $0 == "+" }
-                urlString = "sms:\(clean)?&body=\(encoded)"
+            case .sms, .whatsapp:
+                destination = contact.phoneNumbers.first?.value.stringValue ?? ""
             case .email:
-                let email = contact.emailAddresses.first.map { $0.value as String } ?? ""
-                urlString = "mailto:\(email)?body=\(encoded)"
-            case .whatsapp:
-                let phone = contact.phoneNumbers.first?.value.stringValue ?? ""
-                let clean = phone.filter { $0.isNumber || $0 == "+" }
-                urlString = "whatsapp://send?phone=\(clean)&text=\(encoded)"
+                destination = contact.emailAddresses.first.map { $0.value as String } ?? ""
             }
-            guard let url = URL(string: urlString) else { continue }
-            UIApplication.shared.open(url)
+            do {
+                let url = try CommunicationURLBuilder.makeURL(
+                    method: method, destination: destination, message: messageText
+                )
+                let name = ContactResolver.shared.displayName(for: row.identifier)
+                    ?? String(localized: "(not in your contacts)", bundle: .appPreferred, locale: .appPreferred)
+                messages.append(OutboundMessage(id: row.id, recipientName: name, method: method, url: url))
+            } catch {
+                preparationError = String(localized: "One selected contact doesn't have a valid destination for \(method.label). Change that selection and try again.", bundle: .appPreferred, locale: .appPreferred)
+                return
+            }
         }
+        guard !messages.isEmpty else { return }
+        openFailed = false
+        isOpeningMessage = false
+        sendQueue = OutboundMessageQueue(messages: messages)
+    }
+
+    private func openCurrentMessage() {
+        guard !isOpeningMessage, let current = sendQueue?.current else { return }
+        openFailed = false
+        isOpeningMessage = true
+        UIApplication.shared.open(current.url, options: [:]) { accepted in
+            DispatchQueue.main.async {
+                isOpeningMessage = false
+                if accepted {
+                    advanceQueue()
+                } else {
+                    openFailed = true
+                }
+            }
+        }
+    }
+
+    private func advanceQueue() {
+        _ = sendQueue?.advance()
+        openFailed = false
+        isOpeningMessage = false
     }
 }
 
