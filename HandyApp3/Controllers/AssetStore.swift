@@ -1083,10 +1083,10 @@ final class AssetStore {
     // MARK: - Attachments
 
     @discardableResult
-    func addPhoto(imageData: Data, thumbnailData: Data, caption: String = "", toAssetID assetID: UUID) throws -> Photo {
+    func addPhoto(id: UUID = UUID(), imageData: Data, thumbnailData: Data, caption: String = "", toAssetID assetID: UUID) throws -> Photo {
         guard let asset = assets[assetID] else { throw AssetStoreError.assetNotFound(assetID) }
-        let photo = Photo(imageData: imageData, thumbnailData: thumbnailData, caption: TextLimits.clamp(caption, to: TextLimits.photoCaption))
-        PhotoStorage.save(id: photo.id, imageData: imageData, thumbnailData: thumbnailData)
+        let photo = Photo(id: id, imageData: imageData, thumbnailData: thumbnailData, caption: TextLimits.clamp(caption, to: TextLimits.photoCaption))
+        try PhotoStorage.save(id: photo.id, imageData: imageData, thumbnailData: thumbnailData)
         asset.photos.append(photo)
         asset.modifiedDate = Date()
         logCreation(of: photo.id, kind: .photo, owningAssetID: assetID)

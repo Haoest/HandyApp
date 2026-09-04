@@ -5,22 +5,64 @@ final class AttachmentStoreTests: XCTestCase {
 
     var store: AssetStore!
     var assetID: UUID!
+    private var tempDirectory: URL!
 
     override func setUp() {
         super.setUp()
+        tempDirectory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        AssetStore.baseDirOverride = tempDirectory
         store = AssetStore()
         let cat = try! store.createCategory(name: "Test")
         let asset = try! store.createAsset(name: "TestAsset", categoryID: cat.id)
         assetID = asset.id
     }
 
+    override func tearDown() {
+        store = nil
+        assetID = nil
+        AssetStore.baseDirOverride = nil
+        try? FileManager.default.removeItem(at: tempDirectory)
+        tempDirectory = nil
+        super.tearDown()
+    }
+
     // MARK: - Photo
 
     func testAddPhotoAppendsAndReturns() throws {
-        let photo = try store.addPhoto(imageData: Data([1, 2, 3]), thumbnailData: Data([4, 5]), toAssetID: assetID)
+        let fullData = Data([1, 2, 3])
+        let thumbData = Data([4, 5])
+        let photo = try store.addPhoto(imageData: fullData, thumbnailData: thumbData, toAssetID: assetID)
         let asset = store.assets[assetID]!
         XCTAssertEqual(asset.photos.count, 1)
         XCTAssertEqual(asset.photos.first?.id, photo.id)
+        XCTAssertEqual(PhotoStorage.loadFull(id: photo.id), fullData)
+        XCTAssertEqual(PhotoStorage.loadThumb(id: photo.id), thumbData)
+    }
+
+    func testAddPhotoRollsBackFilesAndStoreChangesWhenThumbnailCommitFails() throws {
+        let photoID = UUID()
+        let blockedThumbnailURL = PhotoStorage.thumbURL(id: photoID)
+        try FileManager.default.createDirectory(at: blockedThumbnailURL, withIntermediateDirectories: true)
+
+        let asset = try XCTUnwrap(store.assets[assetID])
+        let originalModifiedDate = asset.modifiedDate
+        let originalPhotoIDs = asset.photos.map(\.id)
+        let originalActivityIDs = store.activityLog.map(\.id)
+
+        XCTAssertThrowsError(try store.addPhoto(
+            id: photoID,
+            imageData: Data("full".utf8),
+            thumbnailData: Data("thumb".utf8),
+            toAssetID: assetID
+        ))
+
+        XCTAssertFalse(FileManager.default.fileExists(atPath: PhotoStorage.fullURL(id: photoID).path))
+        var isDirectory: ObjCBool = false
+        XCTAssertTrue(FileManager.default.fileExists(atPath: blockedThumbnailURL.path, isDirectory: &isDirectory))
+        XCTAssertTrue(isDirectory.boolValue, "rollback must not remove a destination that predated this operation")
+        XCTAssertEqual(asset.photos.map(\.id), originalPhotoIDs)
+        XCTAssertEqual(asset.modifiedDate, originalModifiedDate)
+        XCTAssertEqual(store.activityLog.map(\.id), originalActivityIDs)
     }
 
     func testAddPhotoBumpsModifiedDate() throws {

@@ -8,6 +8,17 @@ private let persistenceLogger = Logger(
 // MARK: - Photo file storage
 
 enum PhotoStorage {
+    enum StorageError: LocalizedError {
+        case incompleteWrite
+
+        var errorDescription: String? {
+            switch self {
+            case .incompleteWrite:
+                return "The full image and thumbnail could not both be saved."
+            }
+        }
+    }
+
     /// `root` defaults to the real store directory; Tier 2 multi-device tests pass a private
     /// per-device temp directory instead. Every call site keeps compiling unchanged.
     static func fullURL(id: UUID, root: URL = AssetStore.baseDir) -> URL {
@@ -17,9 +28,45 @@ enum PhotoStorage {
         root.appendingPathComponent("Photos/\(id)_thumb.jpg")
     }
 
-    static func save(id: UUID, imageData: Data, thumbnailData: Data, root: URL = AssetStore.baseDir) {
-        try? imageData.write(to: fullURL(id: id, root: root), options: .atomic)
-        try? thumbnailData.write(to: thumbURL(id: id, root: root), options: .atomic)
+    /// Commits a full image and thumbnail as one logical operation. Both payloads are first
+    /// staged beside their final destinations so a failure cannot leave metadata pointing at
+    /// only half of a photo. Any final file created by this invocation is rolled back on error.
+    static func save(id: UUID, imageData: Data, thumbnailData: Data, root: URL = AssetStore.baseDir) throws {
+        let fileManager = FileManager.default
+        let finalFullURL = fullURL(id: id, root: root)
+        let finalThumbURL = thumbURL(id: id, root: root)
+        let photosDirectory = finalFullURL.deletingLastPathComponent()
+        try fileManager.createDirectory(at: photosDirectory, withIntermediateDirectories: true)
+
+        let stagingID = UUID().uuidString
+        let stagedFullURL = photosDirectory.appendingPathComponent(".\(id).\(stagingID)_full.tmp")
+        let stagedThumbURL = photosDirectory.appendingPathComponent(".\(id).\(stagingID)_thumb.tmp")
+        var committedURLs: [URL] = []
+
+        defer {
+            try? fileManager.removeItem(at: stagedFullURL)
+            try? fileManager.removeItem(at: stagedThumbURL)
+        }
+
+        do {
+            try imageData.write(to: stagedFullURL, options: .atomic)
+            try thumbnailData.write(to: stagedThumbURL, options: .atomic)
+
+            try fileManager.moveItem(at: stagedFullURL, to: finalFullURL)
+            committedURLs.append(finalFullURL)
+            try fileManager.moveItem(at: stagedThumbURL, to: finalThumbURL)
+            committedURLs.append(finalThumbURL)
+
+            guard fileManager.fileExists(atPath: finalFullURL.path),
+                  fileManager.fileExists(atPath: finalThumbURL.path) else {
+                throw StorageError.incompleteWrite
+            }
+        } catch {
+            for url in committedURLs.reversed() {
+                try? fileManager.removeItem(at: url)
+            }
+            throw error
+        }
     }
 
     private static func read(_ url: URL) -> Data? {

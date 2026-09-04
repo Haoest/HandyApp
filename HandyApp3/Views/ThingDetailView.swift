@@ -909,6 +909,7 @@ private struct ThingRenameSheet: View {
 /// the screen root — see the note on the `@State` declarations.
 private struct ThingDetailSheets: ViewModifier {
     @Environment(AssetStore.self) private var store
+    @State private var photoSaveErrorMessage: String?
 
     let asset: Asset
     @Binding var addPropertyPresented: Bool
@@ -947,21 +948,35 @@ private struct ThingDetailSheets: ViewModifier {
             .onChange(of: photoLibraryItem) { _, item in
                 guard let item else { return }
                 Task {
+                    defer { photoLibraryItem = nil }
                     guard let data = try? await item.loadTransferable(type: Data.self),
                           let uiImage = UIImage(data: data),
                           let imageData = ImageScaling.imageData(from: uiImage),
-                          let thumbData = ImageScaling.thumbnailData(from: uiImage) else { return }
-                    try? store.addPhoto(imageData: imageData, thumbnailData: thumbData, toAssetID: asset.id)
-                    photoLibraryItem = nil
+                          let thumbData = ImageScaling.thumbnailData(from: uiImage) else {
+                        photoSaveErrorMessage = String(localized: "That image couldn't be prepared. Please choose another image.", bundle: .appPreferred, locale: .appPreferred)
+                        return
+                    }
+                    savePhoto(imageData: imageData, thumbnailData: thumbData)
                 }
             }
             .background(
                 CameraPicker(isPresented: $cameraPresented) { uiImage in
                     guard let imageData = ImageScaling.imageData(from: uiImage),
-                          let thumbData = ImageScaling.thumbnailData(from: uiImage) else { return }
-                    try? store.addPhoto(imageData: imageData, thumbnailData: thumbData, toAssetID: asset.id)
+                          let thumbData = ImageScaling.thumbnailData(from: uiImage) else {
+                        photoSaveErrorMessage = String(localized: "That image couldn't be prepared. Please try taking the photo again.", bundle: .appPreferred, locale: .appPreferred)
+                        return
+                    }
+                    savePhoto(imageData: imageData, thumbnailData: thumbData)
                 }
             )
+            .alert("Couldn't Save Photo", isPresented: Binding(
+                get: { photoSaveErrorMessage != nil },
+                set: { if !$0 { photoSaveErrorMessage = nil } }
+            )) {
+                Button("OK", role: .cancel) { photoSaveErrorMessage = nil }
+            } message: {
+                Text(photoSaveErrorMessage ?? "")
+            }
             .sheet(isPresented: $renamePresented) { ThingRenameSheet(asset: asset) }
             .sheet(isPresented: $addEventPresented) {
                 EventEditView(assetName: asset.name, assetID: asset.id) { title, date, notes, recurrence, due in
@@ -1066,5 +1081,13 @@ private struct ThingDetailSheets: ViewModifier {
                     Text("^[\(childCount) thing](inflect: true) inside will be deleted too.")
                 }
             }
+    }
+
+    private func savePhoto(imageData: Data, thumbnailData: Data) {
+        do {
+            try store.addPhoto(imageData: imageData, thumbnailData: thumbnailData, toAssetID: asset.id)
+        } catch {
+            photoSaveErrorMessage = String(localized: "Baron Book couldn't save both photo files. Check available storage and try again.", bundle: .appPreferred, locale: .appPreferred)
+        }
     }
 }

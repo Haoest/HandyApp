@@ -111,9 +111,9 @@ final class PhotoImportExportTests: XCTestCase {
     func testImportPreservesUnreferencedLocalPhotoFiles() throws {
         // Write a local-only photo file that the incoming snapshot doesn't reference.
         let localOnlyID = UUID()
-        PhotoStorage.save(id: localOnlyID,
-                          imageData: Data("local_full".utf8),
-                          thumbnailData: Data("local_thumb".utf8))
+        try PhotoStorage.save(id: localOnlyID,
+                              imageData: Data("local_full".utf8),
+                              thumbnailData: Data("local_thumb".utf8))
 
         let cat = try store.createCategory(name: "Fleet")
         let export = try XCTUnwrap(store.exportJSON())
@@ -506,7 +506,7 @@ final class PhotoDownloadTriggerTests: XCTestCase {
 
         let id = UUID()
         let expected = Data("thumbnail_payload".utf8)
-        PhotoStorage.save(id: id, imageData: Data("full".utf8), thumbnailData: expected)
+        try PhotoStorage.save(id: id, imageData: Data("full".utf8), thumbnailData: expected)
 
         let result = PhotoStorage.loadThumb(id: id)
         XCTAssertEqual(result, expected)
