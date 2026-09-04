@@ -43,6 +43,7 @@ struct BulkCommunicationView: View {
 
     @State private var rows: [ContactRow] = []
     @State private var isLoading = true
+    @State private var contactsAccessDenied = false
     @State private var messageText = ""
     @State private var selectedMethods: [UUID: ContactMethod] = [:]
 
@@ -85,6 +86,23 @@ struct BulkCommunicationView: View {
             ProgressView()
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 40)
+        } else if contactsAccessDenied {
+            VStack(spacing: 14) {
+                Text("Contacts access is needed to find phone numbers and email addresses.")
+                    .font(Baron.body(13))
+                    .foregroundStyle(Baron.neutral600)
+                    .multilineTextAlignment(.center)
+                Button("Open Settings") {
+                    guard let url = URL(string: UIApplication.openSettingsURLString) else { return }
+                    UIApplication.shared.open(url)
+                }
+                .font(Baron.body(13, .medium))
+                .foregroundStyle(Baron.accent800)
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 36)
+            .padding(.horizontal, 20)
+            .baronCard(radius: 16, elevation: .low)
         } else if rows.isEmpty {
             Text("No contacts yet. Give a thing a contact field — an owner, a plumber, a landlord — and they'll show up here.")
                 .font(Baron.body(13))
@@ -188,6 +206,13 @@ struct BulkCommunicationView: View {
     }
 
     private func loadContacts() async {
+        let granted = (try? await ContactResolver.shared.requestAccess()) ?? false
+        guard granted else {
+            contactsAccessDenied = true
+            isLoading = false
+            return
+        }
+
         var built: [ContactRow] = []
         // Every live thing, not just the roots — a contact on something filed inside another
         // thing (the boiler in the house) is exactly as messageable as one at the top.

@@ -29,14 +29,23 @@ final class ContactResolver {
 
     // MARK: - Permission
 
-    /// Requests Contacts access if not already granted.
-    /// Call once at app launch before any fetch.
-    func requestAccess() async throws {
-        try await store.requestAccess(for: .contacts)
+    /// Requests Contacts access if not already decided and returns whether contact data is
+    /// available. Call only in response to a user action that needs Contacts; passive contact
+    /// labels deliberately use the non-prompting fetch helpers below.
+    @discardableResult
+    func requestAccess() async throws -> Bool {
+        if hasAccess { return true }
+        _ = try await store.requestAccess(for: .contacts)
+        return hasAccess
     }
 
     var authorizationStatus: CNAuthorizationStatus {
         CNContactStore.authorizationStatus(for: .contacts)
+    }
+
+    /// Limited access is sufficient: the app only needs to resolve contacts the user chose.
+    private var hasAccess: Bool {
+        authorizationStatus == .authorized || authorizationStatus == .limited
     }
 
     // MARK: - Fetch

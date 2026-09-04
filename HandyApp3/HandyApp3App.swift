@@ -31,7 +31,6 @@ struct HandyApp3App: App {
                         case nil: router.pendingAssetAnchor = nil
                         }
                     }
-                    try? await ContactResolver.shared.requestAccess()
                     store.startCloudMonitor()
                     store.requestDerivedResync()
                     purchases.start()
