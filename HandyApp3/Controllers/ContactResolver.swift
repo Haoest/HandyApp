@@ -45,7 +45,13 @@ final class ContactResolver {
 
     /// Limited access is sufficient: the app only needs to resolve contacts the user chose.
     private var hasAccess: Bool {
+        #if os(iOS)
         authorizationStatus == .authorized || authorizationStatus == .limited
+        #else
+        // CNAuthorizationStatus.limited is unavailable on macOS. The app itself is iOS-only,
+        // but the Foundation logic target is compiled on macOS by the SwiftPM test harness.
+        authorizationStatus == .authorized
+        #endif
     }
 
     // MARK: - Fetch
