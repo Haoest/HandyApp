@@ -6773,6 +6773,111 @@
         }
       }
     },
+    "%lld Things selected" : {
+      "comment" : "Report tab Thing-filter summary. Arg: selected Thing count.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "es" : { "stringUnit" : { "state" : "translated", "value" : "%lld cosas seleccionadas" } },
+        "fr" : { "stringUnit" : { "state" : "translated", "value" : "%lld objets sélectionnés" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "已选择 %lld 件物品" } }
+      }
+    },
+    "All Things" : {
+      "comment" : "Report tab Thing filter. Selects every Thing.",
+      "localizations" : {
+        "es" : { "stringUnit" : { "state" : "translated", "value" : "Todas las cosas" } },
+        "fr" : { "stringUnit" : { "state" : "translated", "value" : "Tous les objets" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "所有物品" } }
+      }
+    },
+    "Date range" : {
+      "comment" : "Report tab filter section title.",
+      "localizations" : {
+        "es" : { "stringUnit" : { "state" : "translated", "value" : "Intervalo de fechas" } },
+        "fr" : { "stringUnit" : { "state" : "translated", "value" : "Période" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "日期范围" } }
+      }
+    },
+    "From" : {
+      "comment" : "Report tab start-date label.",
+      "localizations" : {
+        "es" : { "stringUnit" : { "state" : "translated", "value" : "Desde" } },
+        "fr" : { "stringUnit" : { "state" : "translated", "value" : "Du" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "开始" } }
+      }
+    },
+    "Grand total" : {
+      "comment" : "Report tab net total: money in minus money out.",
+      "localizations" : {
+        "es" : { "stringUnit" : { "state" : "translated", "value" : "Total general" } },
+        "fr" : { "stringUnit" : { "state" : "translated", "value" : "Total général" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "总计" } }
+      }
+    },
+    "Include every Thing" : {
+      "comment" : "Report Thing picker subtitle for All Things.",
+      "localizations" : {
+        "es" : { "stringUnit" : { "state" : "translated", "value" : "Incluir todas las cosas" } },
+        "fr" : { "stringUnit" : { "state" : "translated", "value" : "Inclure tous les objets" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "包含所有物品" } }
+      }
+    },
+    "Money in − Money out" : {
+      "comment" : "Report tab explanation of the grand total calculation.",
+      "localizations" : {
+        "es" : { "stringUnit" : { "state" : "translated", "value" : "Dinero entrante − Dinero saliente" } },
+        "fr" : { "stringUnit" : { "state" : "translated", "value" : "Argent entrant − Argent sortant" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "入账 − 出账" } }
+      }
+    },
+    "No Things selected" : {
+      "comment" : "Report tab Thing-filter summary when selection is empty.",
+      "localizations" : {
+        "es" : { "stringUnit" : { "state" : "translated", "value" : "No hay cosas seleccionadas" } },
+        "fr" : { "stringUnit" : { "state" : "translated", "value" : "Aucun objet sélectionné" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "未选择物品" } }
+      }
+    },
+    "No transactions found" : {
+      "comment" : "Report tab empty-state title.",
+      "localizations" : {
+        "es" : { "stringUnit" : { "state" : "translated", "value" : "No se encontraron transacciones" } },
+        "fr" : { "stringUnit" : { "state" : "translated", "value" : "Aucune transaction trouvée" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "未找到交易" } }
+      }
+    },
+    "Report" : {
+      "comment" : "Report tab title and tab-bar label.",
+      "localizations" : {
+        "es" : { "stringUnit" : { "state" : "translated", "value" : "Informe" } },
+        "fr" : { "stringUnit" : { "state" : "translated", "value" : "Rapport" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "报表" } }
+      }
+    },
+    "Select Things" : {
+      "comment" : "Report tab Thing picker title.",
+      "localizations" : {
+        "es" : { "stringUnit" : { "state" : "translated", "value" : "Seleccionar cosas" } },
+        "fr" : { "stringUnit" : { "state" : "translated", "value" : "Sélectionner des objets" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "选择物品" } }
+      }
+    },
+    "To" : {
+      "comment" : "Report tab end-date label.",
+      "localizations" : {
+        "es" : { "stringUnit" : { "state" : "translated", "value" : "Hasta" } },
+        "fr" : { "stringUnit" : { "state" : "translated", "value" : "Au" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "结束" } }
+      }
+    },
+    "Try changing the date range, Things, or money direction." : {
+      "comment" : "Report tab empty-state guidance.",
+      "localizations" : {
+        "es" : { "stringUnit" : { "state" : "translated", "value" : "Prueba a cambiar el intervalo de fechas, las cosas o la dirección del dinero." } },
+        "fr" : { "stringUnit" : { "state" : "translated", "value" : "Modifiez la période, les objets ou le sens de l’argent." } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "请尝试更改日期范围、物品或收支方向。" } }
+      }
+    },
     "Welcome to Baron Book. Your data belongs only to you" : {
       "comment" : "Timeline tab subtitle. Privacy reassurance.",
       "localizations" : {

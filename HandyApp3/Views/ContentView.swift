@@ -16,6 +16,9 @@ struct ContentView: View {
                 ThingsTab()
                     .tabItem { Label("Things", systemImage: "shippingbox") }
                     .tag(AppTab.assets)
+                ReportTab()
+                    .tabItem { Label("Report", systemImage: "chart.bar.xaxis") }
+                    .tag(AppTab.report)
                 SetupTab()
                     .tabItem { Label("Setup", systemImage: "slider.horizontal.3") }
                     .tag(AppTab.setup)
