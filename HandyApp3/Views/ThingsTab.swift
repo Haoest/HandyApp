@@ -51,11 +51,16 @@ struct ThingsTab: View {
             ZStack {
                 Baron.background.ignoresSafeArea()
                 if store.allAssets.isEmpty {
-                    ContentUnavailableView(
-                        "No things yet",
-                        systemImage: "shippingbox",
-                        description: Text("Tap + New to add the first thing you own.")
-                    )
+                    VStack(alignment: .leading, spacing: 0) {
+                        header
+                            .padding(.horizontal, Baron.pageInset)
+                        ContentUnavailableView(
+                            "No things yet",
+                            systemImage: "shippingbox",
+                            description: Text("Tap + New to add the first thing you own.")
+                        )
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    }
                 } else {
                     ScrollView {
                         VStack(alignment: .leading, spacing: 0) {
