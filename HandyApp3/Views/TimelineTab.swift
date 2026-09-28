@@ -166,29 +166,36 @@ struct TimelineTab: View {
     // MARK: - Header
 
     private var header: some View {
-        HStack(alignment: .top, spacing: 10) {
-            VStack(alignment: .leading, spacing: 8) {
-                Text(Self.datelineFormatter.string(from: Date()))
-                    .font(Baron.body(12, .medium))
-                    .tracking(0.5)
-                    .foregroundStyle(Baron.neutral600)
-                Text("Timeline")
-                    .font(Baron.heading(32))
-                    .foregroundStyle(Baron.text)
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(alignment: .top, spacing: 10) {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text(Self.datelineFormatter.string(from: Date()))
+                        .font(Baron.body(12, .medium))
+                        .tracking(0.5)
+                        .foregroundStyle(Baron.neutral600)
+                    Text("Timeline")
+                        .font(Baron.heading(32))
+                        .foregroundStyle(Baron.text)
+                }
+                Spacer(minLength: 0)
+                Button { quickLogStep = .pickThing } label: {
+                    Text("+ Log")
+                        .font(Baron.heading(12.5))
+                        .tracking(0.9)
+                        .textCase(.uppercase)
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 15)
+                        .padding(.vertical, 10)
+                        .background(Baron.fill, in: RoundedRectangle(cornerRadius: Baron.Radius.field, style: .continuous))
+                }
+                .baronShadow(.high)
+                .padding(.top, 12)
             }
-            Spacer(minLength: 0)
-            Button { quickLogStep = .pickThing } label: {
-                Text("+ Log")
-                    .font(Baron.heading(12.5))
-                    .tracking(0.9)
-                    .textCase(.uppercase)
-                    .foregroundStyle(.white)
-                    .padding(.horizontal, 15)
-                    .padding(.vertical, 10)
-                    .background(Baron.fill, in: RoundedRectangle(cornerRadius: Baron.Radius.field, style: .continuous))
-            }
-            .baronShadow(.high)
-            .padding(.top, 12)
+            Text("Welcome to Baron Book. Your data belongs only to you")
+                .font(Baron.body(16))
+                .foregroundStyle(Baron.neutral600)
+                .lineLimit(1)
+                .minimumScaleFactor(0.85)
         }
         .padding(.top, 12)
     }

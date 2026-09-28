@@ -6773,6 +6773,29 @@
         }
       }
     },
+    "Welcome to Baron Book. Your data belongs only to you" : {
+      "comment" : "Timeline tab subtitle. Privacy reassurance.",
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Te damos la bienvenida a Baron Book. Tus datos te pertenecen solo a ti."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bienvenue dans Baron Book. Vos données n'appartiennent qu'à vous."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "欢迎使用 Baron Book。您的数据只属于您自己。"
+          }
+        }
+      }
+    },
     "today" : {
       "comment" : "Things tab summary row. Text.",
       "localizations" : {
