@@ -80,7 +80,8 @@ struct ThingDetailView: View {
                     previousName: previousID.flatMap { store.assets[$0]?.name },
                     nextName: nextID.flatMap { store.assets[$0]?.name },
                     onPrevious: previousID.map { id in { currentID = id } },
-                    onNext: nextID.map { id in { currentID = id } }
+                    onNext: nextID.map { id in { currentID = id } },
+                    onOpenParent: { currentID = $0 }
                 )
                 .id(currentID)
             } else {
@@ -100,7 +101,6 @@ struct ThingDetailView: View {
 
 private struct ThingDetailContent: View {
     @Environment(AssetStore.self) private var store
-    @Environment(AppRouter.self) private var router
     @Environment(\.dismiss) private var dismiss
 
     let asset: Asset
@@ -110,6 +110,7 @@ private struct ThingDetailContent: View {
     let nextName: String?
     let onPrevious: (() -> Void)?
     let onNext: (() -> Void)?
+    let onOpenParent: (UUID) -> Void
 
     @State private var expandedPropertyID: UUID?
     @State private var renamePresented = false
@@ -284,7 +285,7 @@ private struct ThingDetailContent: View {
                             .padding(.vertical, 3)
                             .background(Baron.accent100, in: Capsule())
                         if let parent = asset.parent, !parent.isDeleted {
-                            Button { router.pendingAssetID = parent.id } label: {
+                            Button { onOpenParent(parent.id) } label: {
                                 Text("in \(parent.name)")
                                     .font(Baron.body(10.5, .medium))
                                     .tracking(0.55)
