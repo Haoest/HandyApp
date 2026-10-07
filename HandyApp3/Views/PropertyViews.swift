@@ -117,6 +117,13 @@ struct PropertyEditView: View {
             return valueDateEnabled ? .date(valueDate) : nil
         case .comboList:
             return valueCombo.isEmpty ? nil : .text(valueCombo)
+        case .composite(let currentDefinition):
+            // Composite parts are edited on the thing, not in this metadata sheet. Keep the
+            // existing payload when the type itself is unchanged so a rename (or Required
+            // change) cannot be mistaken by the save callback for an explicit clear.
+            guard case .composite(let originalDefinition) = existing?.definition.type,
+                  currentDefinition.id == originalDefinition.id else { return nil }
+            return existing?.value
         default:
             return nil
         }
