@@ -141,6 +141,10 @@ struct ComboListField: View {
 struct FlowLayout: Layout {
     var spacing: CGFloat = 8
 
+    private func needsNewRow(currentWidth: CGFloat, nextWidth: CGFloat, maxWidth: CGFloat) -> Bool {
+        currentWidth > 0 && currentWidth + spacing + nextWidth > maxWidth
+    }
+
     func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
         let maxWidth = proposal.width ?? .infinity
         var rowWidth: CGFloat = 0
@@ -150,7 +154,7 @@ struct FlowLayout: Layout {
 
         for subview in subviews {
             let size = subview.sizeThatFits(.unspecified)
-            if rowWidth > 0, rowWidth + spacing + size.width > maxWidth {
+            if needsNewRow(currentWidth: rowWidth, nextWidth: size.width, maxWidth: maxWidth) {
                 totalHeight += rowHeight + spacing
                 totalWidth = max(totalWidth, rowWidth)
                 rowWidth = 0
@@ -173,19 +177,20 @@ struct FlowLayout: Layout {
     }
 
     func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
-        var x = bounds.minX
+        var rowWidth: CGFloat = 0
         var y = bounds.minY
         var rowHeight: CGFloat = 0
 
         for subview in subviews {
             let size = subview.sizeThatFits(.unspecified)
-            if x > bounds.minX, x + spacing + size.width > bounds.maxX {
-                x = bounds.minX
+            if needsNewRow(currentWidth: rowWidth, nextWidth: size.width, maxWidth: bounds.width) {
+                rowWidth = 0
                 y += rowHeight + spacing
                 rowHeight = 0
             }
+            let x = bounds.minX + rowWidth + (rowWidth > 0 ? spacing : 0)
             subview.place(at: CGPoint(x: x, y: y), proposal: ProposedViewSize(size))
-            x += size.width + spacing
+            rowWidth += (rowWidth > 0 ? spacing : 0) + size.width
             rowHeight = max(rowHeight, size.height)
         }
     }
