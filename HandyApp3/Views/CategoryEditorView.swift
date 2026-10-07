@@ -64,6 +64,7 @@ struct CategoryEditorView: View {
             PropertyEditView(existing: prop) { definition, value in
                 try? store.updateTemplateProperty(id: prop.id, inCategoryID: category.id,
                                                   name: definition.name, type: definition.type,
+                                                  isRequired: definition.isRequired,
                                                   maxLength: definition.maxLength)
                 if let value {
                     try? store.setTemplatePropertyValue(value, forPropertyID: prop.id, inCategoryID: category.id)

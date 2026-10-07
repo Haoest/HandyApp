@@ -1043,7 +1043,10 @@ private struct ThingDetailSheets: ViewModifier {
             }
             .sheet(item: $customPropertyToEdit) { prop in
                 PropertyEditView(existing: prop) { definition, value in
-                    try? store.updateCustomProperty(id: prop.id, onAssetID: asset.id, name: definition.name, type: definition.type, maxLength: definition.maxLength)
+                    try? store.updateCustomProperty(id: prop.id, onAssetID: asset.id,
+                                                    name: definition.name, type: definition.type,
+                                                    isRequired: definition.isRequired,
+                                                    maxLength: definition.maxLength)
                     if let value {
                         try? store.setPropertyValue(value, forDefinitionID: prop.definition.id, onAssetID: asset.id)
                     } else {
