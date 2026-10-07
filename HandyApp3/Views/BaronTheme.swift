@@ -57,14 +57,13 @@ enum Baron {
 
     // MARK: - Type
 
-    /// Headings — Barlow Condensed in the design. Falls back to the system font at a matching
-    /// weight until `BarlowCondensed-SemiBold.ttf` is added to the bundle and declared in
-    /// `UIAppFonts`, so the layout is correct either way.
+    /// Headings — Barlow Condensed in the design. Both the custom font and its system fallback
+    /// are relative to a semantic text style so they follow the user's Dynamic Type setting.
     static func heading(_ size: CGFloat, _ weight: Font.Weight = .semibold) -> Font {
         custom("BarlowCondensed-SemiBold", size: size, fallbackWeight: weight)
     }
 
-    /// Body copy — Barlow in the design, system fallback as above.
+    /// Body copy — Barlow in the design, semantic system fallback as above.
     static func body(_ size: CGFloat, _ weight: Font.Weight = .regular) -> Font {
         let name: String
         switch weight {
@@ -76,10 +75,28 @@ enum Baron {
     }
 
     private static func custom(_ name: String, size: CGFloat, fallbackWeight: Font.Weight) -> Font {
+        let textStyle = relativeTextStyle(for: size)
         guard UIFont(name: name, size: size) != nil else {
-            return .system(size: size, weight: fallbackWeight)
+            return .system(textStyle, design: .default, weight: fallbackWeight)
         }
-        return .custom(name, size: size)
+        return .custom(name, size: size, relativeTo: textStyle)
+    }
+
+    /// Maps the design's point-size hierarchy onto the nearest semantic rung. Keeping the
+    /// mapping here means every Baron label scales consistently, including at accessibility
+    /// sizes, without each call site having to choose its own text style.
+    private static func relativeTextStyle(for size: CGFloat) -> Font.TextStyle {
+        switch size {
+        case 31...: return .largeTitle
+        case 26...: return .title
+        case 21...: return .title2
+        case 18...: return .title3
+        case 16...: return .headline
+        case 14...: return .body
+        case 12...: return .subheadline
+        case 10...: return .caption
+        default: return .caption2
+        }
     }
 
     // MARK: - Metrics
