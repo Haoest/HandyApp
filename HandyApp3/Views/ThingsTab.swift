@@ -273,12 +273,12 @@ private struct ThingRow: View {
     let onOpen: () -> Void
     let onQuickAdd: () -> Void
 
-    private static let dueFormatter: DateFormatter = {
+    private static var dueFormatter: DateFormatter {
         let formatter = DateFormatter()
         formatter.locale = .appPreferred
         formatter.setLocalizedDateFormatFromTemplate("MMMd")
         return formatter
-    }()
+    }
 
     var body: some View {
         HStack(spacing: 12) {

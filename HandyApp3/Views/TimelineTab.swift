@@ -637,21 +637,21 @@ struct TimelineTab: View {
         }
     }
 
-    private static let datelineFormatter: DateFormatter = {
+    private static var datelineFormatter: DateFormatter {
         let formatter = DateFormatter()
         formatter.locale = .appPreferred
         formatter.setLocalizedDateFormatFromTemplate("EEEEdMMMM")
         return formatter
-    }()
+    }
 
-    private static let dayFormatter: DateFormatter = {
+    private static var dayFormatter: DateFormatter {
         let formatter = DateFormatter()
         formatter.locale = .appPreferred
         formatter.dateStyle = .medium
         formatter.timeStyle = .none
         formatter.doesRelativeDateFormatting = true
         return formatter
-    }()
+    }
 }
 
 // MARK: - Coming-up row

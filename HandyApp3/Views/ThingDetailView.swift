@@ -636,12 +636,12 @@ private struct ThingDetailContent: View {
             .baronCard(radius: 16, elevation: .low)
     }
 
-    static let dayFormatter: DateFormatter = {
+    static var dayFormatter: DateFormatter {
         let formatter = DateFormatter()
         formatter.locale = .appPreferred
         formatter.setLocalizedDateFormatFromTemplate("MMMd")
         return formatter
-    }()
+    }
 
     // MARK: - Actions
 

@@ -289,13 +289,13 @@ struct ReportTab: View {
         return amount < 0 ? "−\(magnitude)" : "+\(magnitude)"
     }
 
-    private static let rowDateFormatter: DateFormatter = {
+    private static var rowDateFormatter: DateFormatter {
         let formatter = DateFormatter()
         formatter.locale = .appPreferred
         formatter.dateStyle = .medium
         formatter.timeStyle = .none
         return formatter
-    }()
+    }
 }
 
 private struct ReportThingPickerSheet: View {
