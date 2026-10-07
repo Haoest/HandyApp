@@ -176,7 +176,7 @@ struct SetupTab: View {
                 .font(Baron.heading(12))
                 .tracking(0.9)
                 .textCase(.uppercase)
-                .foregroundStyle(Baron.accent900)
+                .foregroundStyle(Baron.text)
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 12)
                 .background(Baron.surface, in: RoundedRectangle(cornerRadius: 13, style: .continuous))
