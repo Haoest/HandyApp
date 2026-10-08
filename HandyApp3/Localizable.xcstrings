@@ -6838,12 +6838,12 @@
         "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "未选择物品" } }
       }
     },
-    "No transactions found" : {
+    "No records found" : {
       "comment" : "Report tab empty-state title.",
       "localizations" : {
-        "es" : { "stringUnit" : { "state" : "translated", "value" : "No se encontraron transacciones" } },
-        "fr" : { "stringUnit" : { "state" : "translated", "value" : "Aucune transaction trouvée" } },
-        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "未找到交易" } }
+        "es" : { "stringUnit" : { "state" : "translated", "value" : "No se encontraron registros" } },
+        "fr" : { "stringUnit" : { "state" : "translated", "value" : "Aucun enregistrement trouvé" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "未找到记录" } }
       }
     },
     "Report" : {
@@ -6870,12 +6870,12 @@
         "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "结束" } }
       }
     },
-    "Try changing the date range, Things, or money direction." : {
+    "Try changing the date range, Things, or record type." : {
       "comment" : "Report tab empty-state guidance.",
       "localizations" : {
-        "es" : { "stringUnit" : { "state" : "translated", "value" : "Prueba a cambiar el intervalo de fechas, las cosas o la dirección del dinero." } },
-        "fr" : { "stringUnit" : { "state" : "translated", "value" : "Modifiez la période, les objets ou le sens de l’argent." } },
-        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "请尝试更改日期范围、物品或收支方向。" } }
+        "es" : { "stringUnit" : { "state" : "translated", "value" : "Prueba a cambiar el intervalo de fechas, las cosas o el tipo de registro." } },
+        "fr" : { "stringUnit" : { "state" : "translated", "value" : "Modifiez la période, les objets ou le type d’enregistrement." } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "请尝试更改日期范围、物品或记录类型。" } }
       }
     },
     "Welcome to Baron Book. Your data belongs only to you" : {

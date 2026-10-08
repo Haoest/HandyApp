@@ -24,7 +24,7 @@ struct ReportTab: View {
     }
 
     private var sources: [ReportSource] {
-        assets.map { ReportSource(thingID: $0.id, thingName: $0.name, transactions: $0.liveTransactions) }
+        assets.map { ReportSource(thingID: $0.id, thingName: $0.name, transactions: $0.liveTransactions, events: $0.liveEvents) }
     }
 
     private var result: ReportResult {
@@ -122,6 +122,7 @@ struct ReportTab: View {
                 directionButton("All", value: .all)
                 directionButton("Money in", value: .income)
                 directionButton("Money out", value: .expense)
+                directionButton("Event", value: .event)
             }
         }
         .padding(15)
@@ -212,7 +213,7 @@ struct ReportTab: View {
     private var results: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(alignment: .firstTextBaseline) {
-                Text("Transactions")
+                Text("Records")
                     .font(Baron.heading(19))
                     .foregroundStyle(Baron.text)
                 Spacer(minLength: 0)
@@ -226,10 +227,10 @@ struct ReportTab: View {
                     Image(systemName: "chart.bar.xaxis")
                         .font(.system(size: 27, weight: .light))
                         .foregroundStyle(Baron.neutral500)
-                    Text("No transactions found")
+                    Text("No records found")
                         .font(Baron.heading(18))
                         .foregroundStyle(Baron.text)
-                    Text("Try changing the date range, Things, or money direction.")
+                    Text("Try changing the date range, Things, or record type.")
                         .font(Baron.body(13))
                         .foregroundStyle(Baron.neutral600)
                         .multilineTextAlignment(.center)
@@ -250,11 +251,11 @@ struct ReportTab: View {
 
     private func reportRow(_ entry: ReportEntry) -> some View {
         HStack(spacing: 11) {
-            Image(systemName: entry.kind == .income ? "arrow.down.left" : "arrow.up.right")
+            Image(systemName: entry.isEvent ? "calendar" : (entry.kind == .income ? "arrow.down.left" : "arrow.up.right"))
                 .font(.system(size: 13, weight: .semibold))
-                .foregroundStyle(entry.kind == .income ? Baron.good : Baron.danger)
+                .foregroundStyle(entry.isEvent ? Baron.neutral700 : (entry.kind == .income ? Baron.good : Baron.danger))
                 .frame(width: 34, height: 34)
-                .background(entry.kind == .income ? Baron.goodBackground : Baron.dangerBackground,
+                .background(entry.isEvent ? Baron.neutral200 : (entry.kind == .income ? Baron.goodBackground : Baron.dangerBackground),
                             in: RoundedRectangle(cornerRadius: 10, style: .continuous))
 
             VStack(alignment: .leading, spacing: 3) {
@@ -268,11 +269,13 @@ struct ReportTab: View {
                     .lineLimit(1)
             }
             Spacer(minLength: 6)
-            Text(Self.signedMoney(entry.signedAmount))
-                .font(Baron.body(14, .semibold))
-                .foregroundStyle(entry.kind == .income ? Baron.good : Baron.danger)
-                .lineLimit(1)
-                .minimumScaleFactor(0.7)
+            if !entry.isEvent {
+                Text(Self.signedMoney(entry.signedAmount))
+                    .font(Baron.body(14, .semibold))
+                    .foregroundStyle(entry.kind == .income ? Baron.good : Baron.danger)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
+            }
         }
         .padding(.horizontal, 13)
         .padding(.vertical, 11)

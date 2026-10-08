@@ -1,17 +1,19 @@
 import Foundation
 
-/// One Thing's live transactions as input to a report. Callers pass `liveTransactions` from
+/// One Thing's live records as input to a report. Callers pass `liveTransactions` and `liveEvents` from
 /// live Things; this layer deliberately knows nothing about tombstones or view state.
 struct ReportSource {
     let thingID: UUID
     let thingName: String
     let transactions: [Transaction]
+    var events: [Event] = []
 }
 
 enum ReportDirection: String, CaseIterable, Identifiable {
     case all
     case income
     case expense
+    case event
 
     var id: Self { self }
 
@@ -20,6 +22,7 @@ enum ReportDirection: String, CaseIterable, Identifiable {
         case .all: return true
         case .income: return kind == .income
         case .expense: return kind == .expense
+        case .event: return false
         }
     }
 }
@@ -30,9 +33,11 @@ struct ReportEntry: Identifiable, Equatable {
     let thingName: String
     let details: String
     let date: Date
-    let kind: TransactionKind
+    /// `nil` identifies an event, which has no monetary amount.
+    let kind: TransactionKind?
     let amount: Decimal
 
+    var isEvent: Bool { kind == nil }
     var signedAmount: Decimal { kind == .expense ? -amount : amount }
 }
 
@@ -66,6 +71,16 @@ enum ReportDigest {
 
         for source in sources {
             if let selectedThingIDs, !selectedThingIDs.contains(source.thingID) { continue }
+            if direction == .all || direction == .event {
+                for event in source.events {
+                    guard event.date >= lowerBound, event.date < upperBound else { continue }
+                    let entry = ReportEntry(
+                        id: event.id, thingID: source.thingID, thingName: source.thingName,
+                        details: event.title, date: event.date, kind: nil, amount: 0
+                    )
+                    rows.append((entry, event.createdAt.timeIntervalSince1970.rounded(.down)))
+                }
+            }
             for transaction in source.transactions {
                 guard transaction.date >= lowerBound,
                       transaction.date < upperBound,

@@ -62,6 +62,39 @@ final class ReportDigestTests: XCTestCase {
         XCTAssertEqual(result.grandTotal, 0)
     }
 
+    func testEventsRespectFiltersAndDoNotAffectMoneyTotals() {
+        let thingID = UUID()
+        let event = Event(title: "Inspection", date: date(2026, 6, 2))
+        let sources = [
+            ReportSource(thingID: thingID, thingName: "Car", transactions: [
+                transaction("Income", 100, .income, on: date(2026, 6, 1)),
+                transaction("Expense", 40, .expense, on: date(2026, 6, 3))
+            ], events: [event, Event(title: "Outside", date: date(2027, 1, 1, hour: 0))]),
+            ReportSource(thingID: UUID(), thingName: "Other", transactions: [], events: [
+                Event(title: "Other Thing", date: date(2026, 6, 1))
+            ])
+        ]
+        func report(_ direction: ReportDirection) -> ReportResult {
+            ReportDigest.build(sources: sources, startDate: date(2026, 1, 1),
+                               endDate: date(2026, 12, 31), selectedThingIDs: [thingID],
+                               direction: direction, calendar: calendar)
+        }
+
+        let all = report(.all)
+        XCTAssertEqual(all.entries.map(\.details), ["Expense", "Inspection", "Income"])
+        XCTAssertEqual(all.moneyIn, 100)
+        XCTAssertEqual(all.moneyOut, 40)
+        XCTAssertEqual(all.grandTotal, 60)
+
+        let events = report(.event)
+        XCTAssertEqual(events.entries.map(\.id), [event.id])
+        XCTAssertTrue(events.entries.allSatisfy(\.isEvent))
+        XCTAssertEqual(events.moneyIn, 0)
+        XCTAssertEqual(events.moneyOut, 0)
+        XCTAssertEqual(report(.income).entries.map(\.details), ["Income"])
+        XCTAssertEqual(report(.expense).entries.map(\.details), ["Expense"])
+    }
+
     func testRowsSortNewestFirstWithStableTiesAndEachOccurrenceRemainsSeparate() {
         let sameDate = date(2026, 5, 20)
         let older = transaction("Older", 1, .expense, on: date(2026, 5, 19))
